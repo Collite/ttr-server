@@ -34,7 +34,7 @@ enum class PeriodUnit {
     fun codeOf(index: Int): String =
         when (this) {
             YEAR -> "%04d".format(index)
-            QUARTER -> "%04dQ%d".format(Math.floorDiv(index, 4), Math.floorMod(index, 4) + 1)
+            QUARTER -> PeriodCodes.numbered(Math.floorDiv(index, 4), 'Q', Math.floorMod(index, 4) + 1)
             MONTH -> "%04d%02d".format(Math.floorDiv(index, 12), Math.floorMod(index, 12) + 1)
         }
 
@@ -82,8 +82,12 @@ data class PeriodWord(
  * noun. The nouns stop short of their adjectives: *měsíční* and *čtvrtletní* name a grain, not a period.
  *
  * „poslední“ is a scope word for a quarter only. *Za poslední měsíc* and *za poslední rok* are as often the
- * trailing thirty days or twelve months as the calendar period before, so for a month or a year it stays no
- * scope word at all, as it was before #214.
+ * trailing thirty days or twelve months as the calendar period before, so for a month or a year it is no scope
+ * word here, and neither is "the last month" or "the last year": [DateRecognizer] asks between the two readings
+ * ([TrailingPeriods], TS-5).
+ *
+ * „uplynulý“ and "past" name the period that has just elapsed — the one before the reference date (TS-6).
+ * A quarter is *čtvrtletí* or *kvartál*.
  *
  * A phrase right before a four-digit year is not relative: "last year 2024" is 2024 and "the last quarter of
  * 2025" is a quarter OF 2025 (#213), so neither is read here.
@@ -114,7 +118,7 @@ object PeriodWords {
 
     private const val ROK = """$CS_ADJ(?:rok|roku|roce|rokem)\b"""
     private const val MESIC = """${CS_ADJ}mesic(?!n)\w*"""
-    private const val CTVRTLETI = """${CS_ADJ}ctvrtlet(?!n)\w*"""
+    private const val CTVRTLETI = """${CS_ADJ}(?:ctvrtlet|kvartal)(?!n)\w*"""
 
     /**
      * The `\b` ends a phrase on a whole word, so a trailing `\w*` cannot give letters back to slip past the
@@ -147,7 +151,8 @@ object PeriodWords {
                 """\bv?lonsk\w*""",
                 // „minuloroční“ is deictic (ruled 2026-10-14), unlike „minulý rok“.
                 """\bminulorocn\w*""",
-                """\blast\s+${EN_ADJ}year\b""",
+                """\buplynul\w*\s+$ROK""",
+                """\b(?:last|past)\s+${EN_ADJ}year\b""",
             ),
             rule(
                 PeriodUnit.YEAR,
@@ -175,7 +180,13 @@ object PeriodWords {
                 """\b(?:this|current)\s+${EN_ADJ}month\b""",
                 """\b$CS_THIS\s+$MESIC""",
             ),
-            rule(PeriodUnit.MONTH, PeriodWordKind.DEICTIC, -1, """\blast\s+${EN_ADJ}month\b"""),
+            rule(
+                PeriodUnit.MONTH,
+                PeriodWordKind.DEICTIC,
+                -1,
+                """\b(?:last|past)\s+${EN_ADJ}month\b""",
+                """\buplynul\w*\s+$MESIC""",
+            ),
             rule(
                 PeriodUnit.MONTH,
                 PeriodWordKind.DEICTIC,
@@ -205,7 +216,7 @@ object PeriodWords {
                 PeriodWordKind.DEICTIC,
                 -1,
                 """\b(?:last|past)\s+${EN_ADJ}quarter\b""",
-                """\bposledn\w*\s+$CTVRTLETI""",
+                """\b(?:posledn|uplynul)\w*\s+$CTVRTLETI""",
             ),
             rule(
                 PeriodUnit.QUARTER,
@@ -225,16 +236,33 @@ object PeriodWords {
             rule(PeriodUnit.QUARTER, PeriodWordKind.AMBIGUOUS, -1, """\bminul\w*\s+$CTVRTLETI"""),
         )
 
-    /** Every relative word of [unit] in the folded text [n], in the order they stand. */
+    /**
+     * Every relative word of [unit] in the folded text [n], in the order they stand. A trailing phrase
+     * ([TrailingPeriods]) is none: "the last month" asks, where "last month" is the month before. Nor is a part of
+     * a larger period ([PartOfPeriods]): "the last month of the quarter" is not October. Nor is a quarter or the last
+     * month of a year named by its number ([NumberedPeriods]): "the last quarter of the year" is the fourth, not the
+     * one before, and "the last month of the year" December.
+     */
     fun findAll(
         n: String,
         unit: PeriodUnit,
-    ): List<PeriodWord> =
-        rules
+    ): List<PeriodWord> {
+        val numbered =
+            when (unit) {
+                PeriodUnit.QUARTER -> NumberedPeriods.quarters(n).map { it.range }
+                PeriodUnit.MONTH -> NumberedPeriods.lastMonths(n).map { it.range }
+                PeriodUnit.YEAR -> emptyList()
+            }
+        val taken = TrailingPeriods.findAll(n).map { it.range } + PartOfPeriods.findAll(n) + numbered
+        return rules
             .filter { it.unit == unit }
             .flatMap { rule ->
-                rule.re.findAll(n).map { PeriodWord(unit, rule.kind, rule.delta, it.range, it.value) }
+                rule.re
+                    .findAll(n)
+                    .filterNot { m -> taken.any { it.overlaps(m.range) } }
+                    .map { PeriodWord(unit, rule.kind, rule.delta, it.range, it.value) }
             }.sortedBy { it.range.first }
+    }
 
     /** Every relative word of any unit in the folded text [n]. */
     fun findAll(n: String): List<PeriodWord> = PeriodUnit.entries.flatMap { findAll(n, it) }

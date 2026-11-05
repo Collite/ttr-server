@@ -84,7 +84,7 @@ class RoundTripSpec :
             withPeriodTable: Boolean,
         ): ParseResult {
             val builder = RecipeBuilder(fake(withPeriodTable))
-            val g = builder.build(span, recognizer.recognize(span, ref)!!, "cnc", "Europe/Prague")!!
+            val g = builder.build(span, recognizer.recognize(span, ref)!!, "cnc", "Europe/Prague")
             val (sql, params) =
                 when (g.applicationCase) {
                     GroundingResult.ApplicationCase.JOIN ->

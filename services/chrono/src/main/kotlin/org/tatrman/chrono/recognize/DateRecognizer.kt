@@ -37,6 +37,9 @@ class DateRecognizer {
          * the inference is still well above chrono's 0.6 clarification floor.
          */
         const val LEANED_YEAR_CONFIDENCE = 0.85
+
+        const val QUARTER_MONTHS = 3
+        const val HALF_MONTHS = 6
     }
 
     /**
@@ -71,7 +74,12 @@ class DateRecognizer {
         val conversation = ConversationPeriods(context, reference, PeriodWords.findAll(n))
         val years = Years(stated = spanYear(n, conversation), leaned = conversation.leanedYear())
         val base =
-            fiscalYear(n)?.let(::Hit)
+            numbered(n, NumberedPeriods.lastMonths(n), 1, ::monthCode, reference, years)
+                ?: partOfLarger(n)
+                ?: fiscalYear(n)?.let(::Hit)
+                ?: yearToDate(n, reference, years.stated)
+                ?: numbered(n, NumberedPeriods.quarters(n), QUARTER_MONTHS, ::quarterCode, reference, years)
+                ?: numbered(n, NumberedPeriods.halves(n), HALF_MONTHS, ::halfCode, reference, years)
                 ?: fiscalQuarter(n, reference, triggered, conversation)
                 ?: periodCode(n)?.let(::Hit)
                 ?: isoDate(n)?.let(::Hit)
@@ -81,6 +89,7 @@ class DateRecognizer {
                 ?: calendarYear(n)?.let(::Hit)
                 ?: return null
         return when (base) {
+            NotOne -> null
             is NoAnchor ->
                 ChronoReading.Unanchored(
                     "'${span.trim()}' is read against the ${base.unit.noun} the conversation is about, and " +
@@ -114,6 +123,12 @@ class DateRecognizer {
     private data class Hit(
         val recognition: ChronoRecognition,
     ) : Read
+
+    /**
+     * The span is no one period, though a rule recognised its shape — „1. a 2. čtvrtletí“ names two. It ends the
+     * read: a later rule must not read one part of it as the whole.
+     */
+    private data object NotOne : Read
 
     /** An anaphoric reading of a [unit] word with nothing to read against ([ConversationPeriods.Reading.NoAnchor]). */
     private data class NoAnchor(
@@ -187,6 +202,16 @@ class DateRecognizer {
             else -> null
         }
 
+    // ----- a part of a larger period: "the last month of the year", „poslední týden v měsíci“ (✅R215-N) -----
+
+    /**
+     * A last week, month or year of a period that contains it ([PartOfPeriods]) is no one period this class reads.
+     * Second in the chain, after the last month of a year (December, [numbered]): the trailing ask, the deictic "last
+     * month", the week rule's "last" and the month and fiscal-year rules would each read a part of the phrase as the
+     * whole.
+     */
+    private fun partOfLarger(n: String): Read? = NotOne.takeIf { PartOfPeriods.findAll(n).isNotEmpty() }
+
     // ----- fiscal year: "fiscal year 2026" / "fiskalni rok 2026" -----
 
     private val fiscalYearRe = Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)\s+(?:year|rok)\s+(\d{4})""")
@@ -194,7 +219,13 @@ class DateRecognizer {
     /** The fiscal/accounting adjectives alone — used when a trigger supplies the missing scope. */
     private val fiscalWordRe = Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)""")
 
+    /**
+     * "fiscal year 2026" → that fiscal year. A quarter or half of it ("Q4 of fiscal year 2025", "the second half of
+     * fiscal year 2025") is that quarter or half, as "Q4 FY2025" is: this rule gives way, and [numbered] reads it with
+     * the fiscal year's digits as its year (RR14).
+     */
     private fun fiscalYear(n: String): ChronoRecognition? {
+        if (NumberedPeriods.quarters(n).isNotEmpty() || NumberedPeriods.halves(n).isNotEmpty()) return null
         val y =
             fiscalYearRe
                 .find(n)
@@ -204,11 +235,95 @@ class DateRecognizer {
         return yearInterval(y, ChronoKind.FISCAL_YEAR, 0.95)
     }
 
+    // ----- a quarter or half-year by its number: „2. čtvrtletí 2026“, "Q2", „1. pololetí“, "H2 2026" (TS-6) -----
+    // ----- and the last month of a year: "the last month of last year", „poslední měsíc roku“ (✅R215-R) -----
+
+    private fun quarterCode(
+        year: Int,
+        number: Int,
+    ) = PeriodCodes.numbered(year, 'Q', number)
+
+    private fun halfCode(
+        year: Int,
+        number: Int,
+    ) = PeriodCodes.numbered(year, 'H', number)
+
+    private fun monthCode(
+        year: Int,
+        number: Int,
+    ) = "%04d%02d".format(year, number)
+
+    /**
+     * The one quarter, half-year or last month of a year a span names by number ([NumberedPeriods]) → a PERIOD
+     * recognition with its `yyyyQn` / `yyyyHn` / `yyyyMM` code. Run first, a last month of a year is not
+     * [partOfLarger]'s, and "the last month of fiscal year 2026" not [fiscalYear]'s. A yearless one takes its year the
+     * way a yearless month does: from the span's own year words („letošní 2. čtvrtletí“), then from the question or
+     * the conversation, then the reference's — and asks between this year and last when it is later than the
+     * reference's own quarter, half or month (#214, contracts §5): "the last month of the year" asks as "December"
+     * does.
+     *
+     * A span that names any other period is no one period ([NotOne], ✅R215-M): several numbered ones ("Q1 a Q2
+     * 2025"), a number joined to this one („1. a 2. čtvrtletí“, "first and second quarter of 2025" — only the second
+     * stands beside its noun), a second year ("Q2 2025 vs 2024", "Q2 this year vs last year"), a month, a relative
+     * word, a count or year to date ("Q1 and last month", "Q2 vs YTD"). Which ones count is [OtherPeriods]'.
+     *
+     * A span that states a year this rule cannot read is not read either (RR13, A-TS-3): its year is not the
+     * reference's or the conversation's. That is a year chrono reads nowhere ([YearPhrases]: "Q2 next year", "Q2 a
+     * year ago", „každé 2. čtvrtletí“), and a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025", as
+     * [relative] does not read one, #213).
+     */
+    private fun numbered(
+        n: String,
+        found: List<NumberedPeriods.Numbered>,
+        months: Int,
+        codeOf: (year: Int, number: Int) -> String,
+        reference: LocalDate,
+        years: Years,
+    ): Read? {
+        if (found.isEmpty()) return null
+        val one = found.singleOrNull() ?: return NotOne
+        if (OtherPeriods.outside(n, one.range, reference)) return NotOne
+        if (YearPhrases.unreadIn(n)) return NotOne
+
+        fun inYear(
+            year: Int,
+            confidence: Double,
+        ): ChronoRecognition {
+            val start = LocalDate.of(year, (one.number - 1) * months + 1, 1)
+            val code = codeOf(year, one.number)
+            return ChronoRecognition(start, start.plusMonths(months.toLong()), ChronoKind.PERIOD, confidence, code)
+        }
+        one.year?.let { return Hit(inYear(it, 0.9)) }
+        when (val said = years.stated) {
+            is SpanYear.One -> return Hit(inYear(said.year, 0.9))
+            is SpanYear.Two -> return twoReadings(inYear(said.deictic, 0.9), inYear(said.anaphoric, 0.9))
+            is SpanYear.Unanchored -> return NoAnchor(PeriodUnit.YEAR, said.why)
+            // "the last quarter of the last year": a year word no reading settles is no other year to fall back on;
+            // nor are digits no pattern placed, nor a year named by a word chrono does not read ("the contract year").
+            SpanYear.None -> if (one.yearWord || statesYear(n) || YearPhrases.otherYearNounIn(n)) return NotOne
+        }
+        when (val leaned = years.leaned) {
+            is LeanedYear.One -> return Hit(inYear(leaned.year, LEANED_YEAR_CONFIDENCE))
+            is LeanedYear.Unclear -> return NoAnchor(PeriodUnit.YEAR, leaned.why)
+            LeanedYear.None -> Unit
+        }
+        val current = (reference.monthValue - 1) / months + 1
+        return Hit(
+            if (one.number > current) {
+                // Later than the reference's own: this year (upcoming) or last (most recent past), as a bare
+                // future month asks.
+                inYear(reference.year, 0.6).copy(alternatives = listOf(inYear(reference.year - 1, 0.6)))
+            } else {
+                inYear(reference.year, 0.85)
+            },
+        )
+    }
+
     // ----- fiscal/accounting quarter: "last fiscal quarter" / "poslední fiskální čtvrtletí" (Q-18) -----
     // Words are diacritic-folded (Normalization.fold) before the recognizer runs, so cs stems match
     // accent-free: čtvrtletí→ctvrtleti, fiskální→fiskalni, účetní→ucetni, minulé→minule, poslední→posledni.
 
-    private val quarterWordRe = Regex("""(?:ctvrtlet\w*|quarter)""")
+    private val quarterWordRe = Regex("""(?:ctvrtlet\w*|kvartal\w*|quarter)""")
 
     /**
      * A relative fiscal/accounting quarter → a PERIOD recognition carrying a `yyyyQn` period code plus
@@ -230,8 +345,8 @@ class DateRecognizer {
         conversation: ConversationPeriods,
     ): Read? {
         if (!quarterWordRe.containsMatchIn(n)) return null
-        // Every quarter here is relative. A quarter OF a stated year ("the last quarter of 2025") is not,
-        // and no rule reads it yet: it stays ungrounded (#213).
+        // Every quarter here is relative. A quarter OF a stated year ("the last quarter of 2025", „2. čtvrtletí
+        // 2025“) is not: it is [numbered]'s, which runs first (TS-6).
         if (statesYear(n)) return null
         val words = PeriodWords.findAll(n, PeriodUnit.QUARTER).distinctBy { it.kind to it.delta }
         if (hasAny(n, thisScopeWords) && words.any { it.delta != 0 }) return null // ambiguous both
@@ -427,10 +542,12 @@ class DateRecognizer {
      * A year word beside the digits ("the year 2025", "v roce 2025", "this year 2025") still lands
      * here: [relative] does not read a span that writes out its year ([statesYear], #213).
      *
-     * A unit smaller than a year beside the digits ([subYearUnitRe]: "the second quarter of 2025",
-     * "the last week of 2025", "druhé pololetí 2025") is a period OF that year, and no rule reads
-     * one yet. The whole year would be a confident wrong number, so the span stays ungrounded: a
-     * consumer falls through on a date with no range and reads the words from the question (#213).
+     * A unit smaller than a year beside the digits ([subYearUnitRe]) is a period OF that year, never the
+     * whole year. A quarter or a half-year of it ("the second quarter of 2025", „druhé pololetí 2025“) is
+     * [numbered]'s, which runs first (TS-6). A week, a month by a relative word or a day of it ("the last week
+     * of 2025", "last 3 months of 2025") no rule reads yet: the whole year would be a confident wrong number,
+     * so the span stays ungrounded, and a consumer falls through on a date with no range and reads the words
+     * from the question (#213).
      */
     private fun calendarYear(n: String): ChronoRecognition? {
         if (subYearUnitRe.containsMatchIn(n)) return null
@@ -448,8 +565,16 @@ class DateRecognizer {
      * run [calendarYear] reads? Such a span is not a period at the reference, so neither
      * [relative] nor [fiscalQuarter] reads it (#213).
      */
-    private fun statesYear(n: String): Boolean =
-        digitRunRe.findAll(n).any { it.value.length == 4 && it.value.toInt() in PLAUSIBLE_YEARS }
+    private fun statesYear(n: String): Boolean = statedYears(n).isNotEmpty()
+
+    /** The years the span writes out: its four-digit runs in [PLAUSIBLE_YEARS] ([statesYear]). */
+    private fun statedYears(n: String): Set<Int> =
+        digitRunRe
+            .findAll(n)
+            .filter { it.value.length == 4 }
+            .map { it.value.toInt() }
+            .filter { it in PLAUSIBLE_YEARS }
+            .toSet()
 
     /**
      * A unit smaller than a year, on the folded span: an English word with its plural, matched
@@ -485,14 +610,17 @@ class DateRecognizer {
         ).split(' ')
     private val lastScopeWords = "last previous minul predchoz predesl loni lonsk".split(' ')
 
+    /**
+     * "past" and „uplynulý“ scope a week only right before the noun, the way [PeriodWords] reads them for a month
+     * or a year: "past due this week" is this week's overdue items, not last week.
+     */
+    private val pastWeekRe = Regex("""\bpast\s+${PeriodWords.EN_ADJ}week\b|\buplynul\w*\s+(?:tyden|tydn\w*)""")
+
     /** Two periods back: *předminulý týden*. Asked before [lastScopeWords], which they contain. */
     private val twoBackScopeWords = listOf("predlon", "predminul")
 
     /** The locative of *rok* (*v tomto roce*) — a whole word, since "roce" sits inside other words. */
     private val roceRe = Regex("""\broce\b""")
-
-    private val lastNRe =
-        Regex("""(?:last|past|poslednic?h?|minul\w*)\s+(\d{1,3})\s+(day|days|month|months|den|dn[iíuů]|mesic\w*)""")
 
     private fun relative(
         n: String,
@@ -509,16 +637,14 @@ class DateRecognizer {
             hasAny(n, "yesterday", "vcera") -> return Hit(dayInterval(reference.minusDays(1), 0.95))
             hasAny(n, "tomorrow", "zitra") -> return Hit(dayInterval(reference.plusDays(1), 0.95))
         }
-        lastNRe.find(n)?.let { m ->
-            val count = m.groupValues[1].toLong()
-            val unit = m.groupValues[2]
-            val start =
-                if (unit.startsWith("month") || unit.startsWith("mesic")) {
-                    reference.minusMonths(count)
-                } else {
-                    reference.minusDays(count)
-                }
-            return Hit(ChronoRecognition(start, reference.plusDays(1), ChronoKind.RELATIVE, 0.85))
+        trailing(n, reference)?.let { return Hit(it) }
+        WindowPeriods.counts(n).firstOrNull()?.let { w ->
+            return when (w.unit) {
+                WindowPeriods.CountUnit.DAY -> Hit(lastN(reference, w.count))
+                WindowPeriods.CountUnit.MONTH -> Hit(lastN(reference, w.count, months = true))
+                // No rule reads a count of weeks or years yet, and "last 6 weeks" is not last week.
+                WindowPeriods.CountUnit.WEEK, WindowPeriods.CountUnit.YEAR -> NotOne
+            }
         }
         if (hasAny(n, "week", "tyden", "tydn")) return week(n, reference, triggered)?.let(::Hit)
         // A month word before a year word: "minulý měsíc" names a month, whatever year a span adds to it.
@@ -548,6 +674,154 @@ class DateRecognizer {
         }
     }
 
+    // ----- year to date: „od začátku roku“, „letos dosud“, "year to date", "YTD" (TS-6) -----
+
+    /** An ending that is today: „do dneška“, „dodnes“, „do současnosti“, "as of today", "to date", "so far". */
+    private val ytdTodayEndRe =
+        Regex(
+            """^(?:(?:az\s+)?do\s+(?:dneska|dnesniho\s+dne|dnes|ted|soucasnosti|soucasneho\s+dne)|dodnes|so\s+far""" +
+                """|(?:until|till|through|to|as\s+of|up\s+to|by)\s+(?:today|now|date))\b""",
+        )
+
+    /** An ending that is a month's end: „do března“, „do konce září“, "through March", "by (the) end of September". */
+    private val ytdMonthEndRe =
+        Regex(
+            """^(?:(?:az\s+)?do\s+(?:konce\s+)?|(?:until|till|through|thru|to|by)\s+(?:(?:the\s+)?end\s+of\s+)?)""" +
+                """([a-z]+)\b""",
+        )
+
+    /**
+     * Any other ending: a word that ends a span of time, then whatever follows. `by` ends one only before a number or
+     * "the end"; before any other word it is a breakdown ("year to date by region", "YTD by month"), no ending.
+     * „do“ and "to" end one only before a word that names a time ([ytdToRe]).
+     */
+    private val ytdAnyEndRe = Regex("""^(?:until|till|through|thru|as\s+of|up\s+to)\b|^by\s+(?:\d|(?:the\s+)?end\b)""")
+
+    /**
+     * „do“ / "to" and the word after it. They end year to date only when it names a time ([WindowPeriods.timeWordRe],
+     * a digit, a month); before any other word they name a place or a party: „vývoz od začátku roku do Německa“,
+     * "year to date to our top customers" (✅R215-O).
+     */
+    private val ytdToRe = Regex("""^(?:(?:az\s+)?do|to)\s+(?:the\s+)?(\d|[a-z]+)""")
+
+    /** Does the year-to-date [ending] name a time it ends at, other than today or a month's end? */
+    private fun otherEnding(ending: String): Boolean {
+        if (ytdAnyEndRe.containsMatchIn(ending)) return true
+        val word = ytdToRe.find(ending)?.groupValues?.get(1) ?: return false
+        return word[0].isDigit() ||
+            Months.ofWord(word, withYear = true) != null ||
+            WindowPeriods.timeWordRe.matches(word)
+    }
+
+    /**
+     * From the first day of the year through the reference day: `[1 Jan, reference + 1 day)`. Asked before the
+     * day words and the month names, which would read the phrase's own ending as the whole of it: „od začátku roku
+     * do dneška“ is year to date, not today, and „do března“ is not March.
+     *
+     * An ending that is today („do dneška“, „do současnosti“, "as of today", "so far") is year to date. One that is
+     * a month („do března“, "through September", "by end of March") runs to the end of that month. Either is in the
+     * year the span states, in digits or in words ([stated]: "YTD last year through March"), else the reference's.
+     * Any other ending that names a time („do 15. března“, „do konce 2. čtvrtletí“, „do minulého měsíce“) leaves the
+     * span no one period ([NotOne]); a breakdown ("by region") is no ending (✅R215-O). With no ending, a span that
+     * states a year other than the reference's („od začátku roku 2025“, "YTD last year", „loni od začátku roku“) is
+     * not year to date: the year rules read it, as before S0.2. A year word with two readings or none settled says no
+     * one year, and nor does one chrono reads nowhere ([YearPhrases]: "YTD next year").
+     *
+     * A span that names another period beside the phrase and its ending is no one period ([OtherPeriods], ✅R215-M):
+     * "Q2 vs YTD", "year to date vs last year", „od začátku roku oproti loňsku“.
+     */
+    private fun yearToDate(
+        n: String,
+        reference: LocalDate,
+        stated: SpanYear,
+    ): Read? {
+        val m = WindowPeriods.yearToDateRe.find(n) ?: return null
+        val digits = statedYears(n)
+        if (digits.size > 1) return NotOne
+        val year =
+            when (stated) {
+                is SpanYear.One -> stated.year
+                is SpanYear.Two, is SpanYear.Unanchored -> return NotOne
+                SpanYear.None -> digits.singleOrNull() ?: reference.year
+            }
+        // "YTD next year", "YTD a year ago": a year chrono reads nowhere is not the reference's (RR13).
+        if (YearPhrases.unreadIn(n)) return NotOne
+        val start = LocalDate.of(year, 1, 1)
+        var at = m.range.last + 1
+        leadingYearRe.find(n.substring(at))?.let { at += it.range.last + 1 }
+        PeriodWords
+            .findAll(n, PeriodUnit.YEAR)
+            .firstOrNull { it.range.first >= at && leadingYearWordRe.matches(n.substring(at, it.range.first)) }
+            ?.let { at = it.range.last + 1 }
+        val ending = n.substring(at).trimStart()
+        val today = ytdTodayEndRe.find(ending)
+        val monthEnd = ytdMonthEndRe.find(ending)
+        val month = monthEnd?.let { Months.ofWord(it.groupValues[1], withYear = true) }
+        // The phrase, its year and the ending it reads are its own; anything else is another period.
+        val endingLength = (today ?: monthEnd?.takeIf { month != null })?.let { it.range.last + 1 } ?: 0
+        val ownEnd = if (endingLength > 0) n.length - ending.length + endingLength else at
+        if (OtherPeriods.outside(n, m.range.first until ownEnd, reference)) return NotOne
+        val end =
+            when {
+                today != null -> reference.plusDays(1)
+                month != null -> LocalDate.of(year, month, 1).plusMonths(1)
+                otherEnding(ending) -> return NotOne
+                year != reference.year -> return null
+                else -> reference.plusDays(1)
+            }
+        if (!end.isAfter(start)) return NotOne
+        return Hit(ChronoRecognition(start, end, ChronoKind.RELATIVE, 0.9))
+    }
+
+    /** The year a „od začátku roku 2025 …“ writes right after the phrase. */
+    private val leadingYearRe = Regex("""^\s*\d{4}\b""")
+
+    /** What may stand between the phrase and a year word right after it: "YTD for last year through March". */
+    private val leadingYearWordRe = Regex("""\s*(?:(?:for|of|in|za|v)\s+)?""")
+
+    // ----- „poslední měsíc / týden / rok“, "the last month": ask (TS-5) -----
+
+    /**
+     * „Za poslední měsíc“ is the last thirty days as often as the calendar month before, and a wrong one is a
+     * wrong number told as an answer — so it asks, with two options: `trailing` (the last 30 / 7 / 365 days,
+     * ending with the reference day, as „posledních 30 dní“ reads) and `calendar` (the month, week or year before
+     * the reference's). Which phrases ask is [TrailingPeriods]'.
+     */
+    private fun trailing(
+        n: String,
+        reference: LocalDate,
+    ): ChronoRecognition? {
+        val unit = TrailingPeriods.findAll(n).firstOrNull()?.unit ?: return null
+        val calendar =
+            when (unit) {
+                TrailingPeriods.TrailingUnit.MONTH ->
+                    periodRecognition(PeriodUnit.MONTH, PeriodUnit.MONTH.indexOf(reference) - 1, 0.85)
+                TrailingPeriods.TrailingUnit.WEEK -> weekInterval(reference, -1L, 0.85)
+                TrailingPeriods.TrailingUnit.YEAR -> periodRecognition(PeriodUnit.YEAR, reference.year - 1, 0.85)
+            }
+        return lastN(reference, unit.days).copy(
+            optionId = ChronoRecognition.TRAILING,
+            alternatives = listOf(calendar.copy(optionId = ChronoRecognition.CALENDAR)),
+        )
+    }
+
+    /**
+     * The last [count] days ending with the reference day — `[reference − N + 1 day, reference + 1 day)`, exactly N
+     * days (A-TS-1) — or, with [months], the last [count] months ending with it: from the day after the same date N
+     * months back, `reference − N months + 1 day`. Not `(reference + 1 day) − N months`: a shorter month clamps
+     * that a day early (on 30 December, 30 November rather than 1 December). „posledních 30 dní“, "last 3 months"
+     * and the trailing option of „poslední měsíc“ all read it.
+     */
+    private fun lastN(
+        reference: LocalDate,
+        count: Long,
+        months: Boolean = false,
+    ): ChronoRecognition {
+        val end = reference.plusDays(1)
+        val start = if (months) reference.minusMonths(count).plusDays(1) else end.minusDays(count)
+        return ChronoRecognition(start, end, ChronoKind.RELATIVE, 0.85)
+    }
+
     /** A week, read against the reference date by its scope words; scopeless only when [triggered]. */
     private fun week(
         n: String,
@@ -555,7 +829,7 @@ class DateRecognizer {
         triggered: Boolean,
     ): ChronoRecognition? {
         val thisScope = hasAny(n, thisScopeWords)
-        val lastScope = hasAny(n, lastScopeWords)
+        val lastScope = hasAny(n, lastScopeWords) || pastWeekRe.containsMatchIn(n)
         val twoBack = hasAny(n, twoBackScopeWords)
         val scopeless = !thisScope && !lastScope && !twoBack
         if (scopeless && !triggered) return null

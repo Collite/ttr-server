@@ -19,7 +19,8 @@ import java.time.LocalDate
  *  - after a preposition only a time takes — "in 2025", "during 2025", "since 2025",
  *    "během 2025" (not "for", "od", "do": "for 2000 dollars", "do 2000 Kč");
  *  - inside a full date — "15.10.2025", "2025-10-15", "2025-10";
- *  - after a quarter — "Q2 2025", "2025Q2", „2. čtvrtletí 2025“, "the second quarter of 2025";
+ *  - after a quarter or a half-year — "Q2 2025", "2025Q2", „2. čtvrtletí 2025“, "the second quarter of 2025",
+ *    "H1 2025", „1. pololetí 2025“, "the first half of 2025";
  *  - as a year relative to the reference, adverb or adjective in any case form — "letos",
  *    "letošní prodeje", "tohoroční", "loni", "vloni", "loňské výpadky zásob", "vloňský",
  *    "minuloroční", "předloni", "předloňský", "předminuloroční", "this year", "last year's";
@@ -45,10 +46,22 @@ object NamedYear {
     private val numericDateRe = Regex("""\b\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*(\d{4})\b""")
     private val isoDateRe = Regex("""\b(\d{4})-\d{1,2}(?:-\d{1,2})?\b""")
 
-    /** After a quarter: "Q2 2025", "2025Q2", „2. čtvrtletí 2025“, "the second quarter of 2025" (#214). */
+    /**
+     * After a quarter or a half-year: "Q2 2025", "2025Q2", „2. čtvrtletí 2025“, "the second quarter of 2025" (#214),
+     * "H1 2025", „1. pololetí 2025“, "the first half of 2025" (TS-6), and after the last month or half of a year:
+     * "the last month of 2025", „poslední měsíc roku 2025“, "the last half of 2025" (✅R215-R). An English "half"
+     * needs its ordinal and its "of"/"in", as [NumberedPeriods] reads a half-year: "more than half of 2000 units" is
+     * an amount.
+     */
     private val afterQuarterRe =
-        Regex("""\b(?:q[1-4]|ctvrtlet(?!n)\w*|quarter)\s*(?:of\s+|in\s+|roku\s+|[/-]\s*)?(\d{4})\b""")
-    private val beforeQuarterRe = Regex("""\b(\d{4})\s*[/-]?\s*q[1-4]\b""")
+        Regex(
+            """\b(?:q[1-4]|h[12]|(?:ctvrtlet|kvartal|pololet)(?!n)\w*|quarter)""" +
+                """\s*(?:of\s+|in\s+|roku\s+|[/-]\s*)?(\d{4})\b""" +
+                """|\b(?:first|second|1st|2nd|last)\s+half(?:[\s-]+year)?\s+(?:of|in)\s+(\d{4})\b""" +
+                """|\blast\s+month\s+(?:of|in)\s+(\d{4})\b""" +
+                """|\bposledn\w*\s+mesic\w*\s+(?:roku\s+|v\s+roce\s+)?(\d{4})\b""",
+        )
+    private val beforeQuarterRe = Regex("""\b(\d{4})\s*[/-]?\s*(?:q[1-4]|h[12])\b""")
 
     /** Any four-digit run: a year only if the words around it say so ([writtenYears]), else [bareYears]. */
     private val fourDigitsRe = Regex("""\b(\d{4})\b""")
@@ -82,7 +95,12 @@ object NamedYear {
         }
         sequenceOf(afterYearWordRe, afterTimePrepositionRe, numericDateRe, isoDateRe, afterQuarterRe, beforeQuarterRe)
             .flatMap { it.findAll(n) }
-            .forEach { years += it.groupValues[1].toInt() }
+            .forEach { m ->
+                m.groupValues
+                    .drop(1)
+                    .firstOrNull { it.isNotEmpty() }
+                    ?.let { years += it.toInt() }
+            }
         years.retainAll { it in PLAUSIBLE_YEARS }
         return years
     }
@@ -92,14 +110,17 @@ object NamedYear {
      * plainly amounts ("over 2000 dollars", „nad 2000 Kč“). Not years by themselves — "2025" alone looks
      * exactly like an amount — but an anaphoric word cannot read past one either (#214).
      */
-    fun bareYears(n: String): Set<Int> =
+    fun bareYears(n: String): Set<Int> = bareYearsAt(n).map { it.first }.toSet()
+
+    /** [bareYears], each with where it stands. */
+    fun bareYearsAt(n: String): List<Pair<Int, IntRange>> =
         fourDigitsRe
             .findAll(n)
             .filterNot { amountBeforeRe.containsMatchIn(n.substring(0, it.range.first)) }
             .filterNot { amountAfterRe.containsMatchIn(n.substring(it.range.last + 1)) }
-            .map { it.value.toInt() }
-            .filter { it in PLAUSIBLE_YEARS }
-            .toSet()
+            .map { it.value.toInt() to it.range }
+            .filter { it.first in PLAUSIBLE_YEARS }
+            .toList()
 
     /** The one year [text] names — null when it names none, or several. */
     fun single(

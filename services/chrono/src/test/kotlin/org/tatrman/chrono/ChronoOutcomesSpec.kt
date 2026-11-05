@@ -84,6 +84,29 @@ class ChronoOutcomesSpec :
             gateway.lastUserPrompt!!.contains("three weeks after Easter") shouldBe true
         }
 
+        // review-215 R11: §2.3 holds on the fallback too — no column, no invented one.
+        "a fallback `values` reply with an empty sql_preview → OK, source = LLM, application = values" {
+            val gateway = FakeLlmGateway(VALUES_LLM_RESULT)
+            val svc = ChronoGroundingService(FakeMetadataClient(emptyList()), llmFallback = gateway)
+            val r = svc.ground(request("three weeks after Easter"))
+            r.status shouldBe GroundResponse.Status.OK
+            r.result.source shouldBe GroundingResult.Source.LLM
+            r.result.applicationCase shouldBe GroundingResult.ApplicationCase.VALUES
+            r.result.values.parametersList
+                .map { it.name } shouldBe listOf("start", "end")
+            r.result.sqlPreview shouldBe ""
+            gateway.lastSystemPrompt!!.contains("`values`") shouldBe true
+        }
+
+        "a fallback `filter` reply still needs its sql_preview" {
+            val svc =
+                ChronoGroundingService(
+                    FakeMetadataClient.accounting("cnc"),
+                    llmFallback = FakeLlmGateway(VALID_LLM_RESULT.replace("\"sqlPreview\"", "\"unused\"")),
+                )
+            svc.ground(request("three weeks after Easter")).status shouldBe GroundResponse.Status.UNGROUNDABLE
+        }
+
         "a fallback client returning invalid JSON → UNGROUNDABLE (not a crash)" {
             val svc =
                 ChronoGroundingService(FakeMetadataClient.accounting("cnc"), llmFallback = FakeLlmGateway("not json"))
@@ -145,6 +168,7 @@ private class FakeLlmGateway(
     private val response: String,
 ) : LlmGatewayClient {
     var lastUserPrompt: String? = null
+    var lastSystemPrompt: String? = null
 
     override suspend fun chat(
         model: String,
@@ -153,6 +177,7 @@ private class FakeLlmGateway(
         responseFormat: GatewayResponseFormat?,
     ): String {
         lastUserPrompt = user
+        lastSystemPrompt = system
         return response
     }
 
@@ -167,5 +192,19 @@ private const val VALID_LLM_RESULT = """
   "sqlPreview": "t.\"date\" >= {start} AND t.\"date\" < {end}",
   "confidence": 0.5,
   "explanation": "LLM-grounded to May 2026."
+}
+"""
+
+// A values reply (§2.3): the interval and its start/end parameters, no recipe to render, so no sql_preview.
+private const val VALUES_LLM_RESULT = """
+{
+  "normalized": { "interval": { "start": "2026-04-26T00:00:00+02:00", "end": "2026-04-27T00:00:00+02:00" } },
+  "values": { "parameters": [
+    { "name": "start", "type": "datetime", "value": { "datetimeValue": "2026-04-26T00:00:00+02:00" } },
+    { "name": "end", "type": "datetime", "value": { "datetimeValue": "2026-04-27T00:00:00+02:00" } }
+  ] },
+  "sqlPreview": "",
+  "confidence": 0.5,
+  "explanation": "LLM-grounded; the package declares no date column."
 }
 """

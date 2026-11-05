@@ -83,6 +83,13 @@ def _conversation(raw: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _chrono_model(raw: dict[str, Any]) -> str:
+    """The metadata fixture a chrono case needs; `dateRoles: false` is a package with no date role at all (TS-1)."""
+    if raw.get("dateRoles", True) is False:
+        return "no-date-role"
+    return "accounting-period" if raw.get("periodTable", True) else "calendar"
+
+
 def _chrono(raw: dict[str, Any]) -> dict[str, Any]:
     ref_date = raw.get("reference", "2026-05-15")
     return {
@@ -94,7 +101,7 @@ def _chrono(raw: dict[str, Any]) -> dict[str, Any]:
         "reference_datetime": raw.get("referenceDatetime") or f"{ref_date}T12:00:00+02:00",
         "timezone": raw.get("timezone", _DEFAULT_TZ),
         "package": raw.get("pkg", "cnc"),
-        "model": "accounting-period" if raw.get("periodTable", True) else "calendar",
+        "model": _chrono_model(raw),
         "here": None,
         **_conversation(raw),
         "expect": _expect(raw),

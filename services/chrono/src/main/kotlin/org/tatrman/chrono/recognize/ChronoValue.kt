@@ -54,8 +54,9 @@ data class ChronoRecognition(
     val kind: ChronoKind,
     val confidence: Double,
     /**
-     * For [ChronoKind.PERIOD]: the canonical `yyyyMM` period code (e.g. "202605"). The A8.4 recipe
-     * builder re-renders it per the period table's metadata `code_format` when that differs.
+     * For [ChronoKind.PERIOD]: the canonical `yyyyMM` period code (e.g. "202605"), `yyyyQn` for a quarter
+     * (Q-18) or `yyyyHn` for a half-year (TS-6). The A8.4 recipe builder re-renders a month code per the
+     * period table's metadata `code_format` when that differs; a half-year never routes through a period table.
      */
     val periodCode: String? = null,
     /** Explicit date-role override parsed from the wording; null → anchor on event_date. */
@@ -66,6 +67,12 @@ data class ChronoRecognition(
      * non-empty the service returns AWAITING_CLARIFICATION with one option per {this} + alternative.
      */
     val alternatives: List<ChronoRecognition> = emptyList(),
+    /**
+     * The clarification option id of this reading when the period code does not tell the readings apart —
+     * „poslední měsíc“ asks between `trailing` (the last thirty days) and `calendar` (the month before), TS-5.
+     * Null → the option id is the period code.
+     */
+    val optionId: String? = null,
 ) {
     init {
         require(!endExclusive.isBefore(startInclusive)) {
@@ -79,6 +86,14 @@ data class ChronoRecognition(
 
     /** ISO-8601 end (exclusive), for Normalized.DateTimeInterval. */
     val endIso: String get() = endExclusive.toString()
+
+    companion object {
+        /** [optionId] of „poslední měsíc“'s last-N-days reading (TS-5, contracts §2.5). */
+        const val TRAILING = "trailing"
+
+        /** [optionId] of „poslední měsíc“'s calendar-period reading. */
+        const val CALENDAR = "calendar"
+    }
 }
 
 /** What [DateRecognizer.read] made of a span. */

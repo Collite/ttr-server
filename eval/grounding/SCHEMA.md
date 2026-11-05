@@ -86,6 +86,7 @@ grounded **condition** must survive the cascade, but plan composition around it 
 |----|---------|------------------|-------------|
 | `accounting-period` | chrono | `AccountingPeriod` table present → JOIN path available | `periodTable=true` |
 | `calendar` | chrono | `Transaction` only (no period table) → FILTER via `period_start/end` | `periodTable=false` |
+| `no-date-role` | chrono | no `event_date`/due/posting role and no period table → VALUES (`start`, `end`, `p` for a period; empty `sql_preview`) | `dateRoles=false` |
 | `geo-brno-praha` | geo | Brno/Praha centroids + boundary polygons; `Újezd*` ambiguous; `Atlantis` unknown | `GeoCorpusSpec` resolver |
 | `money-domestic` | money | `amount_domestic` shortcut column | `model=domestic` |
 | `money-fx` | money | foreign amount + FX rate table → JOIN | `model=fx` |

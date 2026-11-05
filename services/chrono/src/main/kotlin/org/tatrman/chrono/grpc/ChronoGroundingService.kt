@@ -21,9 +21,11 @@ import org.tatrman.chrono.client.LlmGatewayClient
 import org.tatrman.chrono.discover.SemanticDiscovery
 import org.tatrman.chrono.obs.ChronoMetrics
 import org.tatrman.chrono.recipe.RecipeBuilder
+import org.tatrman.chrono.recognize.PeriodCodes
 import org.tatrman.chrono.recognize.ChronoReading
 import org.tatrman.chrono.recognize.ChronoRecognition
 import org.tatrman.chrono.recognize.DateRecognizer
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.Month
 import java.time.OffsetDateTime
@@ -31,13 +33,15 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /**
  * `services/chrono` — the DATE_TIME grounding service (feature-grounding A8). Deterministic
  * recognition (A8.3) + recipe assembly (A8.4). A8.6 outcomes: ambiguity → AWAITING_CLARIFICATION
  * (+ deterministic `clarification_answer_id` resume); below-threshold / unrecognized → the
- * llm-gateway fallback ([llmFallback], `source: LLM`); hard misses → UNGROUNDABLE.
+ * llm-gateway fallback ([llmFallback], `source: LLM`); hard misses → UNGROUNDABLE. A recognised span is
+ * never UNGROUNDABLE for want of a date column: the interval comes back as `values` (TS-1, contracts §2).
  *
  * `reference_datetime` is ALWAYS taken from the request context — this class never reads a clock.
  */
@@ -67,6 +71,7 @@ class ChronoGroundingService(
         metrics.recordGround(
             outcome = response.status.name,
             source = source,
+            application = applicationOf(response),
             latencyMs = (System.nanoTime() - startNanos) / 1_000_000.0,
         )
         logger.debug(
@@ -125,9 +130,7 @@ class ChronoGroundingService(
             )
         }
 
-        val result =
-            recipeBuilder.build(request.spanText, resolved, request.getPackage(), request.context.timezone)
-                ?: return ungroundable("no anchor date column in package '${request.getPackage()}'")
+        val result = recipeBuilder.build(request.spanText, resolved, request.getPackage(), request.context.timezone)
         return GroundResponse
             .newBuilder()
             .setStatus(GroundResponse.Status.OK)
@@ -168,7 +171,7 @@ class ChronoGroundingService(
             (listOf(recognition) + recognition.alternatives).map { candidate ->
                 ClarificationOption
                     .newBuilder()
-                    .setId(codeOf(candidate))
+                    .setId(idOf(candidate))
                     .setLabel(labelFor(candidate, locale))
                     .setNormalized(normalized(candidate, zone))
                     .build()
@@ -186,12 +189,15 @@ class ChronoGroundingService(
         answerId: String,
     ): ChronoRecognition? =
         (listOf(recognition) + recognition.alternatives)
-            .firstOrNull { codeOf(it) == answerId }
+            .firstOrNull { idOf(it) == answerId }
             ?.copy(alternatives = emptyList())
 
+    /** A clarification option's id: the reading's own id when the code does not tell the readings apart (TS-5). */
+    private fun idOf(c: ChronoRecognition): String = c.optionId ?: codeOf(c)
+
     /**
-     * A clarification option's id: the candidate's period code — `yyyyMM` for a month, `yyyyQn` for a
-     * quarter — or, for a candidate that carries none, the code of the calendar span it covers: `yyyy` for a
+     * A clarification option's period code — `yyyyMM` for a month, `yyyyQn` for a quarter, `yyyyHn` for a
+     * half-year — or, for a candidate that carries none, the code of the calendar span it covers: `yyyy` for a
      * whole year, `yyyyMMdd` for a day (#214). A year interval carries no period code on purpose (it must not
      * route through a period table), so the id is made here, not on the recognition.
      */
@@ -207,8 +213,9 @@ class ChronoGroundingService(
 
     /**
      * A clarification option's label: the period it names, in the request's language (#214) — "2025",
-     * "February 2025", "Q1 2025", "March 15, 2025"; in Czech „2025“, „únor 2025“, „1. čtvrtletí 2025“,
-     * „15. 3. 2025“. The id carries the code; the label is for the person asked.
+     * "February 2025", "Q1 2025", "H2 2025", "March 15, 2025", "the week of October 19, 2026", "the last 30 days";
+     * in Czech „2025“, „únor 2025“, „1. čtvrtletí 2025“, „2. pololetí 2025“, „15. 3. 2025“, „týden od 19. 10. 2026“,
+     * „posledních 30 dní“. The id carries the code; the label is for the person asked.
      */
     private fun labelFor(
         c: ChronoRecognition,
@@ -217,18 +224,33 @@ class ChronoGroundingService(
         val czech = locale.trim().lowercase().startsWith("cs")
         val code = codeOf(c)
         val start = c.startInclusive
+        if (c.optionId == ChronoRecognition.TRAILING) {
+            // The window is exactly the days it holds, ending with the reference day (A-TS-1).
+            val days = ChronoUnit.DAYS.between(start, c.endExclusive)
+            return if (czech) "posledních $days dní" else "the last $days days"
+        }
         return when {
             YEAR_CODE.matches(code) -> code
-            QUARTER_CODE.matches(code) -> {
+            PeriodCodes.QUARTER.matches(code) -> {
                 val q = code.last()
                 if (czech) "$q. čtvrtletí ${start.year}" else "Q$q ${start.year}"
             }
-            MONTH_CODE.matches(code) -> "${monthName(start.monthValue, czech)} ${start.year}"
+            PeriodCodes.HALF.matches(code) -> {
+                val h = code.last()
+                if (czech) "$h. pololetí ${start.year}" else "H$h ${start.year}"
+            }
+            PeriodCodes.MONTH.matches(code) -> "${monthName(start.monthValue, czech)} ${start.year}"
             DAY_CODE.matches(code) ->
                 if (czech) {
                     "${start.dayOfMonth}. ${start.monthValue}. ${start.year}"
                 } else {
                     "${monthName(start.monthValue, czech = false)} ${start.dayOfMonth}, ${start.year}"
+                }
+            start.dayOfWeek == DayOfWeek.MONDAY && c.endExclusive == start.plusWeeks(1) ->
+                if (czech) {
+                    "týden od ${start.dayOfMonth}. ${start.monthValue}. ${start.year}"
+                } else {
+                    "the week of ${monthName(start.monthValue, czech = false)} ${start.dayOfMonth}, ${start.year}"
                 }
             else -> "${c.startIso} – ${c.endIso}"
         }
@@ -285,6 +307,9 @@ class ChronoGroundingService(
      * Parse the gateway's JSON into a GroundingResult and structurally validate it. Full Translator
      * round-trip re-validation (A8.5) is deferred here on purpose: the service holds no ModelHandle,
      * and Golem's free-SQL tier already post-parses the recipe against the plan (contracts §3).
+     *
+     * A `filter` or `join` needs its `sql_preview`. A `values` reply has no recipe to render (§2.3), so it
+     * needs its `start`/`end` parameters instead, and its `sql_preview` is empty whatever the model wrote.
      */
     private fun parseLlmResult(raw: String): GroundingResult? {
         val result =
@@ -298,9 +323,16 @@ class ChronoGroundingService(
             }
         val structurallyValid =
             result.hasNormalized() &&
-                result.applicationCase != GroundingResult.ApplicationCase.APPLICATION_NOT_SET &&
-                result.sqlPreview.isNotEmpty()
-        return result.takeIf { structurallyValid }
+                when (result.applicationCase) {
+                    GroundingResult.ApplicationCase.VALUES ->
+                        result.values.parametersList
+                            .map { it.name }
+                            .containsAll(listOf("start", "end"))
+                    GroundingResult.ApplicationCase.APPLICATION_NOT_SET, null -> false
+                    else -> result.sqlPreview.isNotEmpty()
+                }
+        if (!structurallyValid) return null
+        return if (result.hasValues()) result.toBuilder().setSqlPreview("").build() else result
     }
 
     private fun llmUserPrompt(request: GroundRequest): String =
@@ -315,6 +347,15 @@ class ChronoGroundingService(
         }
 
     // ----- helpers -----
+
+    /** `filter` | `join` | `values` for an OK result — how often the model offered no column — else `none`. */
+    private fun applicationOf(response: GroundResponse): String =
+        when (response.result.applicationCase.takeIf { response.hasResult() }) {
+            GroundingResult.ApplicationCase.FILTER -> "filter"
+            GroundingResult.ApplicationCase.JOIN -> "join"
+            GroundingResult.ApplicationCase.VALUES -> "values"
+            else -> "none"
+        }
 
     /** reference_datetime (ISO-8601 with offset) → LocalDate in the request timezone. Null when absent/unparseable. */
     private fun parseReference(ctx: GroundingContext): LocalDate? {
@@ -350,8 +391,6 @@ class ChronoGroundingService(
 
     private companion object {
         val YEAR_CODE = Regex("""\d{4}""")
-        val QUARTER_CODE = Regex("""\d{4}Q[1-4]""")
-        val MONTH_CODE = Regex("""\d{6}""")
         val DAY_CODE = Regex("""\d{8}""")
 
         /** The Czech month names, nominative, as a label names a month on its own („únor 2025“). */
@@ -375,6 +414,8 @@ class ChronoGroundingService(
             "You ground a time expression to a JSON GroundingResult (org.tatrman.grounding.v1). " +
                 "Return ONLY the JSON object: a `normalized.interval` {start,end} (ISO-8601, end EXCLUSIVE), " +
                 "a `filter` recipe (condition + parameters + anchorColumn), `sqlPreview` (Calcite SQL, " +
-                "double-quoted identifiers, named params {name}), `confidence` 0..1, and a one-line `explanation`."
+                "double-quoted identifiers, named params {name}), `confidence` 0..1, and a one-line `explanation`. " +
+                "If you cannot name a date column of the package, return `values` with `start`/`end` " +
+                "parameters and an empty `sqlPreview` instead of the `filter`."
     }
 }

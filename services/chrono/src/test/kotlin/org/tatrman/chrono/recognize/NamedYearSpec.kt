@@ -135,6 +135,13 @@ class NamedYearSpec :
             years("Tržby ve 2. čtvrtletí 2025") shouldBe setOf(2025)
             years("Revenue in the second quarter of 2025") shouldBe setOf(2025)
         }
+        // review-215 R5: "half of NNNN" is a half-year only with its ordinal.
+        "a half-year with its ordinal names the year; „half of 2000 units“ does not" {
+            years("Revenue in the first half of 2025") shouldBe setOf(2025)
+            years("Revenue in H1 2025") shouldBe setOf(2025)
+            years("Who sold more than half of 2000 units?") shouldBe emptySet()
+            years("half a year of 2000 units") shouldBe emptySet()
+        }
         "an earlier anaphoric year is read against the texts before it" {
             NamedYear.firstOf(listOf("a v září?", "A předchozí rok?", "Tržby v roce 2023"), ref) shouldBe 2022
             NamedYear.firstOf(

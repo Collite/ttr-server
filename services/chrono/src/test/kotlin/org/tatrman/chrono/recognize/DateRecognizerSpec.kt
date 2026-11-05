@@ -241,17 +241,42 @@ class DateRecognizerSpec :
             rec.recognize("minulého měsíce", ref).shouldNotBeNull().periodCode shouldBe "202604"
             rec.recognize("předminulý měsíc", ref).shouldNotBeNull().periodCode shouldBe "202603"
         }
-        "'poslední měsíc' is not read as the calendar month before — it is as often the trailing month" {
-            rec.recognize("poslední měsíc", ref).shouldBeNull()
+        "'poslední měsíc' is as often the trailing month as the calendar month before, so it asks" {
+            val r = rec.recognize("poslední měsíc", ref).shouldNotBeNull()
+            r.optionId shouldBe ChronoRecognition.TRAILING
+            r.alternatives.single().optionId shouldBe ChronoRecognition.CALENDAR
+            r.alternatives.single().periodCode shouldBe "202604"
         }
         "a word that only contains 'roce' is not the locative of rok" {
             rec.recognize("minulé procento", ref).shouldBeNull()
         }
+        // A-TS-1: N days are exactly N days ending with the reference day; N months end with it too.
         "last N months / poslední 3 měsíce → rolling window ending today" {
             val r = rec.recognize("poslední 3 měsíce", ref).shouldNotBeNull()
-            r.startInclusive shouldBe day(2026, 2, 15)
+            r.startInclusive shouldBe day(2026, 2, 16)
             r.endExclusive shouldBe day(2026, 5, 16)
-            rec.recognize("last 30 days", ref).shouldNotBeNull().startInclusive shouldBe day(2026, 4, 15)
+            val days = rec.recognize("last 30 days", ref).shouldNotBeNull()
+            days.startInclusive shouldBe day(2026, 4, 16)
+            days.endExclusive shouldBe day(2026, 5, 16)
+            rec.recognize("last 7 days", LocalDate.of(2026, 11, 1)).shouldNotBeNull().startInclusive shouldBe
+                day(2026, 10, 26)
+            rec.recognize("posledních 30 dní", ref).shouldNotBeNull().startInclusive shouldBe day(2026, 4, 16)
+        }
+        // review-215 RR4: from the day after the same date N months back — not (reference + 1 day) − N months, which
+        // a shorter month clamps a day early.
+        "last N months at a month end start the day after the same date N months back" {
+            for ((span, reference, start) in listOf(
+                Triple("last 1 month", day(2026, 12, 30), day(2026, 12, 1)),
+                Triple("last 1 month", day(2026, 3, 30), day(2026, 3, 1)),
+                Triple("last 3 months", day(2026, 5, 30), day(2026, 3, 1)),
+                Triple("last 3 months", day(2026, 11, 1), day(2026, 8, 2)),
+            )) {
+                val r = rec.recognize(span, reference).shouldNotBeNull()
+                withClue("$span on $reference") {
+                    r.startInclusive shouldBe start
+                    r.endExclusive shouldBe reference.plusDays(1)
+                }
+            }
         }
 
         // ---- date-role targeting ----
@@ -405,6 +430,15 @@ class DateRecognizerSpec :
                 .periodCode shouldBe
                 "202603"
         }
+        "„half of 2000 units“ in the question is no year a month leans on" {
+            rec
+                .recognize(
+                    "in September",
+                    LocalDate.of(2026, 11, 1),
+                    context = listOf("Who sold more than half of 2000 units in September?"),
+                ).shouldNotBeNull()
+                .periodCode shouldBe "202609"
+        }
         "a leaned year is inferred — below a written one" {
             val leaned = rec.recognize("říjen", ref, context = listOf("Tržby v roce 2025")).shouldNotBeNull()
             val written = rec.recognize("říjen 2025", ref).shouldNotBeNull()
@@ -509,16 +543,13 @@ class DateRecognizerSpec :
                 }
             }
         }
-        // A period OF a stated year — "the second quarter of 2025", "the last week of 2025" — is read
-        // by no rule yet. Its two wrong readings are both confident numbers: the period around the
-        // reference (what the relative rules made of it) and the whole of 2025 (what the calendar-year
-        // rule made of it). Ungrounded is the safe answer: a consumer falls through on a date with
-        // no range and reads the words from the question.
+        // A period OF a stated year — "the last week of 2025", "month 3 of 2025" — is read by no rule
+        // yet. Its two wrong readings are both confident numbers: the period around the reference (what
+        // the relative rules made of it) and the whole of 2025 (what the calendar-year rule made of it).
+        // Ungrounded is the safe answer: a consumer falls through on a date with no range and reads the
+        // words from the question. A quarter or a half-year named by its number is read since TS-6 (below).
         val periodsOfAStatedYear =
             listOf(
-                "the second quarter of 2025",
-                "the third quarter of 2025",
-                "the last quarter of 2025",
                 "quarter in 2025",
                 "quarters of 2025",
                 "the second week of 2025",
@@ -526,20 +557,13 @@ class DateRecognizerSpec :
                 "week 12 of 2025",
                 "the 12th week of 2025",
                 "the first month of 2025",
-                "the last month of 2025",
                 "month 3 of 2025",
                 "last 3 months of 2025",
-                "the second half of 2025",
-                "the first half-year of 2025",
                 "the halves of 2025",
                 "the first day of 2025",
                 "last 30 days of 2025",
-                "druhé pololetí 2025",
-                "poslední čtvrtletí 2025",
-                "třetí kvartál 2025",
                 "první týden roku 2025",
                 "v posledním týdnu roku 2025",
-                "poslední měsíc roku 2025",
                 "v prvních měsících roku 2025",
                 "první den roku 2025",
                 "posledních 10 dnů roku 2025",
@@ -547,6 +571,31 @@ class DateRecognizerSpec :
         for (span in periodsOfAStatedYear) {
             "a period of a stated year is ungrounded, not the whole year nor the reference's: '$span'" {
                 rec.recognize(span, ref).shouldBeNull()
+            }
+        }
+        // TS-6: a quarter or a half-year named by its number is that period of the stated year — "the last
+        // quarter" and „poslední čtvrtletí“ before a year are its fourth, and (✅R215-R) "the last half" its second
+        // and "the last month" its December.
+        val numberedPeriodsOfAStatedYear =
+            listOf(
+                "the second quarter of 2025" to "2025Q2",
+                "the third quarter of 2025" to "2025Q3",
+                "the last quarter of 2025" to "2025Q4",
+                "poslední čtvrtletí 2025" to "2025Q4",
+                "třetí kvartál 2025" to "2025Q3",
+                "the second half of 2025" to "2025H2",
+                "the first half-year of 2025" to "2025H1",
+                "druhé pololetí 2025" to "2025H2",
+                "the last half of 2025" to "2025H2",
+                "the last month of 2025" to "202512",
+                "poslední měsíc roku 2025" to "202512",
+            )
+        for ((span, code) in numberedPeriodsOfAStatedYear) {
+            "a numbered quarter, half or last month of a stated year is that period: '$span' → $code" {
+                val r = rec.recognize(span, ref).shouldNotBeNull()
+                r.kind shouldBe ChronoKind.PERIOD
+                r.periodCode shouldBe code
+                r.alternatives shouldBe emptyList()
             }
         }
         "a span with no year of its own still reads its period at the reference" {

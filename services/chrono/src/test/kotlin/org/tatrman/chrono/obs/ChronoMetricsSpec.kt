@@ -20,6 +20,7 @@ class ChronoMetricsSpec :
     StringSpec({
         val outcomeKey = AttributeKey.stringKey("outcome")
         val sourceKey = AttributeKey.stringKey("source")
+        val applicationKey = AttributeKey.stringKey("application")
 
         fun request(span: String): GroundRequest =
             GroundRequest
@@ -59,5 +60,26 @@ class ChronoMetricsSpec :
             } shouldBe true
 
             metrics.any { it.name == "chrono_ground_latency_ms" } shouldBe true
+        }
+
+        "chrono_ground_total carries the application, so a dashboard sees how often the model offered no column" {
+            val reader = InMemoryMetricReader.create()
+            val provider = SdkMeterProvider.builder().registerMetricReader(reader).build()
+
+            fun service(discovery: FakeMetadataClient) =
+                ChronoGroundingService(discovery, llmFallback = null, metrics = ChronoMetrics(provider.get("chrono")))
+
+            service(FakeMetadataClient.accounting("cnc")).ground(request("May 2026")) // join
+            service(FakeMetadataClient.accounting("cnc")).ground(request("yesterday")) // filter
+            service(FakeMetadataClient(emptyList())).ground(request("yesterday")) // values: no date role
+            service(FakeMetadataClient(emptyList())).ground(request("qwerty nonsense")) // UNGROUNDABLE
+
+            val points =
+                reader
+                    .collectAllMetrics()
+                    .first { it.name == "chrono_ground_total" }
+                    .longSumData.points
+            points.map { it.attributes.get(outcomeKey) to it.attributes.get(applicationKey) }.toSet() shouldBe
+                setOf("OK" to "join", "OK" to "filter", "OK" to "values", "UNGROUNDABLE" to "none")
         }
     })
