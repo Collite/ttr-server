@@ -1873,6 +1873,22 @@
     }
   },
   {
+    "id": "chrono/ts-quarter-since-year-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Q2 since 2020",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "Q2 revenue since 2020 by region",
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
     "id": "chrono/ts-quarter-tento-kvartal-cs",
     "tool": "ground_time",
     "kind": "DATE",

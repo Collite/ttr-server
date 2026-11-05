@@ -99,7 +99,7 @@ the RV-P4 conversation tier that sits above them:
    er rendering). The runner rejects a seed that states a key it does not assert. Seeds and worlds are pinned below.
    Provenance: authored 2026-10-23.
 9. **Grounding hermetic** — `eval/grounding/tests/` (`test_corpus_valid.py` + `test_report.py`,
-   21 checks): corpus-validity of the 201-case bulk + 21-case e2e corpora, and the pure `report.py`
+   21 checks): corpus-validity of the 202-case bulk + 21-case e2e corpora, and the pure `report.py`
    scoring logic. The **live** run (`run_eval.py` → grounding-mcp + Golem) is the extended tier, NOT here.
 
 ### Corpus provenance (hashes — ENFORCED; bump on any deliberate change)
@@ -109,7 +109,7 @@ semantic test would miss — fails the gate (RG-P6 review I). Keep the two lists
 ```
 entities_only.jsonl             ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7
 match-quality-corpus.jsonl      f994789391af7773bb1061f1d7953a2aa870fd5233877574547cca284a5c2a3d
-grounding-cases.json            370c0910360e494dd061f3b949c9e3bf80db0ec0c085b09b040796fb3e7b170f
+grounding-cases.json            c361fd5c1e691baad7484231111c9284c717f96c0dc5df64aa30999d5938bfb9
 e2e-cases.json                  0034ed387f31c1dca8ba1a56b22b72f968193ee5f1aacb0f20aa7336facf77f7
 hartland-cz/aliases.lex.yaml    78577f1f142fdb6b9bca261e559b69335885358bcd4ba9ed6fb2bd75d45b2208
 hartland-cz/skills/trend.md     3db553d63ab7dcbecd021326dbb13f9cab72b71ee9d7d571c663f65349208bc2

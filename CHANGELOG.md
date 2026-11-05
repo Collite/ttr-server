@@ -50,7 +50,10 @@ outside this repo could notice is in.
   about a year — a year noun or adverb ("Q2 in previous years", "Q2 annually", "Q2 by year", „2. čtvrtletí o rok
   dříve“), a two-digit year ("Q2 FY25", "Q2 '25", "YTD FY25") or a relative word before it ("next Q2", "last Q4",
   „minulé 2. čtvrtletí“) — nor one with a plural noun („ve 2. čtvrtletích“): only a neutral frame ("of the fiscal
-  year", „kalendářního roku“, "year over year") lets it take the conversation's or the reference's year. A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
+  year", „kalendářního roku“, "year over year") lets it take the conversation's or the reference's year. A year that
+  stands only after a bound word is a range's start or end, not the period's year: "Q2 since 2020", „2. čtvrtletí od
+  roku 2020“, "Q2 until 2025", "Q2 since last year" are not read (they used to be that year's Q2); "since 2020" alone
+  is still 2020. A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
   second half of fiscal year 2025") is that quarter or half, as "Q4 FY2025" is; it used to be the whole fiscal year. A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
@@ -73,8 +76,8 @@ outside this repo could notice is in.
   period last year"); a year word
   with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
   "last 6 weeks" used to be last week. Nor is a count of a larger period ("the last 2 months of the year", "the last 3
-  months of the quarter", „poslední 2 měsíce roku“): it used to be the trailing count. The quarter table is shared with the conversation reader. Corpus 36 → 111 cases
-  (eval bulk corpus 126 → 201).
+  months of the quarter", „poslední 2 měsíce roku“): it used to be the trailing count. The quarter table is shared with the conversation reader. Corpus 36 → 112 cases
+  (eval bulk corpus 126 → 202).
   No wire change.
 
 - **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no

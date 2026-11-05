@@ -270,7 +270,9 @@ class DateRecognizer {
      * A span that states a year this rule cannot read is not read either (RR13, A-TS-3): its year is not the
      * reference's or the conversation's. That is a year chrono reads nowhere ([YearPhrases]: "Q2 next year", "Q2 a
      * year ago", „každé 2. čtvrtletí“), and a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025", as
-     * [relative] does not read one, #213). A yearless one takes a fallback year only from a span that says nothing
+     * [relative] does not read one, #213). Nor is a year that stands only after a bound word ("Q2 since 2020", „2.
+     * čtvrtletí do roku 2025“, "Q2 since last year", RR18): it is where a range starts or ends, not the period's year.
+     * A yearless one takes a fallback year only from a span that says nothing
      * else about a year ([YearPhrases.speaksOfYear], RR17): not "Q2 FY25", "next Q2", "Q2 in previous years". A
      * plural noun („ve 2. čtvrtletích“) is no one period.
      */
@@ -297,6 +299,8 @@ class DateRecognizer {
             return ChronoRecognition(start, start.plusMonths(months.toLong()), ChronoKind.PERIOD, confidence, code)
         }
         one.year?.let { return Hit(inYear(it, 0.9)) }
+        // "Q2 since 2020", „2. čtvrtletí do roku 2025“: a range's bound is not the period's year (RR18).
+        if (years.stated != SpanYear.None && yearOnlyBound(n)) return NotOne
         when (val said = years.stated) {
             is SpanYear.One -> return Hit(inYear(said.year, 0.9))
             is SpanYear.Two -> return twoReadings(inYear(said.deictic, 0.9), inYear(said.anaphoric, 0.9))
@@ -570,6 +574,30 @@ class DateRecognizer {
      * [relative] nor [fiscalQuarter] reads it (#213).
      */
     private fun statesYear(n: String): Boolean = statedYears(n).isNotEmpty()
+
+    /** A word that makes the year after it a range's bound: "since", "up to", „od (roku)“, „až do“ (RR18). */
+    private val boundBeforeRe =
+        Regex(
+            """\b(?:since|until|till|through|thru|after|before|up\s+to|od|do|az\s+do|po|pred)\s+""" +
+                """(?:(?:roku|roce|rokem|fy)\s*)?$""",
+        )
+
+    private val yearDigitsRe = Regex("""(?<!\d)\d{4}(?!\d)""")
+
+    /**
+     * Does every year the span says, in digits or in words, stand right after a bound word: "since 2020", „od roku
+     * 2020“, "until last year", „od loňska“? Then the year is where a range starts or ends, not the year a period is in.
+     */
+    private fun yearOnlyBound(n: String): Boolean {
+        val at =
+            yearDigitsRe
+                .findAll(n)
+                .filter { it.value.toInt() in PLAUSIBLE_YEARS }
+                .map { it.range }
+                .toList() +
+                PeriodWords.findAll(n, PeriodUnit.YEAR).map { it.range }
+        return at.isNotEmpty() && at.all { boundBeforeRe.containsMatchIn(n.substring(0, it.first)) }
+    }
 
     /** The years the span writes out: its four-digit runs in [PLAUSIBLE_YEARS] ([statesYear]). */
     private fun statedYears(n: String): Set<Int> =

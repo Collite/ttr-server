@@ -521,6 +521,44 @@ class TimePhrasesSpec :
             }
         }
 
+        // review-215 RR18 (S0.3 T9): a year after "since", "until", „od (roku)“, „do (roku)“ is a range's bound, not the
+        // year the period is in.
+        "a quarter or half whose year is only a range's bound is not read" {
+            for (span in listOf(
+                "Q2 since 2020",
+                "Q2 revenue since 2020",
+                "2. čtvrtletí od roku 2020",
+                "2. čtvrtletí po roce 2020",
+                "Q2 until 2025",
+                "2. čtvrtletí do roku 2025",
+                "H1 since 2020",
+                "the second half of the year since 2020",
+                "the last quarter of the year since 2020",
+                "Q2 since last year",
+                "2. čtvrtletí od loňska",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            for (span in listOf(
+                "Q2 in 2025",
+                "Q2 during 2025",
+                "Q2 2025",
+                "Q2 of 2025",
+                "2. čtvrtletí v roce 2025",
+                "ve 2. čtvrtletí roku 2025",
+                "v roce 2025 ve 2. čtvrtletí",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe "2025Q2" }
+            }
+            for (span in listOf("since 2020", "od roku 2020")) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2020, 1, 1)
+                    r.endExclusive shouldBe day(2021, 1, 1)
+                }
+            }
+        }
+
         "a quarter in a year the span writes or says is unchanged" {
             for (span in listOf(
                 "Q2 2025",
