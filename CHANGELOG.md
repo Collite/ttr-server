@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **proto — `GroundingService.Scan` finds the time phrases in a text (TS-P0 S0.3).** Additive: `rpc Scan(ScanRequest)
+  returns (ScanResponse)`; `ScanRequest { text = 1; context = 2; package = 3 }`, `ScanResponse { repeated TimeSpan
+  spans = 1; repeated ResponseMessage messages = 2 }`, `TimeSpan { start = 1; end = 2; text = 3; kind = 4; confidence
+  = 5; trigger = 6 }` — offsets are UTF-16 code units into the text as sent, end exclusive. chrono implements it; geo
+  and money answer `UNIMPLEMENTED`. `Ground` and `GetStatus` are unchanged.
+
 - **chrono — „posledních N dní“ / "last N days" is exactly N days (A-TS-1).** The window ends with the reference
   day: `[reference − N + 1 day, reference + 1 day)`. It used to start one day earlier, N + 1 days in all ("last 7
   days" on a Sunday counted that Sunday twice); "the last N months" likewise starts the day after the same date N

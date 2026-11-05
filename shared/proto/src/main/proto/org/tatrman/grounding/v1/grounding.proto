@@ -34,6 +34,9 @@ import "org/tatrman/common/v1/response_message.proto";    // ResponseMessage (RS
 service GroundingService {
   rpc Ground (GroundRequest) returns (GroundResponse);
   rpc GetStatus (GetStatusRequest) returns (GetStatusResponse);
+  // TS-P0 S0.3: find the time phrases in a text, so no rule about which words are a time phrase lives
+  // outside chrono. chrono implements it; geo and money answer UNIMPLEMENTED.
+  rpc Scan (ScanRequest) returns (ScanResponse);
 }
 
 // -----------------------------------------------------------------------------
@@ -186,6 +189,34 @@ message ClarificationOption {
   string id = 1;                      // echoed back via GroundRequest.clarification_answer_id
   string label = 2;                   // "May 2026 (202605)"
   Normalized normalized = 3;          // what picking it means
+}
+
+// -----------------------------------------------------------------------------
+// Scan — the time phrases in a text
+// -----------------------------------------------------------------------------
+
+// The text is read as sent: the caller blanks quoted literals first, keeping their length, so the
+// offsets stay its own. context.reference_datetime is required, as for Ground; context.locale narrows
+// the lexicon slice; context.prior_questions feed the conversational reading.
+message ScanRequest {
+  string text = 1;
+  GroundingContext context = 2;
+  string package = 3;
+}
+
+message ScanResponse {
+  repeated TimeSpan spans = 1;                   // in text order, non-overlapping
+  repeated org.tatrman.common.v1.ResponseMessage messages = 2;
+}
+
+// One time phrase. Offsets are UTF-16 code units into ScanRequest.text, end exclusive.
+message TimeSpan {
+  int32 start = 1;
+  int32 end = 2;
+  string text = 3;                    // text[start, end)
+  EntityKind kind = 4;                // DATE_TIME
+  float confidence = 5;
+  string trigger = 6;                 // the slice term or the rule that fired; diagnostics only
 }
 
 // -----------------------------------------------------------------------------
