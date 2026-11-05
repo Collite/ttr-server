@@ -692,6 +692,23 @@ class DateRecognizer {
      */
     private val pastWeekRe = Regex("""\bpast\s+${PeriodWords.EN_ADJ}week\b|\buplynul\w*\s+(?:tyden|tydn\w*)""")
 
+    /** A week noun, whole: not the grain adjectives *weekly*, *týdenní*. */
+    private val weekNounRe = Regex("""\bweeks?\b|\btyden\b|\btydn\w*""")
+
+    /**
+     * A week with its scope word right before the noun: „minulý týden“, „v tomto týdnu“, "this week", "the past
+     * week". The week rule reads only this phrase: a scope word elsewhere scopes another noun, and "minulý měsíc
+     * po týdnech" or "last month by week" is last month broken down by week, not last week (S0.3: `Scan` keeps the
+     * longest window that reads, so a breakdown word must not change the reading).
+     */
+    private val scopedWeekRe =
+        Regex(
+            """\b(?:this|current|last|past|previous|prior)\s+${PeriodWords.EN_ADJ}week\b""" +
+                """|\b(?:tento|tato|toto|tohoto|tomto|tomuto|timto|tenhle|tohle|tomhle|tohohle""" +
+                """|aktualn\w*|soucasn\w*|minul\w*|predchoz\w*|predesl\w*|predminul\w*|uplynul\w*)""" +
+                """\s+(?:tyden|tydn\w*)""",
+        )
+
     /** Two periods back: *předminulý týden*. Asked before [lastScopeWords], which they contain. */
     private val twoBackScopeWords = listOf("predlon", "predminul")
 
@@ -722,7 +739,15 @@ class DateRecognizer {
                 WindowPeriods.CountUnit.WEEK, WindowPeriods.CountUnit.YEAR -> NotOne
             }
         }
-        if (hasAny(n, "week", "tyden", "tydn")) return week(n, reference, triggered)?.let(::Hit)
+        if (weekNounRe.containsMatchIn(n)) {
+            // The week its own scope word stands before: „minulý týden“, "past due this week".
+            scopedWeekRe.find(n)?.let { return week(it.value, reference, triggered)?.let(::Hit) }
+            // A week noun with none is a breakdown when the span scopes something else („minulý měsíc po
+            // týdnech“, "this year by week"); alone, it is the current week only when triggered.
+            if (!hasAny(n, thisScopeWords) && !hasAny(n, lastScopeWords) && !hasAny(n, twoBackScopeWords)) {
+                return week(n, reference, triggered)?.let(::Hit)
+            }
+        }
         // A month word before a year word: "minulý měsíc" names a month, whatever year a span adds to it.
         for (unit in listOf(PeriodUnit.MONTH, PeriodUnit.YEAR)) {
             val words = PeriodWords.findAll(n, unit).distinctBy { it.kind to it.delta }

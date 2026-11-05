@@ -728,6 +728,37 @@ class TimePhrasesSpec :
             }
         }
 
+        // S0.3 (before Scan): a week noun is read with its own scope word only. Elsewhere it is a breakdown, and the
+        // span's other period stands — Scan keeps the longest window that reads, so the breakdown must not change it.
+        "a week breakdown leaves the period it breaks down" {
+            for ((span, code) in listOf(
+                "minulý měsíc po týdnech" to "202610",
+                "last month by week" to "202610",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe code }
+            }
+            for (span in listOf("this year by week", "letos po týdnech", "this year weekly")) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2026, 1, 1)
+                    r.endExclusive shouldBe day(2027, 1, 1)
+                }
+            }
+            for ((span, start) in listOf(
+                "tento týden" to day(2026, 10, 26),
+                "v tomto týdnu" to day(2026, 10, 26),
+                "past due this week" to day(2026, 10, 26),
+                "this week's sales" to day(2026, 10, 26),
+                "minulý týden" to day(2026, 10, 19),
+                "last week" to day(2026, 10, 19),
+                "the past week" to day(2026, 10, 19),
+                "uplynulý týden" to day(2026, 10, 19),
+                "předminulý týden" to day(2026, 10, 12),
+            )) {
+                withClue(span) { read(span).startInclusive shouldBe start }
+            }
+        }
+
         "a quarter in a year the span writes or says is unchanged" {
             for (span in listOf(
                 "Q2 2025",

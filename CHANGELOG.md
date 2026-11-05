@@ -67,7 +67,9 @@ outside this repo could notice is in.
   „březen a duben 2025“, "March 2024 vs March 2025", "March vs last year", „minulý a tento měsíc“, "this quarter and
   last month", "today and yesterday", "fiscal year 2025 vs 2024" are not read, nor is a month in a year chrono reads
   nowhere ("March next year", „v březnu příštího roku“ — it used to be this year's March); "December of fiscal year
-  2025" is December 2025, where it used to be the whole fiscal year. A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
+  2025" is December 2025, where it used to be the whole fiscal year. A week is read only with its own scope word
+  before it: "last month by week", „minulý měsíc po týdnech“ and "this year by week" are last month and this year
+  (they used to be a week), and "the week before last" is not read (it used to be last week). A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
   second half of fiscal year 2025") is that quarter or half, as "Q4 FY2025" is; it used to be the whole fiscal year. A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
   asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
   now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
