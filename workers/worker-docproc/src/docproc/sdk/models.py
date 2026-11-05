@@ -322,6 +322,15 @@ class ListAnnotationsRequest(DxModel):
         return out
 
 
+class GetUnitResponse(DxModel):
+    """`GET /units/{id}`: the unit and its children's ids. `unit` is required: a body without one (a bare `Unit`)
+    would otherwise read as an all-defaults unit, id 0 and no text."""
+
+    unit: Unit
+    child_ids: list[int] = []
+    messages: list[ResponseMessage] = []
+
+
 class ListAnnotationsPage(DxModel):
     """`ListAnnotationsResponse` — one page."""
 

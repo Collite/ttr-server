@@ -19,6 +19,7 @@ import httpx
 
 from docproc.sdk.models import (
     Annotation,
+    GetUnitResponse,
     ListAnnotationsPage,
     ListAnnotationsRequest,
     LoadAnnotationsRequest,
@@ -89,9 +90,13 @@ class StoreClient:
         return LoadAnnotationsResponse.model_validate(self._ok(self._http.post("/load/annotations", json=req.dump())))
 
     def get_unit(self, unit_id: int, notebook_id: str = "") -> Unit:
-        """`GET /units/{id}` — RLS by the unit's source mart."""
+        """`GET /units/{id}` — RLS by the unit's source mart. The route answers `GetUnitResponse` (`{unit, childIds}`);
+        a unit other than the one asked for is refused, never processed."""
         r = self._http.get(f"/units/{unit_id}", params={"notebookId": notebook_id} if notebook_id else {})
-        return Unit.model_validate(self._ok(r))
+        unit = GetUnitResponse.model_validate(self._ok(r)).unit
+        if unit.id != unit_id:
+            raise StoreError(r.status_code, "store/unit-mismatch", f"GET /units/{unit_id} answered unit {unit.id}")
+        return unit
 
     def list_annotations(self, req: ListAnnotationsRequest) -> ListAnnotationsPage:
         """`GET /annotations` — one page; follow `next_page_token`."""

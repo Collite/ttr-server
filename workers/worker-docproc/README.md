@@ -9,8 +9,9 @@ and is never registered by the bootstrap.
 Outward calls are held behind `Warehouse`/`Manager` protocols, exercised against
 in-memory fakes until P1/P2 supply the services and phase certification runs.
 
-The worker polls a family's `_hi` queue first, fetches units/annotations by id,
-runs its immutable processor version under its timeout, validates the outputs and
+The worker polls a family's `_hi` queue first, fetches units/annotations by id
+(`GET /units/{id}` answers `GetUnitResponse {unit, childIds}`; a body without the asked unit is refused, never
+processed), runs its immutable processor version under its timeout, validates the outputs and
 loads one annotation batch through the warehouse API. Failed postconditions drop
 the offending output and produce `Verdict` annotations. Before that load the kind's
 protocol sections and its completion are staged in `pipeline.run_sections` (review-182
