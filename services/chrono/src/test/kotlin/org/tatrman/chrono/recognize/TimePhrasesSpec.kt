@@ -389,11 +389,135 @@ class TimePhrasesSpec :
                 "Q2 for the year",
                 "the second quarter of the fiscal year",
                 "Q2 revenue year over year",
-                "Q2 sales by year",
                 "ve 2. čtvrtletí kalendářního roku",
                 "2. čtvrtletí hospodářského roku",
             )) {
                 withClue(span) { read(span).periodCode shouldBe "2026Q2" }
+            }
+        }
+
+        // review-215 RR17 (S0.3 T8): a yearless period takes a fallback year only from a span that says nothing else
+        // about a year — an allow-list (YearPhrases.speaksOfYear), not a list of the phrases that stop it.
+        "a yearless period in a span that says anything else about a year is not read" {
+            for (span in listOf(
+                // a year noun or adverb, plural, a breakdown
+                "Q2 in previous years",
+                "Q2 in all years",
+                "Q2 of past years",
+                "Q2 in prior years",
+                "Q2 over the years",
+                "Q2 in recent years",
+                "Q2 across years",
+                "Q2 annually",
+                "Q2 yearly",
+                "Q2 of the year ahead",
+                "Q2 sales by year",
+                "Q2 by year",
+                "Q2 sales per year",
+                "H1 in previous years",
+                "2. čtvrtletí o rok dříve",
+                "2. čtvrtletí o rok později",
+                "2. čtvrtletí o rok zpět",
+                "2. čtvrtletí rok předtím",
+                "2. čtvrtletí rok poté",
+                "2. čtvrtletí za rok",
+                "2. čtvrtletí za dva roky",
+                "každoročně ve 2. čtvrtletí",
+                "2. čtvrtletí každoročně",
+                "2. čtvrtletí ročně",
+                "2. čtvrtletí v minulých letech",
+                "2. čtvrtletí posledních let",
+                "2. čtvrtletí všech let",
+                "2. čtvrtletí předchozích let",
+                "2. čtvrtletí po letech",
+                "2. čtvrtletí podle let",
+                "1. pololetí o rok dříve",
+                "1. pololetí každoročně",
+                // a two-digit year
+                "Q2 FY25",
+                "FY25 Q2",
+                "Q2 '25",
+                "Q2'25",
+                "Q2/25",
+                "Q2-25",
+                "Q2 25",
+                "2. čtvrtletí 25",
+                "H1 FY25",
+                "H2 '25",
+                "H1'25",
+                // a relative word before the period
+                "next Q2",
+                "the coming Q1",
+                "the upcoming H1",
+                "next H1",
+                "next Q4",
+                "last Q4",
+                "Q2 before last",
+                "příští 2. čtvrtletí",
+                // a plural noun
+                "ve 2. čtvrtletích",
+                "ve 2. kvartálech",
+                "v 1. pololetích",
+                // a year apart from a yearless last quarter
+                "poslední čtvrtletí roku o rok dříve",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            for (span in listOf("last Q2", "previous Q2", "minulé 2. čtvrtletí")) {
+                withClue(span) { rec.read(span, may).shouldBeNull() }
+            }
+            for (span in listOf(
+                "YTD FY25",
+                "YTD '25",
+                "FY25 YTD",
+                "YTD annually",
+                "YTD in previous years",
+                "od začátku roku o rok dříve",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
+
+        "a yearless period beside a neutral year frame still takes the reference's year" {
+            for (span in listOf(
+                "Q2",
+                "Q2 revenue",
+                "Q2 sales in Brno",
+                "this Q2",
+                "Q2 of the year",
+                "Q2 for the year",
+                "Q2 of the fiscal year",
+                "Q2 of the financial year",
+                "Q2 of the calendar year",
+                "Q2 fiscal year",
+                "the second quarter of the year",
+                "Q2 share of annual revenue",
+                "2. čtvrtletí podíl na roční tržbě",
+                "Q2 YoY",
+                "Q2 year over year",
+                "Q2 year-on-year",
+                "2. čtvrtletí meziročně",
+                "2. čtvrtletí roku",
+                "2. čtvrtletí fiskálního roku",
+                "2. čtvrtletí kalendářního roku",
+                "2. čtvrtletí hospodářského roku",
+                // "let" is an English verb, not the Czech „let“; a share is no year
+                "let me see Q2 revenue",
+                "Q2 25% growth",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe "2026Q2" }
+            }
+            read("H2 of the year").periodCode shouldBe "2026H2"
+            for (span in listOf("Q2 FY2025", "Q2 of FY2025", "Q2 2025/26")) {
+                withClue(span) { read(span).periodCode shouldBe "2025Q2" }
+            }
+            read("Q2 of that year", context = listOf("Q2 of that year", "Revenue in 2025")).periodCode shouldBe "2025Q2"
+            for (span in listOf("YTD", "YTD this year", "letos dosud", "YTD for the year")) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2026, 1, 1)
+                    r.endExclusive shouldBe day(2026, 11, 2)
+                }
             }
         }
 

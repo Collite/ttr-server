@@ -1889,6 +1889,38 @@
     }
   },
   {
+    "id": "chrono/ts-quarter-two-digit-year-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Q2 FY25",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "Q2 FY25 revenue by region",
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/ts-quarter-year-earlier-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2. čtvrtletí o rok dříve",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "calendar",
+    "here": null,
+    "question_text": "Tržby za 2. čtvrtletí o rok dříve",
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
     "id": "chrono/ts-trailing-conversation-cs",
     "tool": "ground_time",
     "kind": "DATE",

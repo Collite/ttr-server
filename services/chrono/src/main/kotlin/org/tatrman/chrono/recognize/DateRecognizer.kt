@@ -270,7 +270,9 @@ class DateRecognizer {
      * A span that states a year this rule cannot read is not read either (RR13, A-TS-3): its year is not the
      * reference's or the conversation's. That is a year chrono reads nowhere ([YearPhrases]: "Q2 next year", "Q2 a
      * year ago", „každé 2. čtvrtletí“), and a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025", as
-     * [relative] does not read one, #213).
+     * [relative] does not read one, #213). A yearless one takes a fallback year only from a span that says nothing
+     * else about a year ([YearPhrases.speaksOfYear], RR17): not "Q2 FY25", "next Q2", "Q2 in previous years". A
+     * plural noun („ve 2. čtvrtletích“) is no one period.
      */
     private fun numbered(
         n: String,
@@ -282,6 +284,7 @@ class DateRecognizer {
     ): Read? {
         if (found.isEmpty()) return null
         val one = found.singleOrNull() ?: return NotOne
+        if (NumberedPeriods.plural(n, one)) return NotOne
         if (OtherPeriods.outside(n, one.range, reference)) return NotOne
         if (YearPhrases.unreadIn(n)) return NotOne
 
@@ -299,8 +302,9 @@ class DateRecognizer {
             is SpanYear.Two -> return twoReadings(inYear(said.deictic, 0.9), inYear(said.anaphoric, 0.9))
             is SpanYear.Unanchored -> return NoAnchor(PeriodUnit.YEAR, said.why)
             // "the last quarter of the last year": a year word no reading settles is no other year to fall back on;
-            // nor are digits no pattern placed, nor a year named by a word chrono does not read ("the contract year").
-            SpanYear.None -> if (one.yearWord || statesYear(n) || YearPhrases.otherYearNounIn(n)) return NotOne
+            // nor are digits no pattern placed, nor a span that says anything else about a year ("Q2 FY25", "next
+            // Q2", "Q2 of the contract year", RR17).
+            SpanYear.None -> if (one.yearWord || statesYear(n) || YearPhrases.speaksOfYear(n, one.range)) return NotOne
         }
         when (val leaned = years.leaned) {
             is LeanedYear.One -> return Hit(inYear(leaned.year, LEANED_YEAR_CONFIDENCE))
@@ -725,7 +729,8 @@ class DateRecognizer {
      * span no one period ([NotOne]); a breakdown ("by region") is no ending (✅R215-O). With no ending, a span that
      * states a year other than the reference's („od začátku roku 2025“, "YTD last year", „loni od začátku roku“) is
      * not year to date: the year rules read it, as before S0.2. A year word with two readings or none settled says no
-     * one year, and nor does one chrono reads nowhere ([YearPhrases]: "YTD next year").
+     * one year, and nor does one chrono reads nowhere ([YearPhrases]: "YTD next year"); a span that states no year is
+     * this year's only when it says nothing else about one ([YearPhrases.speaksOfYear]: not "YTD FY25", RR17).
      *
      * A span that names another period beside the phrase and its ending is no one period ([OtherPeriods], ✅R215-M):
      * "Q2 vs YTD", "year to date vs last year", „od začátku roku oproti loňsku“.
@@ -761,6 +766,10 @@ class DateRecognizer {
         val endingLength = (today ?: monthEnd?.takeIf { month != null })?.let { it.range.last + 1 } ?: 0
         val ownEnd = if (endingLength > 0) n.length - ending.length + endingLength else at
         if (OtherPeriods.outside(n, m.range.first until ownEnd, reference)) return NotOne
+        // "YTD FY25", "YTD in previous years": a span that says anything else about a year is not this year's (RR17).
+        if (stated == SpanYear.None && digits.isEmpty() && YearPhrases.speaksOfYear(n, m.range.first until ownEnd)) {
+            return NotOne
+        }
         val end =
             when {
                 today != null -> reference.plusDays(1)

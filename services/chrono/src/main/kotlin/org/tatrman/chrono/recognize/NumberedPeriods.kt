@@ -142,6 +142,15 @@ internal object NumberedPeriods {
             Regex("""\b($CS_LAST_MONTH)(?:$CS_OF_YEAR|$CS_IN_YEAR)"""),
         )
 
+    /** A plural Czech quarter or half noun: „čtvrtletích“, „kvartálech“, „pololetími“ (RR17). */
+    private val pluralRe = Regex("""(?:ctvrtlet|pololet)(?:ich|imi)\b|kvartal(?:y|um|ech)\b""")
+
+    /** Does [one] name its period with a plural noun („ve 2. čtvrtletích“)? Then it is no one period. */
+    fun plural(
+        n: String,
+        one: Numbered,
+    ): Boolean = pluralRe.containsMatchIn(n.substring(one.range))
+
     /** The quarters the folded [n] names by number, in the order the patterns find them. */
     fun quarters(n: String): List<Numbered> = find(n, quarterWithYear, quarterYearless, ::quarterOf)
 

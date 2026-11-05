@@ -10,7 +10,9 @@ package org.tatrman.chrono.recognize
  *   ago, earlier or from now, in two years, „příštího roku“, „následujícího roku“, „každý rok“, „před rokem“, and each /
  *   „každé“ before a numbered period. A quarter, half or last month in one is not read ([DateRecognizer]'s numbered
  *   rule; [PartOfPeriods] takes "the last quarter of next year", which [NumberedPeriods] does not match), nor is year to
- *   date, nor is it a quarter or December an earlier question names ([ConversationPeriods]).
+ *   date, nor is it a quarter or December an earlier question names ([ConversationPeriods]);
+ * - [speaksOfYear]: whether a span with no year a rule reads says anything else about one (RR17). A yearless period
+ *   takes a fallback year only when it does not.
  */
 internal object YearPhrases {
     /** The English year words chrono reads, as [PeriodWords] reads them. */
@@ -43,29 +45,91 @@ internal object YearPhrases {
         )
 
     /**
-     * A year noun after a word that is neither an article, a preposition nor a fiscal or calendar adjective: "of the
-     * contract year", "of the same year", „školního roku“, „v modelovém roce“. Not a year-over-year measure ("year over
-     * year", "year-on-year") and not year to date. „hospodářský rok“ is a fiscal year, read as "fiscal year" is.
+     * A year noun or adverb, in any number and case: *year(s)*, *yr(s)*, *annually*, *yearly*; „rok“, „roku“, „roce“,
+     * „rokem“, „roky“, „letech“, „lety“, „ročně“, „každoročně“, „napřesrok“. Czech „let“ only after a genitive plural,
+     * a number or „podle“ („posledních let“, „pět let“, „podle let“): "let" is an English verb too.
      */
-    private const val EN_YEAR_NEUTRAL =
-        """(?:the|that|of|in|for|per|by|a|an|over|on|after|to""" +
-            """|fiscal|financial|accounting|calendar|full|complete|whole|entire)"""
-    private const val CS_YEAR_NEUTRAL =
-        """(?:toho|tohoto|tom|tomto|fiskaln|financn|ucetn|kalendarn|cel|upln|hospodarsk)"""
+    private const val YEAR_NOUN =
+        """(?:years?|yrs?|annually|yearly|annum|rok|roku|roce|rokem|roky|letech|lety|rocne|kazdorocne|napresrok)"""
+    private const val BEFORE_LET =
+        """(?:\b[a-z]*ch|\b\d+|\b(?:podle|behem|mezi|dvou|tri|ctyr|pet|sest|sedm|osm|devet|deset|mnoha|nekolika|par))"""
+    private val yearWordRe = Regex("""\b$YEAR_NOUN\b|$BEFORE_LET\s+let\b""")
 
-    private val otherYearNounRe =
-        Regex(
-            """\b(?!$EN_YEAR_NEUTRAL\b)[a-z]+\s+year\b(?!-|\s+(?:over|on|to|after)\b)""" +
-                """|\b(?!$CS_YEAR_NEUTRAL)[a-z]+(?:eho|iho)\s+roku\b""" +
-                """|\bv\s+(?!$CS_YEAR_NEUTRAL)[a-z]+(?:em|im)\s+roce\b""",
+    /** Stands for the period a rule read, in the text [speaksOfYear] searches: a frame may start right after it. */
+    private const val OWN = '\u0000'
+
+    /** What places a year noun in time, right after it: "the year before", "the year ahead", „rok předtím“. */
+    private const val UNPLACED =
+        """(?!\s+(?:before|prior|after|ago|earlier|later|ahead|from\s+now|to\s+come|predtim|pote|drive|pozdeji|zpet)\b)"""
+
+    private const val EN_FRAME_ADJ = """(?:fiscal|financial|accounting|calendar|full|complete|whole|entire)"""
+    private const val CS_FRAME_ADJ = """(?:fiskaln|financn|ucetn|kalendarn|hospodarsk|cel|upln)\w*"""
+
+    /**
+     * The year nouns that say nothing about which year ([speaksOfYear]), blanked before it looks for one:
+     * - a measure: "year over year", "year-on-year", "year-end";
+     * - "(of / in / for / during) (the / that) (fiscal …) year", or "(fiscal …) year" right after the period ("Q2
+     *   fiscal year");
+     * - „(toho / tohoto) (fiskálního …) roku“, or „(fiskálního …) roku“ right after the period; „v (tomto / celém)
+     *   roce“.
+     *
+     * None of them with a word after it that places it in time ([UNPLACED]). *by year*, *per year*, *a year*, *each
+     * year*, „za rok“, „po letech“ are no frame: a breakdown, or a year apart.
+     */
+    private val neutralRes =
+        listOf(
+            Regex("""\byear(?:\s*-\s*|\s+)(?:over|on|to)(?:\s*-\s*|\s+)year\b|\byear(?:\s*-\s*|\s+)end\b"""),
+            Regex(
+                """(?:(?:^|$OWN)\s*|\b(?:of|in|for|during)\s+(?:(?:the|that)\s+)?|\b(?:the|that)\s+)""" +
+                    """(?:$EN_FRAME_ADJ\s+)?year\b$UNPLACED""",
+            ),
+            Regex("""(?:(?:^|$OWN)\s*|\b(?:toho|tohoto)\s+)(?:$CS_FRAME_ADJ\s+)?roku\b$UNPLACED"""),
+            Regex("""\bv\s+(?:(?:tomto|$CS_FRAME_ADJ)\s+)?roce\b$UNPLACED"""),
         )
+
+    /** A two-digit year anywhere: *'25*, *FY25*. */
+    private val twoDigitYearRe = Regex("""['’‘]\s*\d{2}\b|\bfy\s*['’‘]?\s*\d{2}\b""")
+
+    /** One or two digits joined to the period: "Q2 25", "Q2/25", „2. čtvrtletí 25“; not a share ("Q2 25%"). */
+    private val digitsAfterRe = Regex("""^(?:\s*[/'’‘-]\s*|\s+)\d{1,2}\b(?!\s*%)""")
+
+    /** A relative word right before the period: "next Q2", „minulé 2. čtvrtletí“, "the coming fiscal Q1". */
+    private val relativeBeforeRe =
+        Regex(
+            """(?:\b(?:next|coming|upcoming|following|last|previous|prior|past)""" +
+                """|\b(?:pristi|nadchazejic|nasledujic|minul|predchoz|predesl|uplynul)\w*)\s+$EN_ADJ$CS_ADJ$""",
+        )
+
+    /** "Q2 before last", "Q2 after next". */
+    private val relativeAfterRe = Regex("""^\s+(?:before\s+last|after\s+next)\b""")
 
     /** Does the folded [n] hold a year phrase chrono reads nowhere? */
     fun unreadIn(n: String): Boolean = unreadRe.containsMatchIn(n)
 
     /**
-     * Does the folded [n] name a year by a word chrono does not read ("the second quarter of the contract year")?
+     * Does the folded [n] say anything about a year outside [own], the range a rule read (RR17, A-TS-3)? A yearless
+     * period may take the conversation's or the reference's year only when it does not. That is an allow-list: what
+     * may stand beside the period is a neutral frame ("of the fiscal year", „kalendářního roku“, "year over year"),
+     * and anything else that names a year says something about which one:
+     * - a year noun or adverb ([yearWordRe]): "Q2 in previous years", "Q2 annually", "Q2 by year", "the second quarter
+     *   of the contract year", „2. čtvrtletí o rok dříve“, „… posledních let“;
+     * - a two-digit year: "Q2 FY25", "Q2 '25", "Q2/25", „2. čtvrtletí 25“;
+     * - a relative word right before the period, or "before last" / "after next" right after it: "next Q2", "last Q4",
+     *   „minulé 2. čtvrtletí“, "Q2 before last".
+     *
      * Asked only where no year was read: a read year word ("of last year", „loňského roku“) says the year first.
      */
-    fun otherYearNounIn(n: String): Boolean = otherYearNounRe.containsMatchIn(n)
+    fun speaksOfYear(
+        n: String,
+        own: IntRange,
+    ): Boolean {
+        val before = n.substring(0, own.first)
+        val after = n.substring(own.last + 1)
+        if (relativeBeforeRe.containsMatchIn(before) || relativeAfterRe.containsMatchIn(after)) return true
+        if (digitsAfterRe.containsMatchIn(after)) return true
+        val rest = before + OWN.toString().repeat(own.last - own.first + 1) + after
+        if (twoDigitYearRe.containsMatchIn(rest)) return true
+        val unframed = neutralRes.fold(rest) { s, re -> re.replace(s) { " ".repeat(it.value.length) } }
+        return yearWordRe.containsMatchIn(unframed)
+    }
 }
