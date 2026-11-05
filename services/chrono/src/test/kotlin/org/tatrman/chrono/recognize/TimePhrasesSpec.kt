@@ -559,6 +559,55 @@ class TimePhrasesSpec :
             }
         }
 
+        // review-215 RR19 (S0.3 T10): a quarter or half after a range or exclusion word is a bound or the part left
+        // out, not the period the span is about.
+        "a quarter or half that a range or exclusion word governs is not read" {
+            for (span in listOf(
+                "excluding Q4",
+                "kromě 4. čtvrtletí",
+                "in 2025 excluding Q4",
+                "in 2025 except Q4",
+                "in 2025 without Q4",
+                "rok 2025 bez 4. čtvrtletí",
+                "v roce 2025 kromě 4. čtvrtletí",
+                "in 2025 through Q3",
+                "in 2025 up to Q3",
+                "v roce 2025 do 3. čtvrtletí",
+                "sales since Q2",
+                "tržby od 2. čtvrtletí",
+                "after Q2",
+                "po 2. čtvrtletí",
+                "Q2 onwards",
+                "before Q3",
+                "until Q3",
+                "před 3. čtvrtletím",
+                "this year until Q3",
+                "last year excluding Q4",
+                "loni bez 4. čtvrtletí",
+                "fiscal year 2025 excluding Q4",
+                "fiscal year 2025 through Q3",
+                "fiscal year 2025 up to Q3",
+                "fiscal year 2025 without H2",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("sales from Q2").periodCode shouldBe "2026Q2"
+            read("from Q2 2025").periodCode shouldBe "2025Q2"
+            rec.read("Q1 to Q3 2025", ref).shouldBeNull()
+            for ((span, code) in listOf(
+                "Q4 of fiscal year 2025" to "2025Q4",
+                "the last quarter of fiscal year 2025" to "2025Q4",
+                "the second half of fiscal year 2025" to "2025H2",
+                "the last half of fiscal year 2025" to "2025H2",
+                "H1 fiscal year 2025" to "2025H1",
+                "fiscal year 2025 Q4" to "2025Q4",
+                "fiscal year 2025, H1" to "2025H1",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe code }
+            }
+            read("fiscal year 2025 by quarter").kind shouldBe ChronoKind.FISCAL_YEAR
+        }
+
         "a quarter in a year the span writes or says is unchanged" {
             for (span in listOf(
                 "Q2 2025",

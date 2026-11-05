@@ -222,7 +222,8 @@ class DateRecognizer {
     /**
      * "fiscal year 2026" → that fiscal year. A quarter or half of it ("Q4 of fiscal year 2025", "the second half of
      * fiscal year 2025") is that quarter or half, as "Q4 FY2025" is: this rule gives way, and [numbered] reads it with
-     * the fiscal year's digits as its year (RR14).
+     * the fiscal year's digits as its year (RR14). So it does for one a range or exclusion word governs: "fiscal year
+     * 2025 excluding Q4" is no one period, and is not read at all (RR19).
      */
     private fun fiscalYear(n: String): ChronoRecognition? {
         if (NumberedPeriods.quarters(n).isNotEmpty() || NumberedPeriods.halves(n).isNotEmpty()) return null
@@ -272,9 +273,10 @@ class DateRecognizer {
      * year ago", „každé 2. čtvrtletí“), and a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025", as
      * [relative] does not read one, #213). Nor is a year that stands only after a bound word ("Q2 since 2020", „2.
      * čtvrtletí do roku 2025“, "Q2 since last year", RR18): it is where a range starts or ends, not the period's year.
-     * A yearless one takes a fallback year only from a span that says nothing
-     * else about a year ([YearPhrases.speaksOfYear], RR17): not "Q2 FY25", "next Q2", "Q2 in previous years". A
-     * plural noun („ve 2. čtvrtletích“) is no one period.
+     * A period that a range or exclusion word governs is a bound or the part left out, not the period ("since Q2",
+     * "in 2025 excluding Q4", „kromě 4. čtvrtletí“, "Q2 onwards", RR19). A yearless one takes a fallback year only
+     * from a span that says nothing else about a year ([YearPhrases.speaksOfYear], RR17): not "Q2 FY25", "next Q2",
+     * "Q2 in previous years". A plural noun („ve 2. čtvrtletích“) is no one period.
      */
     private fun numbered(
         n: String,
@@ -287,6 +289,7 @@ class DateRecognizer {
         if (found.isEmpty()) return null
         val one = found.singleOrNull() ?: return NotOne
         if (NumberedPeriods.plural(n, one)) return NotOne
+        if (bounded(n, one.range)) return NotOne
         if (OtherPeriods.outside(n, one.range, reference)) return NotOne
         if (YearPhrases.unreadIn(n)) return NotOne
 
@@ -574,6 +577,28 @@ class DateRecognizer {
      * [relative] nor [fiscalQuarter] reads it (#213).
      */
     private fun statesYear(n: String): Boolean = statedYears(n).isNotEmpty()
+
+    /**
+     * A range or exclusion word right before a numbered period: the period is a bound ("since Q2", "until Q3", „od 2.
+     * čtvrtletí“, „v roce 2025 do 3. čtvrtletí“) or the part left out ("excluding Q4", „kromě 4. čtvrtletí“), not the
+     * period the span is about (RR19). Not *from*, *in*, *of*, *for*, „z“, „v“, „za“: "sales from Q2" is Q2's sales.
+     */
+    private val rangeBeforeRe =
+        Regex(
+            """\b(?:since|after|before|until|till|through|thru|up\s+to|by|excluding|except|without|other\s+than""" +
+                """|od|po|pred|do|az\s+do|krome|bez|mimo|vyjma)\s+(?:the\s+)?$""",
+        )
+
+    /** A range word right after it: "Q2 onwards", "Q2 and later", „2. čtvrtletí a dál“. */
+    private val rangeAfterRe = Regex("""^\s+(?:onwards?|and\s+(?:later|after|beyond)|a\s+(?:dal|dale|pozdeji))\b""")
+
+    /** Does a range or exclusion word govern the numbered period at [own] ([rangeBeforeRe], [rangeAfterRe])? */
+    private fun bounded(
+        n: String,
+        own: IntRange,
+    ): Boolean =
+        rangeBeforeRe.containsMatchIn(n.substring(0, own.first)) ||
+            rangeAfterRe.containsMatchIn(n.substring(own.last + 1))
 
     /** A word that makes the year after it a range's bound: "since", "up to", „od (roku)“, „až do“ (RR18). */
     private val boundBeforeRe =
