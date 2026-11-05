@@ -8,6 +8,8 @@ import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
 import org.tatrman.grounding.v1.GroundingResult
 import org.tatrman.grounding.v1.Normalized
+import org.tatrman.grounding.v1.ScanRequest
+import org.tatrman.grounding.v1.ScanResponse
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import io.kotest.core.spec.style.StringSpec
@@ -23,7 +25,11 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import com.google.protobuf.util.JsonFormat
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -175,6 +181,103 @@ class ToolsTest :
             coVerify(exactly = 0) { geo.ground(any()) }
         }
 
+        // TS-P0 S0.3 T5 — scan_time over chrono's Scan: the args mirror ScanRequest, the response is replayed as
+        // recorded, every field printed (a span at offset 0 keeps start 0; no spans is an empty list).
+        "scan_time maps args onto ScanRequest and replays a recorded ScanResponse into structuredContent" {
+            val captured = slot<ScanRequest>()
+            val chrono = client("chrono")
+            coEvery { chrono.scan(capture(captured)) } returns replayedScan()
+            val tools = Tools(chrono, client("geo"), client("money"))
+
+            val result =
+                tools.scanTimeCallback(
+                    request(
+                        buildJsonObject {
+                            put("text", "minulý měsíc v Brně a letos")
+                            put("package", "prodej")
+                            putJsonObject("context") {
+                                put("referenceDatetime", "2026-11-01T12:00:00+01:00")
+                                put("locale", "cs-CZ")
+                                putJsonArray("priorQuestions") { add("Tržby v roce 2025") }
+                            }
+                        },
+                    ),
+                )
+
+            captured.captured.text shouldBe "minulý měsíc v Brně a letos"
+            captured.captured.getPackage() shouldBe "prodej"
+            captured.captured.context.locale shouldBe "cs-CZ"
+            captured.captured.context.priorQuestionsList shouldBe listOf("Tržby v roce 2025")
+            result.isError shouldBe false
+            val spans = (result.structuredContent as JsonObject)["spans"]!!.jsonArray
+            spans.size shouldBe 2
+            spans[0].jsonObject.let {
+                it["start"]!!.jsonPrimitive.content shouldBe "0"
+                it["end"]!!.jsonPrimitive.content shouldBe "12"
+                it["text"]!!.jsonPrimitive.content shouldBe "minulý měsíc"
+                it["kind"]!!.jsonPrimitive.content shouldBe "DATE_TIME"
+                it["confidence"]!!.jsonPrimitive.content shouldBe "0.9"
+                it["trigger"]!!.jsonPrimitive.content shouldBe "relative"
+            }
+            spans[1].jsonObject["text"]!!.jsonPrimitive.content shouldBe "letos"
+            textOf(result) shouldContain "[0, 12) minulý měsíc"
+        }
+
+        "scan_time with no spans gives an empty list, not a missing field" {
+            val chrono = client("chrono")
+            coEvery { chrono.scan(any()) } returns ScanResponse.getDefaultInstance()
+            val tools = Tools(chrono, client("geo"), client("money"))
+            val result =
+                tools.scanTimeCallback(
+                    request(
+                        buildJsonObject {
+                            put("text", "Tržby v Brně")
+                            putJsonObject("context") { put("referenceDatetime", "2026-11-01T12:00:00+01:00") }
+                        },
+                    ),
+                )
+            (result.structuredContent as JsonObject)["spans"]!!.jsonArray.size shouldBe 0
+            textOf(result) shouldContain "No time phrases"
+        }
+
+        "scan_time without text or context.referenceDatetime → tool-arg error, chrono not called" {
+            val chrono = client("chrono")
+            val tools = Tools(chrono, client("geo"), client("money"))
+            tools.scanTimeCallback(request(buildJsonObject { put("text", "minulý měsíc") })).let {
+                it.isError shouldBe true
+                textOf(it) shouldContain "referenceDatetime"
+            }
+            tools
+                .scanTimeCallback(
+                    request(
+                        buildJsonObject {
+                            putJsonObject("context") { put("referenceDatetime", "2026-11-01T12:00:00+01:00") }
+                        },
+                    ),
+                ).let {
+                    it.isError shouldBe true
+                    textOf(it) shouldContain "text"
+                }
+            coVerify(exactly = 0) { chrono.scan(any()) }
+        }
+
+        "scan_time transport failure → isError=true" {
+            val chrono = client("chrono")
+            coEvery { chrono.scan(any()) } throws RuntimeException("connection refused")
+            val tools = Tools(chrono, client("geo"), client("money"))
+            val result =
+                tools.scanTimeCallback(
+                    request(
+                        buildJsonObject {
+                            put("text", "minulý měsíc")
+                            putJsonObject("context") { put("referenceDatetime", "2026-11-01T12:00:00+01:00") }
+                        },
+                    ),
+                )
+            result.isError shouldBe true
+            textOf(result) shouldContain "connection refused"
+        }
+
         "kind mismatch is passed through, not rerouted (A11.4): a geo span to ground_time hits chrono w/ DATE_TIME" {
             val slot = slot<GroundRequest>()
             val tools = Tools(chrono = client("chrono", slot), geo = client("geo"), money = client("money"))
@@ -191,6 +294,23 @@ class ToolsTest :
             slot.captured.spanText shouldBe "within 20 km of Brno"
         }
     })
+
+/** A ScanResponse as chrono answers it, recorded as JSON (the wire's camelCase) and replayed. */
+private fun replayedScan(): ScanResponse =
+    ScanResponse
+        .newBuilder()
+        .also {
+            JsonFormat.parser().merge(
+                """
+                {"spans": [
+                  {"end": 12, "text": "minulý měsíc", "kind": "DATE_TIME", "confidence": 0.9, "trigger": "relative"},
+                  {"start": 22, "end": 27, "text": "letos", "kind": "DATE_TIME", "confidence": 0.9,
+                   "trigger": "relative"}
+                ]}
+                """.trimIndent(),
+                it,
+            )
+        }.build()
 
 private fun okResponse(): GroundResponse =
     GroundResponse

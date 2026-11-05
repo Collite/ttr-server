@@ -1,0 +1,24 @@
+capability_id: "grounding.time.scan:v1"
+category: "grounding"
+version: "1.0.0"
+description: |
+  Find the time phrases in a question ("minulý měsíc", "Q2 2025", "od začátku
+  roku do března", "last year in March") by the chrono grounding service's own
+  rules, so no rule about which words are a time phrase lives outside chrono.
+  Returns spans with UTF-16 offsets into the text as sent; the caller blanks
+  quoted literals first, keeping their length. context.referenceDatetime is
+  REQUIRED. Delegates to Scan on the generic GroundingService proto; ground each
+  span with grounding.time:v1.
+service_endpoint: "http://grounding-mcp.kantheon.svc.cluster.local:7153"
+search_tags:
+  - grounding
+  - time
+  - date
+  - period
+  - scan
+  - span
+cost_hints:
+  typical_latency_ms: 20
+  typical_cost_usd: 0.0
+  is_idempotent: true
+  max_concurrent: 16

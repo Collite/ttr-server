@@ -5,6 +5,8 @@ import com.google.protobuf.util.JsonFormat
 import org.tatrman.grounding.v1.EntityKind
 import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
+import org.tatrman.grounding.v1.ScanRequest
+import org.tatrman.grounding.v1.ScanResponse
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
@@ -21,7 +23,8 @@ import org.slf4j.LoggerFactory
 import org.tatrman.grounding.mcp.client.GroundingClient
 
 /**
- * The three grounding MCP tools — thin wrappers over the chrono / geo / money `GroundingService`s
+ * The grounding MCP tools — thin wrappers over the chrono / geo / money `GroundingService`s, plus `scan_time` over
+ * chrono's `Scan` (TS-P0 S0.3, contracts §3.6)
  * (service-vs-MCP rule: NO grounding logic here). Args are the camelCase mirror of `GroundRequest`;
  * `structuredContent` is the camelCase mirror of `GroundResponse` — both via protobuf [JsonFormat],
  * so the mapping stays faithful in both directions with no hand-written field plumbing (contracts §2).
@@ -62,6 +65,18 @@ class Tools(
                 "normalized amount + a filter/join recipe, via the money service.",
         )
 
+    val scanTimeTool =
+        Tool(
+            name = "scan_time",
+            description =
+                "Find the time phrases in a question (e.g. \"minulý měsíc\", \"Q2 2025\", " +
+                    "\"od začátku roku\"), via the chrono service's own rules. Returns spans with UTF-16 " +
+                    "offsets into the text as sent; blank quoted literals first, keeping their length. " +
+                    "context.referenceDatetime (ISO-8601 with offset) is REQUIRED. Ground each span with ground_time.",
+            inputSchema = scanInputSchema(),
+            outputSchema = scanOutputSchema(),
+        )
+
     // ----- callbacks -----
 
     suspend fun groundTimeCallback(request: CallToolRequest): CallToolResult =
@@ -72,6 +87,64 @@ class Tools(
 
     suspend fun groundMoneyCallback(request: CallToolRequest): CallToolResult =
         handleGround(request, EntityKind.MONEY, money, requireReferenceDatetime = false)
+
+    /** `scan_time(text, context, package)` → `{spans: [{start, end, text, kind, confidence, trigger}], messages}`. */
+    suspend fun scanTimeCallback(request: CallToolRequest): CallToolResult {
+        val args = request.arguments
+        val text = args?.get("text")?.jsonPrimitive?.contentOrNull
+        if (text.isNullOrEmpty()) return argError("Missing required argument: text")
+        val ref =
+            args["context"]
+                ?.jsonObject
+                ?.get("referenceDatetime")
+                ?.jsonPrimitive
+                ?.contentOrNull
+        if (ref.isNullOrBlank()) {
+            return argError(
+                "Missing required argument: context.referenceDatetime (load-bearing for Scan)",
+            )
+        }
+        val scanRequest =
+            try {
+                ScanRequest
+                    .newBuilder()
+                    .also {
+                        JsonFormat.parser().ignoringUnknownFields().merge(
+                            args.toString(),
+                            it,
+                        )
+                    }.build()
+            } catch (e: Exception) {
+                logger.warn("bad scan args: {}", e.message)
+                return argError("Invalid arguments: ${e.message}")
+            }
+        val response =
+            try {
+                chrono.scan(scanRequest)
+            } catch (e: Exception) {
+                logger.error("scan call to '{}' failed", chrono.serviceName, e)
+                return transportError(chrono.serviceName, e)
+            }
+        logger.info("scan tool ok | service={} | spans={}", chrono.serviceName, response.spansCount)
+        // Every field printed, defaults too: a span at offset 0 has start 0, and no spans is an empty list.
+        val structured =
+            json
+                .parseToJsonElement(JsonFormat.printer().alwaysPrintFieldsWithNoPresence().print(response))
+                .jsonObject
+        return CallToolResult(
+            content = listOf(TextContent(text = scanSummary(response))),
+            structuredContent = structured,
+            isError = false,
+        )
+    }
+
+    private fun scanSummary(response: ScanResponse): String =
+        when {
+            response.spansCount > 0 ->
+                "Time phrases:\n" + response.spansList.joinToString("\n") { "- [${it.start}, ${it.end}) ${it.text}" }
+            response.messagesCount > 0 -> "No time phrases: " + response.messagesList.first().humanMessage
+            else -> "No time phrases."
+        }
 
     // ----- shared handler -----
 
@@ -246,6 +319,59 @@ class Tools(
                     putJsonObject("correlationId") { put("type", "string") }
                 },
             required = listOf("spanText"),
+        )
+
+    private fun scanInputSchema(): ToolSchema =
+        ToolSchema(
+            properties =
+                buildJsonObject {
+                    putJsonObject("text") {
+                        put("type", "string")
+                        put("description", "The question, quoted literals blanked (length kept).")
+                    }
+                    putJsonObject("package") {
+                        put("type", "string")
+                        put("description", "Metadata package scope, e.g. \"cnc\".")
+                    }
+                    putJsonObject("context") {
+                        put("type", "object")
+                        put("description", "Grounding context (turn state).")
+                        putJsonObject("properties") {
+                            putJsonObject("referenceDatetime") {
+                                put("type", "string")
+                                put("description", "ISO-8601 with offset — the turn's 'now'. Required.")
+                            }
+                            putJsonObject("timezone") { put("type", "string") }
+                            putJsonObject("locale") { put("type", "string") }
+                            putJsonObject("priorQuestions") {
+                                put("type", "array")
+                                put("description", "The user's earlier questions, newest first.")
+                                putJsonObject("items") { put("type", "string") }
+                            }
+                        }
+                    }
+                },
+            required = listOf("text", "context"),
+        )
+
+    private fun scanOutputSchema(): ToolSchema =
+        ToolSchema(
+            properties =
+                buildJsonObject {
+                    putJsonObject("spans") {
+                        put("type", "array")
+                        put(
+                            "description",
+                            "The time phrases, in text order: start, end (UTF-16 offsets, end exclusive), text, " +
+                                "kind (DATE_TIME), confidence, trigger.",
+                        )
+                    }
+                    putJsonObject("messages") {
+                        put("type", "array")
+                        put("description", "Diagnostic messages (e.g. a missing reference date).")
+                    }
+                },
+            required = listOf("spans"),
         )
 
     private fun outputSchema(): ToolSchema =

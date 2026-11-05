@@ -3,6 +3,8 @@ package org.tatrman.grounding.mcp.client
 
 import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
+import org.tatrman.grounding.v1.ScanRequest
+import org.tatrman.grounding.v1.ScanResponse
 import java.io.Closeable
 
 /**
@@ -15,4 +17,7 @@ interface GroundingClient : Closeable {
     val serviceName: String
 
     suspend fun ground(request: GroundRequest): GroundResponse
+
+    /** The time phrases in a text (TS-P0 S0.3, contracts §3); chrono implements it, geo and money do not. */
+    suspend fun scan(request: ScanRequest): ScanResponse
 }
