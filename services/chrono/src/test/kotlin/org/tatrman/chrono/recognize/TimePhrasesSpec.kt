@@ -389,12 +389,400 @@ class TimePhrasesSpec :
                 "Q2 for the year",
                 "the second quarter of the fiscal year",
                 "Q2 revenue year over year",
-                "Q2 sales by year",
                 "ve 2. čtvrtletí kalendářního roku",
                 "2. čtvrtletí hospodářského roku",
             )) {
                 withClue(span) { read(span).periodCode shouldBe "2026Q2" }
             }
+        }
+
+        // review-215 RR17 (S0.3 T8): a yearless period takes a fallback year only from a span that says nothing else
+        // about a year — an allow-list (YearPhrases.speaksOfYear), not a list of the phrases that stop it.
+        "a yearless period in a span that says anything else about a year is not read" {
+            for (span in listOf(
+                // a year noun or adverb, plural, a breakdown
+                "Q2 in previous years",
+                "Q2 in all years",
+                "Q2 of past years",
+                "Q2 in prior years",
+                "Q2 over the years",
+                "Q2 in recent years",
+                "Q2 across years",
+                "Q2 annually",
+                "Q2 yearly",
+                "Q2 of the year ahead",
+                "Q2 sales by year",
+                "Q2 by year",
+                "Q2 sales per year",
+                "H1 in previous years",
+                "2. čtvrtletí o rok dříve",
+                "2. čtvrtletí o rok později",
+                "2. čtvrtletí o rok zpět",
+                "2. čtvrtletí rok předtím",
+                "2. čtvrtletí rok poté",
+                "2. čtvrtletí za rok",
+                "2. čtvrtletí za dva roky",
+                "každoročně ve 2. čtvrtletí",
+                "2. čtvrtletí každoročně",
+                "2. čtvrtletí ročně",
+                "2. čtvrtletí v minulých letech",
+                "2. čtvrtletí posledních let",
+                "2. čtvrtletí všech let",
+                "2. čtvrtletí předchozích let",
+                "2. čtvrtletí po letech",
+                "2. čtvrtletí podle let",
+                "1. pololetí o rok dříve",
+                "1. pololetí každoročně",
+                // a two-digit year
+                "Q2 FY25",
+                "FY25 Q2",
+                "Q2 '25",
+                "Q2'25",
+                "Q2/25",
+                "Q2-25",
+                "Q2 25",
+                "2. čtvrtletí 25",
+                "H1 FY25",
+                "H2 '25",
+                "H1'25",
+                // a relative word before the period
+                "next Q2",
+                "the coming Q1",
+                "the upcoming H1",
+                "next H1",
+                "next Q4",
+                "last Q4",
+                "Q2 before last",
+                "příští 2. čtvrtletí",
+                // a plural noun
+                "ve 2. čtvrtletích",
+                "ve 2. kvartálech",
+                "v 1. pololetích",
+                // a year apart from a yearless last quarter
+                "poslední čtvrtletí roku o rok dříve",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            for (span in listOf("last Q2", "previous Q2", "minulé 2. čtvrtletí")) {
+                withClue(span) { rec.read(span, may).shouldBeNull() }
+            }
+            for (span in listOf(
+                "YTD FY25",
+                "YTD '25",
+                "FY25 YTD",
+                "YTD annually",
+                "YTD in previous years",
+                "od začátku roku o rok dříve",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
+
+        "a yearless period beside a neutral year frame still takes the reference's year" {
+            for (span in listOf(
+                "Q2",
+                "Q2 revenue",
+                "Q2 sales in Brno",
+                "this Q2",
+                "Q2 of the year",
+                "Q2 for the year",
+                "Q2 of the fiscal year",
+                "Q2 of the financial year",
+                "Q2 of the calendar year",
+                "Q2 fiscal year",
+                "the second quarter of the year",
+                "Q2 share of annual revenue",
+                "2. čtvrtletí podíl na roční tržbě",
+                "Q2 YoY",
+                "Q2 year over year",
+                "Q2 year-on-year",
+                "2. čtvrtletí meziročně",
+                "2. čtvrtletí roku",
+                "2. čtvrtletí fiskálního roku",
+                "2. čtvrtletí kalendářního roku",
+                "2. čtvrtletí hospodářského roku",
+                // "let" is an English verb, not the Czech „let“; a share is no year
+                "let me see Q2 revenue",
+                "Q2 25% growth",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe "2026Q2" }
+            }
+            read("H2 of the year").periodCode shouldBe "2026H2"
+            for (span in listOf("Q2 FY2025", "Q2 of FY2025", "Q2 2025/26")) {
+                withClue(span) { read(span).periodCode shouldBe "2025Q2" }
+            }
+            read("Q2 of that year", context = listOf("Q2 of that year", "Revenue in 2025")).periodCode shouldBe "2025Q2"
+            for (span in listOf("YTD", "YTD this year", "letos dosud", "YTD for the year")) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2026, 1, 1)
+                    r.endExclusive shouldBe day(2026, 11, 2)
+                }
+            }
+        }
+
+        // review-215 RR18 (S0.3 T9): a year after "since", "until", „od (roku)“, „do (roku)“ is a range's bound, not the
+        // year the period is in.
+        "a quarter or half whose year is only a range's bound is not read" {
+            for (span in listOf(
+                "Q2 since 2020",
+                "Q2 revenue since 2020",
+                "2. čtvrtletí od roku 2020",
+                "2. čtvrtletí po roce 2020",
+                "Q2 until 2025",
+                "2. čtvrtletí do roku 2025",
+                "H1 since 2020",
+                "the second half of the year since 2020",
+                "the last quarter of the year since 2020",
+                "Q2 since last year",
+                "2. čtvrtletí od loňska",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            for (span in listOf(
+                "Q2 in 2025",
+                "Q2 during 2025",
+                "Q2 2025",
+                "Q2 of 2025",
+                "2. čtvrtletí v roce 2025",
+                "ve 2. čtvrtletí roku 2025",
+                "v roce 2025 ve 2. čtvrtletí",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe "2025Q2" }
+            }
+            for (span in listOf("since 2020", "od roku 2020")) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2020, 1, 1)
+                    r.endExclusive shouldBe day(2021, 1, 1)
+                }
+            }
+        }
+
+        // review-215 RR19 (S0.3 T10): a quarter or half after a range or exclusion word is a bound or the part left
+        // out, not the period the span is about.
+        "a quarter or half that a range or exclusion word governs is not read" {
+            for (span in listOf(
+                "excluding Q4",
+                "kromě 4. čtvrtletí",
+                "in 2025 excluding Q4",
+                "in 2025 except Q4",
+                "in 2025 without Q4",
+                "rok 2025 bez 4. čtvrtletí",
+                "v roce 2025 kromě 4. čtvrtletí",
+                "in 2025 through Q3",
+                "in 2025 up to Q3",
+                "v roce 2025 do 3. čtvrtletí",
+                "sales since Q2",
+                "tržby od 2. čtvrtletí",
+                "after Q2",
+                "po 2. čtvrtletí",
+                "Q2 onwards",
+                "before Q3",
+                "until Q3",
+                "před 3. čtvrtletím",
+                "this year until Q3",
+                "last year excluding Q4",
+                "loni bez 4. čtvrtletí",
+                "fiscal year 2025 excluding Q4",
+                "fiscal year 2025 through Q3",
+                "fiscal year 2025 up to Q3",
+                "fiscal year 2025 without H2",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("sales from Q2").periodCode shouldBe "2026Q2"
+            read("from Q2 2025").periodCode shouldBe "2025Q2"
+            rec.read("Q1 to Q3 2025", ref).shouldBeNull()
+            for ((span, code) in listOf(
+                "Q4 of fiscal year 2025" to "2025Q4",
+                "the last quarter of fiscal year 2025" to "2025Q4",
+                "the second half of fiscal year 2025" to "2025H2",
+                "the last half of fiscal year 2025" to "2025H2",
+                "H1 fiscal year 2025" to "2025H1",
+                "fiscal year 2025 Q4" to "2025Q4",
+                "fiscal year 2025, H1" to "2025H1",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe code }
+            }
+            read("fiscal year 2025 by quarter").kind shouldBe ChronoKind.FISCAL_YEAR
+        }
+
+        // review-215 RR20 (S0.3 T11): round 4's over-blocks read again — a scope word on a noun that is no time, a word
+        // for the current year, an ordinal with a hyphen after "every", a year-over-year measure after a count.
+        "what round 4 over-blocked reads as before" {
+            for (span in listOf(
+                "Q2 2025 actuals vs current forecast",
+                "Q2 2025 actual vs the current plan",
+                "Q2 2025 vs previous forecast",
+                "Q2 2025 vs the prior forecast",
+                "Q2 2025 compared to last forecast",
+                "Q2 2025 vs last forecast version",
+                "Q2 2025 vs this budget",
+                "Q2 2025 sales vs target for this region",
+                "Q2 2025 revenue against that target",
+                "2. čtvrtletí 2025 oproti současnému plánu",
+                "2. čtvrtletí 2025 oproti minulému plánu",
+                "Q2 2025 for every first-time buyer",
+            )) {
+                withClue(span) {
+                    val r = read(span)
+                    r.periodCode shouldBe "2025Q2"
+                    r.confidence shouldBe 0.9
+                }
+            }
+            for (span in listOf(
+                "ve 2. čtvrtletí běžného roku",
+                "2. čtvrtletí stávajícího roku",
+                "2. čtvrtletí probíhajícího roku",
+                "Q2 of the present year",
+            )) {
+                withClue(span) {
+                    val r = read(span)
+                    r.periodCode shouldBe "2026Q2"
+                    r.confidence shouldBe 0.85
+                }
+            }
+            val growth = read("the last 3 months of year-over-year growth")
+            growth.startInclusive shouldBe day(2026, 8, 2)
+            growth.endExclusive shouldBe day(2026, 11, 2)
+            growth.confidence shouldBe 0.85
+            for (span in listOf(
+                "Q2 vs last",
+                "Q2 2025 vs last",
+                "Q2 vs previous",
+                "Q2 2025 vs prior period",
+                "Q2 2025 vs the end of the quarter",
+                "Q2 sales vs plan for this year",
+                "every first quarter",
+                "the last 3 months of the year",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+        }
+
+        // review-215 P5 (S0.3 T12): the rules older than TS read only a span that names one period, as the numbered
+        // rule does since RR1 — „leden až březen 2025“ is no longer January.
+        "a month, date, relative word or year in a span that names another period is not read" {
+            for (span in listOf(
+                "leden až březen 2025",
+                "březen a duben 2025",
+                "from January to March 2025",
+                "March 2024 vs March 2025",
+                "May 2025 vs the same month last year",
+                "March vs last year",
+                "minulý a tento měsíc",
+                "this and last month",
+                "this and last year",
+                "tento měsíc oproti minulému",
+                "this month vs last",
+                "this quarter and last month",
+                "this week and last month",
+                "today and yesterday",
+                "od 1.3. do 15.3.2026",
+                "fiscal year 2025 vs 2024",
+                "poslední rok v březnu",
+                "v březnu za poslední rok",
+                "March next year",
+                "v březnu příštího roku",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("December of fiscal year 2025").periodCode shouldBe "202512"
+        }
+
+        "a month, date, relative word or year alone reads as before" {
+            for ((span, code) in listOf(
+                "leden 2025" to "202501",
+                "v březnu 2025" to "202503",
+                "v říjnu" to "202610",
+                "minulý měsíc" to "202610",
+                "this month" to "202611",
+                "loni v březnu" to "202503",
+                "sales last year in March" to "202503",
+                "v březnu minulého roku" to "202503",
+                "March sales vs target" to "202603",
+                "období 202605" to "202605",
+                "this quarter" to "2026Q4",
+                "the previous quarter" to "2026Q3",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe code }
+            }
+            for ((span, start) in listOf(
+                "15. března 2025" to day(2025, 3, 15),
+                "2026-03-15" to day(2026, 3, 15),
+                "15.3.2026" to day(2026, 3, 15),
+                "dnes" to day(2026, 11, 1),
+                "tento týden" to day(2026, 10, 26),
+                "past due this week" to day(2026, 10, 26),
+                "loni" to day(2025, 1, 1),
+                "revenue and costs last year" to day(2025, 1, 1),
+                "2025" to day(2025, 1, 1),
+                "v roce 2025" to day(2025, 1, 1),
+                "since 2020" to day(2020, 1, 1),
+                "fiscal year 2025" to day(2025, 1, 1),
+                "fiscal year 2025 by quarter" to day(2025, 1, 1),
+                "posledních 30 dní" to day(2026, 10, 3),
+            )) {
+                withClue(span) { read(span).startInclusive shouldBe start }
+            }
+        }
+
+        // S0.3 (before Scan): a week noun is read with its own scope word only. Elsewhere it is a breakdown, and the
+        // span's other period stands — Scan keeps the longest window that reads, so the breakdown must not change it.
+        "a week breakdown leaves the period it breaks down" {
+            for ((span, code) in listOf(
+                "minulý měsíc po týdnech" to "202610",
+                "last month by week" to "202610",
+            )) {
+                withClue(span) { read(span).periodCode shouldBe code }
+            }
+            for (span in listOf("this year by week", "letos po týdnech", "this year weekly")) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2026, 1, 1)
+                    r.endExclusive shouldBe day(2027, 1, 1)
+                }
+            }
+            for ((span, start) in listOf(
+                "tento týden" to day(2026, 10, 26),
+                "v tomto týdnu" to day(2026, 10, 26),
+                "past due this week" to day(2026, 10, 26),
+                "this week's sales" to day(2026, 10, 26),
+                "minulý týden" to day(2026, 10, 19),
+                "last week" to day(2026, 10, 19),
+                "the past week" to day(2026, 10, 19),
+                "uplynulý týden" to day(2026, 10, 19),
+                "předminulý týden" to day(2026, 10, 12),
+            )) {
+                withClue(span) { read(span).startInclusive shouldBe start }
+            }
+        }
+
+        // S0.3 (for Scan): an ending that is today may stand before the phrase too.
+        "year to date with today before it is year to date" {
+            for (span in listOf("dodnes od začátku roku", "Kolik vratek bylo dodnes od začátku roku")) {
+                val r = read(span)
+                withClue(span) {
+                    r.startInclusive shouldBe day(2026, 1, 1)
+                    r.endExclusive shouldBe day(2026, 11, 2)
+                }
+            }
+        }
+
+        // review-215 P4 (round 4), S0.3 T13: from the start of another year runs to today, which no rule reads; as the
+        // whole year it was a wrong period.
+        "from the start of another year is not read" {
+            for (span in listOf(
+                "od začátku loňského roku",
+                "od začátku minulého roku",
+                "Tržby od začátku předchozího roku",
+                "since the start of last year",
+            )) {
+                withClue(span) { rec.read(span, ref).shouldBeNull() }
+            }
+            read("od začátku tohoto roku").startInclusive shouldBe day(2026, 1, 1)
+            read("od začátku roku").endExclusive shouldBe day(2026, 11, 2)
         }
 
         "a quarter in a year the span writes or says is unchanged" {

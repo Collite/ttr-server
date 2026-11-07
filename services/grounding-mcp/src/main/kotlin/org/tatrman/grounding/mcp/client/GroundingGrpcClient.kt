@@ -4,6 +4,8 @@ package org.tatrman.grounding.mcp.client
 import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
 import org.tatrman.grounding.v1.GroundingServiceGrpcKt
+import org.tatrman.grounding.v1.ScanRequest
+import org.tatrman.grounding.v1.ScanResponse
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
 import shared.logging.OutgoingCallLoggingInterceptor
@@ -34,6 +36,9 @@ class GroundingGrpcClient(
 
     override suspend fun ground(request: GroundRequest): GroundResponse =
         stub.withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS).ground(request)
+
+    override suspend fun scan(request: ScanRequest): ScanResponse =
+        stub.withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS).scan(request)
 
     override fun close() {
         channel.shutdown()

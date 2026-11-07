@@ -15,13 +15,17 @@ import java.time.LocalDate
  * - a year joined to the span by a comparison or a conjunction: "Q2 this year vs last year", „2. čtvrtletí letos a
  *   loni“, "Q2 vs 2024", "last year vs Q2", "Q2 this year and last";
  * - a comparison with a time on its other side, whatever stands between: "Q2 vs the same quarter last year",
- *   „2. čtvrtletí oproti stejnému období loni“, "Q2 vs a year ago", "Q2 vs prior period";
+ *   „2. čtvrtletí oproti stejnému období loni“, "Q2 vs a year ago", "Q2 vs prior period"; a scope word on a noun that
+ *   is no time is none ("Q2 2025 vs current forecast");
  * - two different years: two year words („letošní a loňské“), a year word and a written year that differ („letos
  *   v Q2 2025“), or two years in digits ([NamedYear.bareYears], so not an amount: "more than 2000 units").
  *
+ * - two scope words sharing one noun: „minulý a tento měsíc“, "this and last year".
+ *
  * A year word with no joiner says which year the period is in, and is none: „letošní 2. čtvrtletí“, "Q2 last year",
- * „loni ve 2. čtvrtletí“, "the second quarter of last year". [DateRecognizer] asks it of a numbered quarter or half
- * and of year to date; S0.3 asks it of the other rules (P5).
+ * „loni ve 2. čtvrtletí“, "the second quarter of last year". [DateRecognizer] asks [outside] of a numbered quarter or
+ * half, of year to date and of a fiscal year, with the range each read; the rules older than TS ask [several] of the
+ * whole span (P5).
  */
 internal object OtherPeriods {
     /** What joins two periods, or a number to the period whose noun it shares: „1. a 2.“, "first through", „1./2.“. */
@@ -45,14 +49,6 @@ internal object OtherPeriods {
      */
     private val numberAfterRe = Regex("""^(?:\s*$JOIN)+\s*($EN_ORDINAL|\b[1-4]\.)""")
 
-    /** A week with a scope word, cs and en: "last week", „tento týden“, „v minulém týdnu“. */
-    private val scopedWeekRe =
-        Regex(
-            """\b(?:this|current|last|past|previous|prior|next)\s+${PeriodWords.EN_ADJ}week\b""" +
-                """|\b(?:tento|tohoto|tomto|tenhle|minul|predchoz|predesl|predminul|posledn|uplynul|pristi)\w*""" +
-                """\s+${PeriodWords.CS_ADJ}(?:tyden|tydn\w*)""",
-        )
-
     /** A day: today, yesterday, tomorrow, cs and en; a date in digits. */
     private val dayRe =
         Regex(
@@ -61,11 +57,6 @@ internal object OtherPeriods {
         )
 
     private val wordRe = Regex("""\b[a-z]+\b""")
-    private val yearAfterRe = Regex("""^\s+\d{4}\b""")
-    private val prepositionBeforeRe = Regex("""\b(?:in|for|of|during|since|until|from|through|by|to)\s+$""")
-
-    /** "may" and "march" are verbs too: a month only after a preposition or before a year. */
-    private val verbMonths = setOf("may", "march")
 
     /**
      * What joins a second year to a period: a comparison or a conjunction, cs and en. Not a comma: "Q2, last year" is
@@ -73,12 +64,23 @@ internal object OtherPeriods {
      */
     private const val COMPARISON =
         """\b(?:vs|versus|oproti|proti|compared\s+(?:to|with)|against|(?:ve\s+)?srovnani\s+se?|(?:v\s+)?porovnani\s+se?)\b\.?"""
-    private const val YEAR_JOIN = """(?:[/&+–-]|$COMPARISON|\b(?:than|nez|and|a|i|or|nebo)\b\.?)"""
+    private const val YEAR_JOIN = """(?:(?<=\s)[/&+–-]|[/&+–-](?=\s)|$COMPARISON|\b(?:than|nez|and|a|i|or|nebo)\b\.?)"""
     private val yearJoinBeforeRe = Regex("""$YEAR_JOIN\s*(?:the\s+)?$""")
     private val yearJoinAfterRe = Regex("""^\s*$YEAR_JOIN""")
 
     /** "Q2 this year and last": a year whose noun the conjunction elides. */
     private val elidedLastRe = Regex("""\b(?:and|or|vs|versus|than)\.?\s+last\b(?!\s*[a-z0-9])""")
+
+    private const val SCOPE =
+        """(?:this|last|previous|prior|next|current|tento|tato|toto|tohoto|tomto|minul\w*|predchoz\w*|predesl\w*""" +
+            """|pristi\w*|soucasn\w*|letosn\w*|lonsk\w*)"""
+
+    /** Two scope words joined, the noun elided after the first: „minulý a tento měsíc“, "this and last year" (P5). */
+    private val pairedScopeRe =
+        Regex("""\b$SCOPE\s*(?:[,/&+–-]|\b(?:a|i|and|or|nebo|az|to|vs|versus)\b)\s*(?:the\s+)?$SCOPE\b""")
+
+    /** Stands for no range at all: a span a rule read as a whole, with no period mention of its own. */
+    private val NOWHERE = -1..-1
 
     private val comparisonRe = Regex(COMPARISON)
 
@@ -96,7 +98,58 @@ internal object OtherPeriods {
         n: String,
         own: IntRange,
         reference: LocalDate,
-    ): Boolean = mentions(n).any { !it.overlaps(own) } || otherYear(n, own, reference) || comparedToTime(n, own)
+        wholeYear: Boolean = false,
+    ): Beside? =
+        when {
+            mentions(n).any { !it.overlaps(own) } ||
+                pairedScopeRe.findAll(n).any { it.range.first < own.first || it.range.last > own.last } ->
+                Beside.SEVERAL
+            // A second year beside a quarter or a month stands for that period in the other year ("Q2 this year vs last
+            // year", „1. pololetí letos a loni“, "Q2 2025 vs 2024"); beside a whole year it is a year of its own.
+            otherYear(n, own, reference) -> if (wholeYear) Beside.SEVERAL else Beside.COMPARED
+            comparedToTime(n, own) -> Beside.COMPARED
+            else -> null
+        }
+
+    /**
+     * What stands beside the period a rule read. `Scan` needs the difference ([org.tatrman.chrono.scan.SpanScanner]):
+     * the parts of a span naming [SEVERAL] periods may each be one ("Q2 2025 vs Q2 2024", "this quarter and last
+     * month", „letos a loni“); a part of one [COMPARED] with a time that leans on it ("Q2 vs the same quarter last
+     * year", "Q2 this year vs last year") is none.
+     */
+    enum class Beside { SEVERAL, COMPARED }
+
+    /**
+     * Does the folded [n] name more than one period, asked of a rule that reads the span as a whole and keeps no range
+     * of its own: the month, date, relative and calendar-year rules older than TS (review-215 P5)? Its period mentions
+     * stand in more than one place („leden až březen 2025“, "this quarter and last month", "today and yesterday"), or
+     * in one place with a year joined or compared beside it ("March vs last year", "May 2025 vs the same month last
+     * year"), or two scope words share one noun („minulý a tento měsíc“). A span with no mention ("2025", "loni")
+     * asks the year tests alone: "2024 vs 2025", "fiscal year 2025 vs 2024".
+     */
+    fun several(
+        n: String,
+        reference: LocalDate,
+    ): Beside? {
+        val places = merged(mentions(n))
+        if (places.size > 1) return Beside.SEVERAL
+        val place = places.singleOrNull()
+        return outside(n, place ?: NOWHERE, reference, wholeYear = place == null)
+    }
+
+    /** [ranges], the overlapping ones merged, in order. */
+    private fun merged(ranges: List<IntRange>): List<IntRange> =
+        ranges.sortedBy { it.first }.fold(mutableListOf()) { acc, r ->
+            val last = acc.lastOrNull()
+            if (last != null &&
+                last.overlaps(r)
+            ) {
+                acc[acc.lastIndex] = last.first..maxOf(last.last, r.last)
+            } else {
+                acc += r
+            }
+            acc
+        }
 
     /**
      * Does a comparison in the folded [n] set [own] against a time: "Q2 vs the same quarter last year", „2. čtvrtletí
@@ -113,15 +166,33 @@ internal object OtherPeriods {
             namesTime(if (m.range.first > own.last) n.substring(m.range.last + 1) else n.substring(0, m.range.first))
         }
 
+    /**
+     * The scope words of [WindowPeriods.timeWordRe]. One names a time on a comparison's other side only with a period
+     * noun after it, as [PeriodWords] reads it ("vs the previous quarter", „oproti minulému měsíci“), or at the end of
+     * that side ("Q2 vs last"). Before any other noun it scopes that noun: "vs current forecast", „oproti minulému
+     * plánu“, "vs this budget" (RR20).
+     */
+    private val scopeWordRe =
+        Regex(
+            """this|that|last|previous|prior|next|current""" +
+                """|minul\w*|predchoz\w*|predesl\w*|tohoto|tomto|toho|pristi\w*|soucasn\w*""",
+        )
+
     /** Does [side] name a time: a relative period word, a year in digits, a month or a word of a time? */
-    private fun namesTime(side: String): Boolean =
-        PeriodWords.findAll(side).isNotEmpty() ||
+    private fun namesTime(side: String): Boolean {
+        val words = wordRe.findAll(side).map { it.value }.toList()
+        return PeriodWords.findAll(side).isNotEmpty() ||
             NamedYear.bareYears(side).isNotEmpty() ||
-            wordRe.findAll(side).any { w ->
-                WindowPeriods.timeWordRe.matches(w.value) ||
-                    comparedTimeWordRe.matches(w.value) ||
-                    Months.ofWord(w.value, withYear = false) != null
+            MonthWords.find(side).isNotEmpty() ||
+            words.withIndex().any { (i, w) ->
+                if (scopeWordRe.matches(w)) {
+                    i == words.lastIndex
+                } else {
+                    WindowPeriods.timeWordRe.matches(w) ||
+                        comparedTimeWordRe.matches(w)
+                }
             }
+    }
 
     /** Does the folded [n] name a year besides the one [own] is in: one joined to the span, or two different ones? */
     private fun otherYear(
@@ -146,7 +217,11 @@ internal object OtherPeriods {
     }
 
     /** Where the folded [n] names a period, other than by a year: the ranges [outside] weighs before the years. */
-    private fun mentions(n: String): List<IntRange> =
+    private fun mentions(n: String): List<IntRange> = mentionMemo(n)
+
+    private val mentionMemo = SpanMemo(compute = ::findMentions)
+
+    private fun findMentions(n: String): List<IntRange> =
         buildList {
             val numbered = NumberedPeriods.quarters(n) + NumberedPeriods.halves(n)
             for (p in numbered) {
@@ -163,14 +238,8 @@ internal object OtherPeriods {
             TrailingPeriods.findAll(n).forEach { add(it.range) }
             WindowPeriods.counts(n).forEach { add(it.range) }
             WindowPeriods.yearToDateRe.findAll(n).forEach { add(it.range) }
-            scopedWeekRe.findAll(n).forEach { add(it.range) }
+            PeriodWords.scopedWeekRe.findAll(n).forEach { add(it.range) }
             dayRe.findAll(n).forEach { add(it.range) }
-            for (m in wordRe.findAll(n)) {
-                val yearAfter = yearAfterRe.containsMatchIn(n.substring(m.range.last + 1))
-                Months.ofWord(m.value, withYear = yearAfter) ?: continue
-                val verb = m.value in verbMonths && !yearAfter
-                if (verb && !prepositionBeforeRe.containsMatchIn(n.substring(0, m.range.first))) continue
-                add(m.range)
-            }
+            MonthWords.find(n).forEach { add(it.range) }
         }
 }

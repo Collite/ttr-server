@@ -27,7 +27,7 @@ class ConversationPeriods(
     private val reference: LocalDate,
     spanWords: List<PeriodWord> = emptyList(),
 ) {
-    private val texts: List<String> =
+    private val texts: List<String> by lazy {
         texts.mapIndexed { i, text ->
             val n = Normalization.fold(text).replace(WHITESPACE, " ")
             if (i == 0) {
@@ -39,6 +39,7 @@ class ConversationPeriods(
                 n
             }
         }
+    }
 
     /** What an anaphoric word of one unit reads against. */
     sealed interface Anchor {
@@ -295,8 +296,7 @@ class ConversationPeriods(
         }
         for (m in wordRe.findAll(n)) {
             if (taken.any { it.overlaps(m.range) }) continue
-            val month = Months.ofWord(m.value, withYear = false) ?: continue
-            if (m.value in VERB_MONTHS && !prepositionBeforeRe.containsMatchIn(n.substring(0, m.range.first))) continue
+            val month = MonthWords.find(n).firstOrNull { it.range == m.range }?.month ?: continue
             // A month with no year is in the year chrono leaned it on; a future one with none, chrono asked about;
             // one in a year nobody settled is in a year nobody knows.
             val year =
@@ -365,7 +365,6 @@ class ConversationPeriods(
 
     private companion object {
         const val DECEMBER = 12
-        val VERB_MONTHS = setOf("may", "march")
         val WHITESPACE = Regex("""\s+""")
 
         /** A month word, then an optional day, then a year: "March 2025", „15. března 2025“, "October 15, 2025". */
@@ -374,8 +373,5 @@ class ConversationPeriods(
         val isoDateRe = Regex("""\b(\d{4})-(\d{1,2})(?:-\d{1,2})?\b""")
         val periodCodeRe = Regex("""\b(?:period|obdobi)\s+(\d{4})(\d{2})\b""")
         val wordRe = Regex("""\b[a-z]+\b""")
-
-        /** "may" and "march" are verbs too; a yearless one is a month only after a preposition. */
-        val prepositionBeforeRe = Regex("""\b(?:in|for|of|during|since|until|from|through|by|to)\s+$""")
     }
 }

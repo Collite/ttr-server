@@ -25,6 +25,64 @@ class DateRecognizerSpec :
             d: Int,
         ) = LocalDate.of(y, m, d)
 
+        "R230 R1 punctuation inside a date or month-year joins no second year" {
+            for (span in listOf("15/3/2025", "15/03/2025", "1/3/2025", "15.3.2025", "2025-03-15")) {
+                withClue(span) {
+                    val r = rec.recognize(span, ref).shouldNotBeNull()
+                    r.startInclusive shouldBe day(2025, 3, if (span == "1/3/2025") 1 else 15)
+                    r.confidence shouldBe if (span == "2025-03-15") 0.97 else 0.96
+                }
+            }
+            for (span in listOf(
+                "Mar-2025",
+                "March/2025",
+                "March-2025",
+                "sales in March/2025",
+                "Mar 2025",
+                "March 2025",
+            )) {
+                withClue(span) { rec.recognize(span, ref).shouldNotBeNull().periodCode shouldBe "202503" }
+            }
+            for (span in listOf("Q2 2025 vs 2024", "2024 vs 2025", "leden–březen 2025", "Q2 2025 – 2024")) {
+                withClue(span) { rec.recognize(span, ref).shouldBeNull() }
+            }
+            rec.recognize("Q2 2025", ref).shouldNotBeNull().periodCode shouldBe "2025Q2"
+        }
+
+        "R230 R3 joined month forms name several periods" {
+            for (span in listOf(
+                "January and March",
+                "March and April",
+                "March or April",
+                "April and March",
+                "May and June",
+                "May to July",
+                "June and May",
+                "march and april 2025",
+                "March through May 2025",
+                "Jan-Mar 2025",
+                "March/April 2025",
+                "in March and April",
+            )) {
+                withClue(span) { rec.recognize(span, ref).shouldBeNull() }
+            }
+            rec.recognize("May 2025", ref).shouldNotBeNull().periodCode shouldBe "202505"
+        }
+
+        "R230 R10 Czech calendar week shares the scoped week grammar" {
+            val nov = LocalDate.of(2026, 11, 1)
+            rec.recognize("minulý kalendářní týden", nov).shouldNotBeNull().startInclusive shouldBe day(2026, 10, 19)
+            rec.recognize("tento kalendářní týden", nov).shouldNotBeNull().startInclusive shouldBe day(2026, 10, 26)
+            rec.recognize("last calendar week", nov).shouldNotBeNull().startInclusive shouldBe day(2026, 10, 19)
+        }
+
+        "R230 R11 a count after a quarter is not a two digit year" {
+            for (span in listOf("Q2 10 stores", "Q2 5 regions")) {
+                rec.recognize(span, LocalDate.of(2026, 11, 1)).shouldNotBeNull().periodCode shouldBe "2026Q2"
+            }
+            for (span in listOf("Q2 25", "Q2 '25", "Q2/25", "Q2 FY25")) rec.recognize(span, ref).shouldBeNull()
+        }
+
         // ---- absolute: ISO ----
         "ISO date → single-day interval" {
             val r = rec.recognize("2026-03-15", ref).shouldNotBeNull()
@@ -103,6 +161,24 @@ class DateRecognizerSpec :
         "an embedded 6-digit id ('doklad 200312') is NOT grounded as a period" {
             // No 'period'/'období' keyword and the code isn't standalone → must not become Dec 2003.
             rec.recognize("doklad 200312", ref).shouldBeNull()
+        }
+
+        "R230 R2 a month bounding a fiscal year is no one period" {
+            for (span in listOf(
+                "fiscal year 2025 ending in June",
+                "fiscal year 2025 starting in July",
+                "fiscal year 2025 through March",
+                "fiskální rok 2025 do března",
+                "June fiscal year 2025",
+                "June from fiscal year 2025",
+            )) {
+                withClue(span) { rec.recognize(span, ref).shouldBeNull() }
+            }
+            rec.recognize("December of fiscal year 2025", ref).shouldNotBeNull().periodCode shouldBe "202512"
+            rec.recognize("v prosinci fiskálního roku 2025", ref).shouldNotBeNull().periodCode shouldBe "202512"
+            rec.recognize("fiscal year 2025", ref).shouldNotBeNull().kind shouldBe ChronoKind.FISCAL_YEAR
+            rec.recognize("Q4 of fiscal year 2025", ref).shouldNotBeNull().periodCode shouldBe "2025Q4"
+            rec.recognize("fiscal year 2025 excluding Q4", ref).shouldBeNull()
         }
 
         // ---- fiscal year ----

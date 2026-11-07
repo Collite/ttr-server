@@ -45,7 +45,11 @@ internal object WindowPeriods {
         )
 
     /** Every count window in the folded [n], in the order they stand. */
-    fun counts(n: String): List<Count> =
+    fun counts(n: String): List<Count> = countMemo(n)
+
+    private val countMemo = SpanMemo(compute = ::findCounts)
+
+    private fun findCounts(n: String): List<Count> =
         countRe
             .findAll(n)
             .map { m ->
