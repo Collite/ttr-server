@@ -67,7 +67,9 @@ object PredictedFingerprintComputer {
                 plan.union.inputsList
                     .firstOrNull()
                     ?.let { topLevelColumns(it) } ?: emptyList()
-            PlanNode.NodeCase.JOIN, PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET -> emptyList()
+            PlanNode.NodeCase.JOIN, PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET,
+            PlanNode.NodeCase.ROW_WRITES,
+            -> emptyList()
             // Phase 2.4 — workspace_ref is a session-scoped leaf whose schema
             // is only knowable at the Worker. Best-effort fingerprint falls
             // back to empty; the Worker emits its own schema fingerprint on

@@ -38,7 +38,7 @@ internal object ErReads {
                         error("read scope requires a read-only ER tree")
                     PlanNode.NodeCase.FILTER, PlanNode.NodeCase.JOIN, PlanNode.NodeCase.UNION,
                     PlanNode.NodeCase.AGGREGATE, PlanNode.NodeCase.SORT, PlanNode.NodeCase.LIMIT_OFFSET,
-                    PlanNode.NodeCase.SUBQUERY, PlanNode.NodeCase.VALUES,
+                    PlanNode.NodeCase.SUBQUERY, PlanNode.NodeCase.VALUES, PlanNode.NodeCase.ROW_WRITES,
                     -> Unit
                 }
             }
