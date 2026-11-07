@@ -294,7 +294,7 @@ class SpanScanner(
     private fun timeWord(folded: String): Boolean =
         folded.any { it.isDigit() } ||
             WindowPeriods.timeWordRe.matches(folded) ||
-            Months.ofWord(folded, withYear = true) != null ||
+            MonthWords.find(folded).isNotEmpty() ||
             YEAR_WORD.matches(folded)
 
     /** At or above the threshold, its confidence; an unanchored reading carries the threshold it passed by rule. */
@@ -440,7 +440,7 @@ class SpanScanner(
             for (t in tokens) {
                 val w = Normalization.fold(text.substring(t.first, t.last + 1))
                 if (Months.find(w) == null) continue
-                if (months.none { it.range == t }) for (k in t) out.setCharAt(k, ' ')
+                if (months.none { it.range.first >= t.first && it.range.last <= t.last }) for (k in t) out.setCharAt(k, ' ')
             }
             return out.toString()
         }

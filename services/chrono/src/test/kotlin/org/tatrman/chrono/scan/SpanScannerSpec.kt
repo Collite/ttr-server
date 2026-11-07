@@ -66,6 +66,17 @@ class SpanScannerSpec :
             spans("May we see revenue for March") shouldBe listOf("March")
         }
 
+        "R230 R4 punctuation preserves month parts instead of leaking their year" {
+            for (text in listOf(
+                "Revenue Jan-Mar 2025", "Revenue January–March 2025", "Tržby leden–březen 2025",
+                "Revenue in March/April 2025", "Tržby leden/únor 2025",
+            )) { spans(text).shouldBeEmpty() }
+            scanner.scan("Revenue mid-March 2025", ref).single().text.contains("March") shouldBe true
+            spans("October's revenue") shouldBe listOf("October's")
+            spans("Počet zařízení v Q2 2025") shouldBe listOf("Q2 2025")
+            spans("Kolik objednal Jan Novák").shouldBeEmpty()
+        }
+
         "a bare period noun is no span" {
             spans("Tržby z tržiště po čtvrtletích").shouldBeEmpty()
             spans("Kolik je dní v měsíci").shouldBeEmpty()
