@@ -122,6 +122,19 @@ class DateRecognizerSpec :
             rec.recognize("doklad 200312", ref).shouldBeNull()
         }
 
+        "R230 R2 a month bounding a fiscal year is no one period" {
+            for (span in listOf(
+                "fiscal year 2025 ending in June", "fiscal year 2025 starting in July",
+                "fiscal year 2025 through March", "fiskální rok 2025 do března",
+                "June fiscal year 2025", "June from fiscal year 2025",
+            )) { withClue(span) { rec.recognize(span, ref).shouldBeNull() } }
+            rec.recognize("December of fiscal year 2025", ref).shouldNotBeNull().periodCode shouldBe "202512"
+            rec.recognize("v prosinci fiskálního roku 2025", ref).shouldNotBeNull().periodCode shouldBe "202512"
+            rec.recognize("fiscal year 2025", ref).shouldNotBeNull().kind shouldBe ChronoKind.FISCAL_YEAR
+            rec.recognize("Q4 of fiscal year 2025", ref).shouldNotBeNull().periodCode shouldBe "2025Q4"
+            rec.recognize("fiscal year 2025 excluding Q4", ref).shouldBeNull()
+        }
+
         // ---- fiscal year ----
         "'fiscal year 2026' → whole-year interval" {
             val r = rec.recognize("fiscal year 2026", ref).shouldNotBeNull()

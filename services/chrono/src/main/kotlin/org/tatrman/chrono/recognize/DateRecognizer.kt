@@ -261,7 +261,7 @@ class DateRecognizer {
 
     // ----- fiscal year: "fiscal year 2026" / "fiskalni rok 2026" -----
 
-    private val fiscalYearRe = Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)\s+(?:year|rok)\s+(\d{4})""")
+    private val fiscalYearRe = Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)\s+(?:year|rok\w*)\s+(\d{4})""")
 
     /** The fiscal/accounting adjectives alone — used when a trigger supplies the missing scope. */
     private val fiscalWordRe = Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)""")
@@ -279,8 +279,17 @@ class DateRecognizer {
         reference: LocalDate,
     ): Read? {
         if (NumberedPeriods.quarters(n).isNotEmpty() || NumberedPeriods.halves(n).isNotEmpty()) return null
-        if (Months.find(n) != null) return null
         val m = fiscalYearRe.find(n) ?: return null
+        if (Months.find(n) != null) {
+            // Only a month OF the calendar, before its name, can take the fiscal year's digits.
+            val month = Regex("""\b[a-z]+\b""").findAll(n).firstOrNull { Months.find(it.value) != null }
+            val before = month != null && month.range.last < m.range.first
+            val link = month?.let { n.substring(it.range.last + 1, if (before) m.range.first else it.range.last + 1) }
+            val ofCalendar = link != null &&
+                (Regex("""^\s+(?:of|in)\s+$""").matches(link) || (m.value.startsWith("fiskal") && link.isBlank()))
+            val defining = Regex("""\b(?:ending|starting|beginning|through|until|to|from|od|do)\b""").containsMatchIn(n)
+            return if (before && ofCalendar && !defining) null else NotOne
+        }
         val y = m.groupValues[1].toIntOrNull() ?: return null
         OtherPeriods.outside(n, m.range, reference, wholeYear = true)?.let { return it.read() }
         return Hit(yearInterval(y, ChronoKind.FISCAL_YEAR, 0.95))
