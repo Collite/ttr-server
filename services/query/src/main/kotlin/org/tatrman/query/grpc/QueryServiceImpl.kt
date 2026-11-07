@@ -2,6 +2,7 @@
 package org.tatrman.query.grpc
 
 import com.google.protobuf.kotlin.toByteString
+import com.google.protobuf.InvalidProtocolBufferException
 import org.tatrman.dispatch.v1.DispatchRequest
 import org.tatrman.meta.v1.GetQueryRequest
 import org.tatrman.meta.v1.OverallStatus
@@ -136,6 +137,10 @@ class QueryServiceImpl(
                     // #261 / BI (C-9) — choose the execution world before compilation or cache lookup.
                     worldRefusal(request.world, context)?.let {
                         emit(it)
+                        return@flow
+                    }
+                    rowWritesRefusal(request)?.let {
+                        emit(errorBatch(it.code, it.humanMessage, context))
                         return@flow
                     }
                     windowRefusal(window)?.let { reason ->
@@ -632,6 +637,13 @@ class QueryServiceImpl(
 
     override suspend fun compile(request: RunRequest): CompileResponse {
         val context = ensureCorrelationId(request.context)
+        rowWritesRefusal(request)?.let {
+            return CompileResponse
+                .newBuilder()
+                .setContext(context)
+                .addMessages(it)
+                .build()
+        }
         val window = request.rowWindow
         windowRefusal(window)?.let { reason ->
             return CompileResponse
@@ -1457,6 +1469,23 @@ class QueryServiceImpl(
     /** Convenience flowOf to keep imports tidy. */
     @Suppress("unused")
     private fun <T> single(value: T): Flow<T> = flowOf(value)
+
+    /** D1 compatibility only: D2 removes this guard when the door can validate and execute row writes. */
+    private fun rowWritesRefusal(request: RunRequest): ResponseMessage? {
+        if (request.sourceLanguage != Language.REL_NODE) return null
+        val plan =
+            try {
+                PlanNode.parseFrom(request.source.toByteArray(Charsets.ISO_8859_1))
+            } catch (_: InvalidProtocolBufferException) {
+                // Preserve the translator's existing refusal for malformed REL_NODE input.
+                return null
+            }
+        return if (plan.nodeCase == PlanNode.NodeCase.ROW_WRITES) {
+            errorMessage("row_writes_unsupported", "Query does not support row writes yet.")
+        } else {
+            null
+        }
+    }
 
     private suspend fun resolveSchema(
         request: RunRequest,

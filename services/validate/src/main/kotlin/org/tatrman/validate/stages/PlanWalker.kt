@@ -142,6 +142,7 @@ internal object PlanWalker {
             PlanNode.NodeCase.SCAN,
             PlanNode.NodeCase.WORKSPACE_REF,
             PlanNode.NodeCase.VALUES,
+            PlanNode.NodeCase.ROW_WRITES,
             -> onLeaf(plan)
             PlanNode.NodeCase.NODE_NOT_SET -> plan
             PlanNode.NodeCase.PROJECT -> {
@@ -498,6 +499,7 @@ internal object ColumnUsage {
             // Store (write-plan root): its `input` read subtree already carries the grain-key + measure
             // columns as a projection, and that subtree is walked as nodes of its own.
             PlanNode.NodeCase.STORE,
+            PlanNode.NodeCase.ROW_WRITES,
             PlanNode.NodeCase.UNION,
             PlanNode.NodeCase.LIMIT_OFFSET,
             PlanNode.NodeCase.SUBQUERY,
@@ -544,7 +546,7 @@ internal object ExpressionRewriter {
     ): PlanNode =
         when (plan.nodeCase) {
             PlanNode.NodeCase.TABLE_SCAN, PlanNode.NodeCase.SCAN, PlanNode.NodeCase.WORKSPACE_REF,
-            PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET,
+            PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET, PlanNode.NodeCase.ROW_WRITES,
             -> plan
             PlanNode.NodeCase.PROJECT ->
                 // LQ — a stacked entity's stamped boundary is a leaf here, as the scan it replaced was: a mask rewrites the

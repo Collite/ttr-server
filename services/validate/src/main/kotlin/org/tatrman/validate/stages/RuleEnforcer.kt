@@ -219,6 +219,7 @@ class RuleEnforcer(
             // A Store is a write-plan root, never a source for ORDER-BY / group-by
             // mask resolution; no bare column ref to resolve here.
             PlanNode.NodeCase.STORE,
+            PlanNode.NodeCase.ROW_WRITES,
             -> false
         }
 
