@@ -1030,6 +1030,22 @@
     }
   },
   {
+    "id": "chrono/r230-r1-numeric-slash-date",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "15/3/2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "interval_start": "2025-03-15"
+    }
+  },
+  {
     "id": "chrono/rp-last-month-en",
     "tool": "ground_time",
     "kind": "DATE",

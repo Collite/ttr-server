@@ -77,7 +77,7 @@ internal object OtherPeriods {
      */
     private const val COMPARISON =
         """\b(?:vs|versus|oproti|proti|compared\s+(?:to|with)|against|(?:ve\s+)?srovnani\s+se?|(?:v\s+)?porovnani\s+se?)\b\.?"""
-    private const val YEAR_JOIN = """(?:[/&+–-]|$COMPARISON|\b(?:than|nez|and|a|i|or|nebo)\b\.?)"""
+    private const val YEAR_JOIN = """(?:(?<=\s)[/&+–-]|[/&+–-](?=\s)|$COMPARISON|\b(?:than|nez|and|a|i|or|nebo)\b\.?)"""
     private val yearJoinBeforeRe = Regex("""$YEAR_JOIN\s*(?:the\s+)?$""")
     private val yearJoinAfterRe = Regex("""^\s*$YEAR_JOIN""")
 

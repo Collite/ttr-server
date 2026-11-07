@@ -25,6 +25,23 @@ class DateRecognizerSpec :
             d: Int,
         ) = LocalDate.of(y, m, d)
 
+        "R230 R1 punctuation inside a date or month-year joins no second year" {
+            for (span in listOf("15/3/2025", "15/03/2025", "1/3/2025", "15.3.2025", "2025-03-15")) {
+                withClue(span) {
+                    val r = rec.recognize(span, ref).shouldNotBeNull()
+                    r.startInclusive shouldBe day(2025, 3, if (span == "1/3/2025") 1 else 15)
+                    r.confidence shouldBe if (span == "2025-03-15") 0.97 else 0.96
+                }
+            }
+            for (span in listOf("Mar-2025", "March/2025", "March-2025", "sales in March/2025", "Mar 2025", "March 2025")) {
+                withClue(span) { rec.recognize(span, ref).shouldNotBeNull().periodCode shouldBe "202503" }
+            }
+            for (span in listOf("Q2 2025 vs 2024", "2024 vs 2025", "leden–březen 2025", "Q2 2025 – 2024")) {
+                withClue(span) { rec.recognize(span, ref).shouldBeNull() }
+            }
+            rec.recognize("Q2 2025", ref).shouldNotBeNull().periodCode shouldBe "2025Q2"
+        }
+
         // ---- absolute: ISO ----
         "ISO date → single-day interval" {
             val r = rec.recognize("2026-03-15", ref).shouldNotBeNull()
