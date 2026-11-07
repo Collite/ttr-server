@@ -99,6 +99,59 @@ class SpanScannerSpec :
             spans("YTD by the end of March") shouldBe listOf("YTD by the end of March")
         }
 
+        "R230 R6 only linked phrases suppress one another" {
+            val rows = listOf(
+                "Sales last year and costs this month" to listOf("last year", "this month"),
+                "Sales last year and costs last month" to listOf("last year", "last month"),
+                "How much did we sell last year and how much this month?" to listOf("last year", "this month"),
+                "Tržby loni a náklady tento měsíc" to listOf("loni", "tento měsíc"),
+                "tržby loni a náklady minulý měsíc" to listOf("loni", "minulý měsíc"),
+                "v březnu 2025 a kolik utratili minulý měsíc" to listOf("březnu 2025", "minulý měsíc"),
+                "Revenue last month for products launched next year" to listOf("last month"),
+                "Customers active since Q2 who bought last month" to listOf("last month"),
+                "Revenue in March for stores opened since Q3" to listOf("March"),
+                "Kolik jsme prodali minulý měsíc zákazníkům od 2. čtvrtletí" to listOf("minulý měsíc"),
+                "Sales for 2025 vs 2024 in 3 regions" to listOf("2025", "2024"),
+                "Q2 2025 vs Q2 2024 top 5" to listOf("Q2 2025", "Q2 2024"),
+                "Sales this quarter and last month for 10 stores" to listOf("this quarter", "last month"),
+            )
+            for ((text, expected) in rows) spans(text) shouldBe expected
+            for (text in listOf(
+                "Q2 this year and last", "1. pololetí letos a loni", "Revenue this month and last year",
+                "Q2 revenue vs the same quarter last year", "revenue for Q2 this year vs last year",
+                "Q2 revenue since 2020", "next Q2", "in 2025 excluding Q4",
+            )) spans(text).shouldBeEmpty()
+            spans("this quarter and last month") shouldBe listOf("this quarter", "last month")
+            for (period in listOf("Q3", "third quarter", "3. čtvrtletí")) {
+                for (bound in listOf(
+                    "since",
+                    "after",
+                    "before",
+                    "until",
+                    "through",
+                    "up to",
+                    "by",
+                    "excluding",
+                    "except",
+                    "without",
+                    "od",
+                    "po",
+                    "před",
+                    "do",
+                    "kromě",
+                    "bez",
+                    "mimo",
+                    "vyjma",
+                )) {
+                    spans("March shops $bound $period") shouldBe listOf("March")
+                }
+            }
+            spans("Q2 revenue vs Q4 last year").shouldBeEmpty()
+            for (padding in listOf("", "one two ", "one two three four five six seven eight ")) {
+                spans(padding + "v březnu 2025 a kolik utratili minulý měsíc") shouldBe listOf("březnu 2025", "minulý měsíc")
+            }
+        }
+
         "a bare period noun is no span" {
             spans("Tržby z tržiště po čtvrtletích").shouldBeEmpty()
             spans("Kolik je dní v měsíci").shouldBeEmpty()

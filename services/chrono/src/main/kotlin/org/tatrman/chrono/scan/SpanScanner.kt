@@ -146,10 +146,34 @@ class SpanScanner(
             return u to (read[u] ?: recognizer.readSpan(textOfWindow(u), reference, triggers, context))
         }
 
-        // A phrase that names no one period keeps every part of it out.
+        // Only the phrases a linking word connects can change or suppress one another.
+        fun linked(w: Window): Boolean {
+            val times = (w.first..w.last).filter { timeWords[it] }
+            return times.zipWithNext().all { (left, right) ->
+                val gap = words.subList(left + 1, right)
+                val relation = gap.joinToString(" ")
+                // Use the same linking vocabulary for one-word and multi-word bounds ("up to Q3").
+                // A bound's own unread phrase cannot reach back across an unrelated clause.
+                val bound =
+                    (left + 1 until right).lastOrNull { start ->
+                        val tail = words.subList(start, right).joinToString(" ")
+                        LINK.containsMatchIn(tail) &&
+                            !COMPARISON_LINK.containsMatchIn(tail) &&
+                            (right..w.last).any { end -> read[Window(start, end)] == SpanReading.NoOnePeriod }
+                    }
+                val separateBound =
+                    bound != null &&
+                        (left + 1 until bound).any { !SMALL.matches(words[it]) }
+                gap.all { SMALL.matches(it) } ||
+                    (LINK.containsMatchIn(relation) && (!separateBound || COMPARISON_LINK.containsMatchIn(relation))) ||
+                    JOIN_TO_TIME.containsMatchIn(relation)
+            }
+        }
+
+        // A phrase that names no one period keeps every linked part of it out.
         val noOne =
-            read.filterValues { it == SpanReading.NoOnePeriod }.keys.mapNotNull { w ->
-                whole(w).let { (u, r) -> u.takeIf { r == SpanReading.NoOnePeriod } }
+            read.filterValues { it == SpanReading.NoOnePeriod }.keys.filter(::linked).mapNotNull { w ->
+                whole(w).let { (u, r) -> u.takeIf { r == SpanReading.NoOnePeriod && linked(u) } }
             }
         val spans = candidates.filter { c -> noOne.none { it.overlaps(c.window) } }
         val chosen = mutableListOf<Span>()
@@ -160,7 +184,9 @@ class SpanScanner(
         // a part, and no part reads otherwise without the question — „leden“ in „leden až březen 2025“ borrows its
         // year, and „1. a 2. čtvrtletí“ leaves „1.“ out.
         for (w0 in read.filterValues { it == SpanReading.Several }.keys) {
+            if (!linked(w0)) continue
             val (w, r) = whole(w0)
+            if (!linked(w)) continue
             val parts = chosen.filter { w.overlaps(it.window) }
             if (parts.isEmpty()) continue
             val covered =
@@ -321,7 +347,7 @@ class SpanScanner(
             return monthBeside || ordinal || numericDate || count || shortYear
         }
         return WindowPeriods.timeWordRe.matches(w) || phraseWord(w) ||
-            MonthWords.find(w).isNotEmpty() || YEAR_WORD.matches(w) ||
+            Months.ofWord(w, withYear = true) != null || MonthWords.find(w).isNotEmpty() || YEAR_WORD.matches(w) ||
             EXTRA_TIME.matches(w) || COMPACT_TIME.matches(w) ||
             (w.contains(Regex("""[-–/]""")) && w.split(Regex("""[-–/]""")).all { COMPACT_TIME.matches(it) })
     }
@@ -449,9 +475,11 @@ class SpanScanner(
                 """fiscal|financial|accounting|calendar|present""" +
                     """|(?:fiskaln|financn|ucetn|kalendarn|hospodarsk|bezn|stavajic|probihajic)\w*""",
             )
-        private val LINK = Regex(
-            """\b(?:vs|versus|oproti|proti|compared\s+(?:to|with)|against|than|nez|since|after|before|until|through|up to|by|excluding|except|without|od|po|pred|do|krome|bez|mimo|vyjma|onwards|ago|earlier|az|o)\b""",
-        )
+        private val COMPARISON_LINK = Regex("""\b(?:vs|versus|oproti|proti|compared|against|than|nez)\b""")
+        private val LINK =
+            Regex(
+                """\b(?:vs|versus|oproti|proti|compared\s+(?:to|with)|against|than|nez|since|after|before|until|through|up to|by|excluding|except|without|od|po|pred|do|krome|bez|mimo|vyjma|onwards|ago|earlier|az|o)\b""",
+            )
         private val JOIN_TO_TIME = Regex("""\b(?:and|or|a|i|nebo)(?: the)?$""")
         private val SMALL = Regex("""of|the|in|for|during|to|v|ve|za|z|ze|od|do|na|that""")
         private val EXTRA_TIME = Regex("""zacatku|konce|beginning|start|end|date|dneska|dodnes|today|now|so|far|dosud|zatim|past|tento|tato|toto|tenhle|each|every|kazd\w*|uplynul\w*|posledn\w*""")
