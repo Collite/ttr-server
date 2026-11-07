@@ -242,7 +242,13 @@ class SpanScanner(
                     read.none { (u, ru) -> u != v && v.contains(u) && (u.first..u.last).none(extra) && alike(ru, r) }
             }
         if (anotherTime) return false
-        val nounBefore = prefix.all { phraseWord(words[it]) }
+        val nounBefore =
+            prefix.all { i ->
+                val calendarNoun =
+                    i > prefix.first && YEAR_NOUN.matches(words[i]) && CALENDAR_NAME.matches(words[i - 1])
+                val ownNoun = NOUN.matches(words[i]) && nounOfReading(words[i], reading)
+                ADJECTIVE.matches(words[i]) || ownNoun || calendarNoun
+            }
         val nounAfter =
             suffix.isEmpty() ||
                 (
@@ -251,6 +257,21 @@ class SpanScanner(
                         suffix.all { phraseWord(words[it]) || GLUE.matches(words[it]) }
                 )
         return !(nounBefore && nounAfter)
+    }
+
+    /** A grain before a phrase belongs to it only when it names the interval's own unit. */
+    private fun nounOfReading(word: String, reading: ChronoReading): Boolean {
+        val r = (reading as? ChronoReading.Recognized)?.recognition ?: return false
+        val months = java.time.temporal.ChronoUnit.MONTHS.between(r.startInclusive, r.endExclusive)
+        val days = java.time.temporal.ChronoUnit.DAYS.between(r.startInclusive, r.endExclusive)
+        return when {
+            Regex("""years?|rok|roku|roce|rokem""").matches(word) -> months == 12L
+            Regex("""months?|mesic\w*""").matches(word) -> months == 1L
+            Regex("""quarters?|ctvrtlet\w*|kvartal\w*""").matches(word) -> months == 3L
+            Regex("""half|pololet\w*""").matches(word) -> months == 6L
+            Regex("""weeks?|tyden|tydn\w*""").matches(word) -> days == 7L
+            else -> false
+        }
     }
 
     private fun phraseWord(folded: String): Boolean = NOUN.matches(folded) || ADJECTIVE.matches(folded)
@@ -481,6 +502,12 @@ class SpanScanner(
                 """\b(?:vs|versus|oproti|proti|compared\s+(?:to|with)|against|than|nez|since|after|before|until|through|up to|by|excluding|except|without|od|po|pred|do|krome|bez|mimo|vyjma|onwards|ago|earlier|az|o)\b""",
             )
         private val JOIN_TO_TIME = Regex("""\b(?:and|or|a|i|nebo)(?: the)?$""")
+        private val YEAR_NOUN = Regex("""years?|rok|roku|roce|rokem""")
+        private val CALENDAR_NAME =
+            Regex(
+                """fiscal|financial|accounting|calendar|""" +
+                    """(?:fiskaln|financn|ucetn|hospodarsk|kalendarn)\w*""",
+            )
         private val SMALL = Regex("""of|the|in|for|during|to|v|ve|za|z|ze|od|do|na|that""")
         private val EXTRA_TIME = Regex("""zacatku|konce|beginning|start|end|date|dneska|dodnes|today|now|so|far|dosud|zatim|past|tento|tato|toto|tenhle|each|every|kazd\w*|uplynul\w*|posledn\w*""")
         private val COMPACT_TIME = Regex("""q[1-4]|h[12]|fy\d{2,4}|\d{4}-\d{1,2}(?:-\d{1,2})?|\d{1,2}[./]\d{1,2}(?:[./]\d{4})?\.?""")

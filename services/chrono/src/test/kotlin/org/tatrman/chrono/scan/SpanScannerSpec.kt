@@ -152,6 +152,20 @@ class SpanScannerSpec :
             }
         }
 
+        "R230 R7 a grain before a different unit stays outside the span" {
+            for (text in listOf(
+                "sales per quarter last year", "by quarter last year", "each quarter last year",
+                "every month last year", "sales in the same quarter last year",
+            )) spans(text) shouldBe listOf("last year")
+            spans("tržby po čtvrtletích loni") shouldBe listOf("loni")
+            spans("tržby za každý měsíc loni") shouldBe listOf("loni")
+            spans("Revenue fiscal year 2025 Q4") shouldBe listOf("fiscal year 2025 Q4")
+            spans("fiscal year Q4") shouldBe listOf("fiscal year Q4")
+            spans("fiskálního roku Q4") shouldBe listOf("fiskálního roku Q4")
+            spans("Tržby v roce 2025 po měsících") shouldBe listOf("roce 2025")
+            spans("Tržby za loňského roku po měsících") shouldBe listOf("loňského roku")
+        }
+
         "a bare period noun is no span" {
             spans("Tržby z tržiště po čtvrtletích").shouldBeEmpty()
             spans("Kolik je dní v měsíci").shouldBeEmpty()
