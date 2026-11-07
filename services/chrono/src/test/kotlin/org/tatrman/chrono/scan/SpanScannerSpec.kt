@@ -77,6 +77,28 @@ class SpanScannerSpec :
             spans("Kolik objednal Jan Novák").shouldBeEmpty()
         }
 
+        "R230 R5 measures attributes verbs and document numbers stay outside spans" {
+            val rows = listOf(
+                "Revenue this year, costs last month by product" to listOf("this year", "last month"),
+                "Revenue this year costs last month by product" to listOf("this year", "last month"),
+                "Revenue last year by region; margin this month by product" to listOf("last year", "this month"),
+                "Revenue last year with margin this month by product" to listOf("last year", "this month"),
+                "Revenue letos, náklady minulý měsíc by product" to listOf("letos", "minulý měsíc"),
+                "Revenue loni po regionech, marže tento měsíc by product" to listOf("loni", "tento měsíc"),
+                "Revenue this year costs in March by product" to listOf("this year", "March"),
+                "Document 202605 was issued last month" to listOf("last month"),
+                "Invoice 202605 from last month" to listOf("last month"),
+                "Tržby z faktury 202605 za minulý měsíc" to listOf("minulý měsíc"),
+                "Q2 sales last year by region" to listOf("Q2", "last year"),
+            )
+            for ((text, expected) in rows) spans(text) shouldBe expected
+            for (word in listOf("sales", "costs", "margin", "stores", "issued", "green", "202605")) {
+                spans("this year $word last month") shouldBe listOf("this year", "last month")
+            }
+            spans("YTD by end of March") shouldBe listOf("YTD by end of March")
+            spans("YTD by the end of March") shouldBe listOf("YTD by the end of March")
+        }
+
         "a bare period noun is no span" {
             spans("Tržby z tržiště po čtvrtletích").shouldBeEmpty()
             spans("Kolik je dní v měsíci").shouldBeEmpty()
@@ -113,7 +135,7 @@ class SpanScannerSpec :
 
         "a yearless period leans on the question's year, as Ground reads it" {
             val found = scanner.scan("Q2 sales last year by region", ref)
-            found.map { it.text } shouldBe listOf("Q2 sales last year")
+            found.map { it.text } shouldBe listOf("Q2", "last year")
         }
 
         "a phrase keeps its own words: a period noun after it, a time of its own before it" {

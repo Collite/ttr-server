@@ -99,6 +99,7 @@ class SpanScanner(
         val tokens = tokens(working)
         if (tokens.isEmpty()) return emptyList()
         val words = tokens.map { Normalization.fold(working.substring(it.first, it.last + 1)) }
+        val timeWords = words.indices.map { timeWord(words, it, working, tokens) }
         val context = listOf(text) + priorQuestions
         val anchored =
             tokens.indices.map {
@@ -119,6 +120,7 @@ class SpanScanner(
                 val reading = (r as? SpanReading.Read)?.reading ?: return@mapNotNull null
                 val confidence = confidenceOf(reading) ?: return@mapNotNull null
                 when {
+                    !phraseWords(w, words, timeWords) -> null
                     bareCode(working, tokens, w) -> null
                     amount(working, tokens, w, reading) -> null
                     // A year no word places is a span only as the bare number (§3.4): "last year for 2000" is not 2000.
@@ -163,7 +165,7 @@ class SpanScanner(
             if (parts.isEmpty()) continue
             val covered =
                 (w.first..w.last).all { i ->
-                    !timeWord(words[i]) || parts.any { i in it.window.first..it.window.last }
+                    !timeWords[i] || parts.any { i in it.window.first..it.window.last }
                 }
             val alone =
                 parts.all { p ->
@@ -290,12 +292,45 @@ class SpanScanner(
             Months.find(folded) != null ||
             triggers.matches(token)
 
-    /** Is [folded] a word of a time: a digit, a month, a period, scope or day word, a one-word year, an ordinal? */
-    private fun timeWord(folded: String): Boolean =
-        folded.any { it.isDigit() } ||
-            WindowPeriods.timeWordRe.matches(folded) ||
-            MonthWords.find(folded).isNotEmpty() ||
-            YEAR_WORD.matches(folded)
+    /** The single vocabulary used for returned spans, phrase links and Several coverage. */
+    private fun timeWord(
+        words: List<String>,
+        i: Int,
+        text: String,
+        tokens: List<IntRange>,
+    ): Boolean {
+        val w = words[i]
+        if (w.all(Char::isDigit) || ORDINAL.matches(w.removeSuffix("."))) {
+            if (SIX_DIGITS.matches(w)) return words.getOrNull(i - 1) in setOf("period", "obdobi") || tokens.size == 1
+            if (Regex("""\d{4}""").matches(w)) {
+                val around = Window(maxOf(0, i - 2), minOf(words.lastIndex, i + 1))
+                return w.toInt() in NamedYear.bareYears(Normalization.fold(textOf(text, tokens, around)))
+            }
+            val previous = words.getOrNull(i - 1).orEmpty()
+            val next = words.getOrNull(i + 1).orEmpty()
+            val monthBeside = Months.ofWord(previous, withYear = true) != null || Months.ofWord(next, withYear = true) != null
+            val ordinal = w.endsWith(".") &&
+                (NOUN.matches(next) || (w.removeSuffix(".") in setOf("1", "2", "3", "4") &&
+                    words.subList(maxOf(0, i - 3), minOf(words.size, i + 4)).any { NOUN.matches(it) }))
+            val numericDate = Regex("""\d{1,2}\.\s*\d{1,2}\.\s*\d{4}""").containsMatchIn(
+                words.subList(maxOf(0, i - 2), minOf(words.size, i + 3)).joinToString(" "),
+            )
+            val count = Regex("""last|past|posledn\w*|minul\w*""").matches(previous) && (NOUN.matches(next) || Regex("""days?|den|dn[iu]|dny""").matches(next))
+            val shortYear = Regex("""q[1-4]|h[12]""").matches(previous) &&
+                (next.isEmpty() || WindowPeriods.timeWordRe.matches(next))
+            return monthBeside || ordinal || numericDate || count || shortYear
+        }
+        return WindowPeriods.timeWordRe.matches(w) || phraseWord(w) ||
+            MonthWords.find(w).isNotEmpty() || YEAR_WORD.matches(w) ||
+            EXTRA_TIME.matches(w) || COMPACT_TIME.matches(w) ||
+            (w.contains(Regex("""[-–/]""")) && w.split(Regex("""[-–/]""")).all { COMPACT_TIME.matches(it) })
+    }
+
+    private fun phraseWords(w: Window, words: List<String>, timeWords: List<Boolean>): Boolean =
+        (w.first..w.last).all { i ->
+            timeWords[i] || SMALL.matches(words[i]) ||
+                (words[i] == "by" && Regex("""by (?:the )?end of .*""").matches(words.subList(i, w.last + 1).joinToString(" ")))
+        }
 
     /** At or above the threshold, its confidence; an unanchored reading carries the threshold it passed by rule. */
     private fun confidenceOf(reading: ChronoReading): Double? =
@@ -414,6 +449,13 @@ class SpanScanner(
                 """fiscal|financial|accounting|calendar|present""" +
                     """|(?:fiskaln|financn|ucetn|kalendarn|hospodarsk|bezn|stavajic|probihajic)\w*""",
             )
+        private val LINK = Regex(
+            """\b(?:vs|versus|oproti|proti|compared\s+(?:to|with)|against|than|nez|since|after|before|until|through|up to|by|excluding|except|without|od|po|pred|do|krome|bez|mimo|vyjma|onwards|ago|earlier|az|o)\b""",
+        )
+        private val JOIN_TO_TIME = Regex("""\b(?:and|or|a|i|nebo)(?: the)?$""")
+        private val SMALL = Regex("""of|the|in|for|during|to|v|ve|za|z|ze|od|do|na|that""")
+        private val EXTRA_TIME = Regex("""zacatku|konce|beginning|start|end|date|dneska|dodnes|today|now|so|far|dosud|zatim|past|tento|tato|toto|tenhle|each|every|kazd\w*|uplynul\w*|posledn\w*""")
+        private val COMPACT_TIME = Regex("""q[1-4]|h[12]|fy\d{2,4}|\d{4}-\d{1,2}(?:-\d{1,2})?|\d{1,2}[./]\d{1,2}(?:[./]\d{4})?\.?""")
         private val GLUE = Regex("""of|the|that|in|for""")
 
         /** What makes "year" a measure after it: "year over year", "year on year". */
@@ -424,7 +466,7 @@ class SpanScanner(
             Regex(
                 """letos\w*|v?loni|v?lonsk\w*|predlon\w*|tohorocn\w*|(?:pred)?minulorocn\w*|ytd""" +
                     // an ordinal: the elided period of „1. a 2. čtvrtletí“ is "first" in "first and second quarter"
-                    """|first|second|third|fourth|1st|2nd|3rd|4th|prvn\w*|druh\w*|tret\w*|ctvrt(?!let)\w*""",
+                    """|first|second|third|fourth|1st|2nd|3rd|4th|prvn\w*|druh(?:y|e|a|eho|emu|em|ou|ych|ym|ymi)|tret\w*|ctvrt(?!let)\w*""",
             )
 
         /**
