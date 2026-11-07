@@ -166,6 +166,20 @@ class SpanScannerSpec :
             spans("Tržby za loňského roku po měsících") shouldBe listOf("loňského roku")
         }
 
+        "R230 R9 months are blanked only where the shared helper finds verbs or names" {
+            for ((text, expected) in listOf(
+                "May sales by region" to listOf("May"), "March revenue by product" to listOf("March"),
+                "may revenue by region" to listOf("may"), "show march revenue" to listOf("march"),
+                "compare march and april revenue" to listOf("march", "april"),
+                "Revenue in Jan" to listOf("Jan"), "Revenue in Dec." to listOf("Dec"),
+                "Show revenue, May vs April" to listOf("May", "April"), "What were May sales?" to listOf("May"),
+                "Q2 2025 sales may rise" to listOf("Q2 2025"),
+                "May we see revenue for March" to listOf("March"),
+                "May I see sales for last month?" to listOf("last month"),
+                "Kolik objednal Jan Novák" to emptyList(),
+            )) spans(text) shouldBe expected
+        }
+
         "a bare period noun is no span" {
             spans("Tržby z tržiště po čtvrtletích").shouldBeEmpty()
             spans("Kolik je dní v měsíci").shouldBeEmpty()
