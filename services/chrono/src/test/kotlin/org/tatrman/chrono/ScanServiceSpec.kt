@@ -129,6 +129,7 @@ class ScanServiceSpec :
                 )
             metered.scan(request("Tržby za minulý měsíc"))
             metered.scan(request("Tržby v Brně"))
+            metered.scan(request("last month", reference = "yesterday"))
             metered.scan(request("Revenue this quarter and last month, and today"))
             val metrics = reader.collectAllMetrics()
             val spans =
@@ -136,7 +137,7 @@ class ScanServiceSpec :
                     .first { it.name == "chrono_scan_total" }
                     .longSumData.points
                     .associate { it.attributes.get(AttributeKey.stringKey("spans")) to it.value }
-            spans shouldBe mapOf("1" to 1L, "0" to 1L, "3+" to 1L)
+            spans shouldBe mapOf("1" to 1L, "0" to 1L, "3+" to 1L, "error" to 1L)
             metrics.any { it.name == "chrono_scan_latency_ms" } shouldBe true
         }
     })

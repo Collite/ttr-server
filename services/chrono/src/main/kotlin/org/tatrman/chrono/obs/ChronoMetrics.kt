@@ -52,8 +52,21 @@ class ChronoMetrics(
     fun recordScan(
         spans: Int,
         latencyMs: Double,
+        error: Boolean = false,
     ) {
-        scanCounter.add(1, Attributes.of(SPANS, if (spans >= 3) "3+" else spans.toString()))
+        scanCounter.add(
+            1,
+            Attributes.of(
+                SPANS,
+                if (error) {
+                    "error"
+                } else if (spans >= 3) {
+                    "3+"
+                } else {
+                    spans.toString()
+                },
+            ),
+        )
         scanLatencyHistogram.record(latencyMs)
     }
 

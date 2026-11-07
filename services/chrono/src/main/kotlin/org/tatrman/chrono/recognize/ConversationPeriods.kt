@@ -373,7 +373,5 @@ class ConversationPeriods(
         val isoDateRe = Regex("""\b(\d{4})-(\d{1,2})(?:-\d{1,2})?\b""")
         val periodCodeRe = Regex("""\b(?:period|obdobi)\s+(\d{4})(\d{2})\b""")
         val wordRe = Regex("""\b[a-z]+\b""")
-
-
     }
 }

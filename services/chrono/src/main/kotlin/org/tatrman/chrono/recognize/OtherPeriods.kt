@@ -49,14 +49,6 @@ internal object OtherPeriods {
      */
     private val numberAfterRe = Regex("""^(?:\s*$JOIN)+\s*($EN_ORDINAL|\b[1-4]\.)""")
 
-    /** A week with a scope word, cs and en: "last week", „tento týden“, „v minulém týdnu“. */
-    private val scopedWeekRe =
-        Regex(
-            """\b(?:this|current|last|past|previous|prior|next)\s+${PeriodWords.EN_ADJ}week\b""" +
-                """|\b(?:tento|tohoto|tomto|tenhle|minul|predchoz|predesl|predminul|posledn|uplynul|pristi)\w*""" +
-                """\s+${PeriodWords.CS_ADJ}(?:tyden|tydn\w*)""",
-        )
-
     /** A day: today, yesterday, tomorrow, cs and en; a date in digits. */
     private val dayRe =
         Regex(
@@ -65,6 +57,7 @@ internal object OtherPeriods {
         )
 
     private val wordRe = Regex("""\b[a-z]+\b""")
+
     /**
      * What joins a second year to a period: a comparison or a conjunction, cs and en. Not a comma: "Q2, last year" is
      * Q2 of last year.
@@ -245,7 +238,7 @@ internal object OtherPeriods {
             TrailingPeriods.findAll(n).forEach { add(it.range) }
             WindowPeriods.counts(n).forEach { add(it.range) }
             WindowPeriods.yearToDateRe.findAll(n).forEach { add(it.range) }
-            scopedWeekRe.findAll(n).forEach { add(it.range) }
+            PeriodWords.scopedWeekRe.findAll(n).forEach { add(it.range) }
             dayRe.findAll(n).forEach { add(it.range) }
             MonthWords.find(n).forEach { add(it.range) }
         }

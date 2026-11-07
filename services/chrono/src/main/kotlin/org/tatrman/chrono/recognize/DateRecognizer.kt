@@ -261,7 +261,8 @@ class DateRecognizer {
 
     // ----- fiscal year: "fiscal year 2026" / "fiskalni rok 2026" -----
 
-    private val fiscalYearRe = Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)\s+(?:year|rok\w*)\s+(\d{4})""")
+    private val fiscalYearRe =
+        Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)\s+(?:year|rok\w*)\s+(\d{4})""")
 
     /** The fiscal/accounting adjectives alone — used when a trigger supplies the missing scope. */
     private val fiscalWordRe = Regex("""(?:fiscal|financial|fiskaln\w*|financn\w*|ucetni)""")
@@ -285,8 +286,9 @@ class DateRecognizer {
             val month = Regex("""\b[a-z]+\b""").findAll(n).firstOrNull { Months.find(it.value) != null }
             val before = month != null && month.range.last < m.range.first
             val link = month?.let { n.substring(it.range.last + 1, if (before) m.range.first else it.range.last + 1) }
-            val ofCalendar = link != null &&
-                (Regex("""^\s+(?:of|in)\s+$""").matches(link) || (m.value.startsWith("fiskal") && link.isBlank()))
+            val ofCalendar =
+                link != null &&
+                    (Regex("""^\s+(?:of|in)\s+$""").matches(link) || (m.value.startsWith("fiskal") && link.isBlank()))
             val defining = Regex("""\b(?:ending|starting|beginning|through|until|to|from|od|do)\b""").containsMatchIn(n)
             return if (before && ofCalendar && !defining) null else NotOne
         }
@@ -735,20 +737,6 @@ class DateRecognizer {
     /** A week noun, whole: not the grain adjectives *weekly*, *týdenní*. */
     private val weekNounRe = Regex("""\bweeks?\b|\btyden\b|\btydn\w*""")
 
-    /**
-     * A week with its scope word right before the noun: „minulý týden“, „v tomto týdnu“, "this week", "the past
-     * week". The week rule reads only this phrase: a scope word elsewhere scopes another noun, and "minulý měsíc
-     * po týdnech" or "last month by week" is last month broken down by week, not last week (S0.3: `Scan` keeps the
-     * longest window that reads, so a breakdown word must not change the reading).
-     */
-    private val scopedWeekRe =
-        Regex(
-            """\b(?:this|current|last|past|previous|prior)\s+${PeriodWords.EN_ADJ}week\b""" +
-                """|\b(?:tento|tato|toto|tohoto|tomto|tomuto|timto|tenhle|tohle|tomhle|tohohle""" +
-                """|aktualn\w*|soucasn\w*|minul\w*|predchoz\w*|predesl\w*|predminul\w*|uplynul\w*)""" +
-                """\s+(?:tyden|tydn\w*)""",
-        )
-
     /** Two periods back: *předminulý týden*. Asked before [lastScopeWords], which they contain. */
     private val twoBackScopeWords = listOf("predlon", "predminul")
 
@@ -781,7 +769,7 @@ class DateRecognizer {
         }
         if (weekNounRe.containsMatchIn(n)) {
             // The week its own scope word stands before: „minulý týden“, "past due this week".
-            scopedWeekRe.find(n)?.let { return week(it.value, reference, triggered)?.let(::Hit) }
+            PeriodWords.scopedWeekRe.find(n)?.let { return week(it.value, reference, triggered)?.let(::Hit) }
             // A week noun with none is a breakdown when the span scopes something else („minulý měsíc po
             // týdnech“, "this year by week"); alone, it is the current week only when triggered.
             if (!hasAny(n, thisScopeWords) && !hasAny(n, lastScopeWords) && !hasAny(n, twoBackScopeWords)) {
@@ -922,7 +910,6 @@ class DateRecognizer {
             when {
                 today != null || todayBefore != null -> reference.plusDays(1)
                 month != null -> LocalDate.of(year, month, 1).plusMonths(1)
-                otherEnding(ending) -> return NotOne
                 year != reference.year -> return null
                 else -> reference.plusDays(1)
             }

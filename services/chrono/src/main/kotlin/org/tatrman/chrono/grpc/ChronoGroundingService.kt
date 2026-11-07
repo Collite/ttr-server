@@ -98,7 +98,11 @@ class ChronoGroundingService(
     override suspend fun scan(request: ScanRequest): ScanResponse {
         val startNanos = System.nanoTime()
         val response = scanInternal(request)
-        metrics.recordScan(response.spansCount, (System.nanoTime() - startNanos) / 1_000_000.0)
+        metrics.recordScan(
+            response.spansCount,
+            (System.nanoTime() - startNanos) / 1_000_000.0,
+            response.messagesList.any { it.severity == Severity.ERROR },
+        )
         logger.debug("chrono scan text='{}' → {} span(s)", request.text, response.spansCount)
         return response
     }
@@ -137,10 +141,17 @@ class ChronoGroundingService(
                         .build()
                 },
             ).also { response ->
-                if (found.truncated) response.addMessages(
-                    ResponseMessage.newBuilder().setSeverity(Severity.WARNING).setCode("text_too_long")
-                        .setHumanMessage("Scan reads the first ${SpanScanner.MAX_TOKENS} tokens; remaining text was skipped"),
-                )
+                if (found.truncated) {
+                    response.addMessages(
+                        ResponseMessage
+                            .newBuilder()
+                            .setSeverity(Severity.WARNING)
+                            .setCode("text_too_long")
+                            .setHumanMessage(
+                                "Scan reads the first ${SpanScanner.MAX_TOKENS} tokens; remaining text was skipped",
+                            ),
+                    )
+                }
             }.build()
     }
 

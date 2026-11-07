@@ -2,6 +2,7 @@
 package org.tatrman.grounding.mcp
 
 import com.google.protobuf.util.JsonFormat
+import org.tatrman.common.v1.Severity
 import org.tatrman.grounding.v1.EntityKind
 import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
@@ -92,7 +93,7 @@ class Tools(
     suspend fun scanTimeCallback(request: CallToolRequest): CallToolResult {
         val args = request.arguments
         val text = args?.get("text")?.jsonPrimitive?.contentOrNull
-        if (text.isNullOrEmpty()) return argError("Missing required argument: text")
+        if (text.isNullOrBlank()) return argError("Missing required argument: text")
         val ref =
             args["context"]
                 ?.jsonObject
@@ -134,17 +135,22 @@ class Tools(
         return CallToolResult(
             content = listOf(TextContent(text = scanSummary(response))),
             structuredContent = structured,
-            isError = false,
+            isError = response.messagesList.any { it.severity == Severity.ERROR },
         )
     }
 
     private fun scanSummary(response: ScanResponse): String =
-        when {
-            response.spansCount > 0 ->
-                "Time phrases:\n" + response.spansList.joinToString("\n") { "- [${it.start}, ${it.end}) ${it.text}" }
-            response.messagesCount > 0 -> "No time phrases: " + response.messagesList.first().humanMessage
-            else -> "No time phrases."
-        }
+        buildList {
+            if (response.spansCount > 0) {
+                add(
+                    "Time phrases:\n" +
+                        response.spansList.joinToString("\n") { "- [${it.start}, ${it.end}) ${it.text}" },
+                )
+            } else {
+                add("No time phrases.")
+            }
+            response.messagesList.forEach { add("${it.code}: ${it.humanMessage}") }
+        }.joinToString("\n")
 
     // ----- shared handler -----
 

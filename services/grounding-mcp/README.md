@@ -12,7 +12,8 @@ wrappers, no grounding logic: each tool's arguments are the camelCase mirror of 
 | `scan_time` | `grounding.time.scan:v1` | chrono `Scan` | `text` (quoted literals blanked, length kept), `package`, `context` (`referenceDatetime` required, `locale`, `priorQuestions`) | `{spans: [{start, end, text, kind, confidence, trigger}], messages}` — every field printed, so a span at offset 0 has `start: 0` and none is `spans: []` |
 
 `scan_time` finds the time phrases of a question (TS-P0 S0.3); ground each span with `ground_time`. What a span is,
-and why, is chrono's: see `services/chrono/README.md` § `Scan`.
+Warnings (including `text_too_long`, after 128 tokens) and chrono errors are preserved; any ERROR makes the tool
+result `isError=true`. What a span is, and why, is chrono's: see `services/chrono/README.md` § `Scan`.
 
 `isError` is for a bad argument (`INVALID_ARGUMENT`) or a failed call to the service (`TRANSPORT_ERROR`);
 `AWAITING_CLARIFICATION`, `UNGROUNDABLE` and a scan that finds nothing are ordinary results. Each tool is wrapped in

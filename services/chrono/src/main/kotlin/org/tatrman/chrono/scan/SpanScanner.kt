@@ -17,42 +17,13 @@ import org.tatrman.text.Normalization
 import java.time.LocalDate
 
 /**
- * TS-P0 S0.3 (contracts §3) — the time phrases in a text, found by chrono's own rules, so that no rule about which
- * words are a time phrase lives outside chrono (I-3). Every window of one to [MAX_WINDOW] tokens is read by
- * [DateRecognizer] exactly as `Ground` reads a span, with the text as the question and the earlier questions after
- * it. A window is a candidate when:
- * - it reads as a period ([ChronoReading.Recognized] at or above [threshold]) or as one the conversation gives
- *   nothing to read against ([ChronoReading.Unanchored]) (§3.2);
- * - none of its words is idle. A smaller window inside it reading the same makes the rest idle, unless the rest is
- *   part of another time read across it („od začátku roku“ in "od začátku roku 2025", in „loni od začátku roku“) or
- *   a period noun of the phrase (an adjective and a noun before it, a noun after it: "loňského roku", "Q2 of the
- *   year", "fiscal year 2025 Q4"). "za minulý měsíc" is "minulý měsíc", and so is "minulý měsíc po týdnech" (a
- *   breakdown). Which column a word targets („splatné“) is not part of the reading;
- * - it is no number: not a bare six-digit run in a longer text (a document number; a period only with *období* /
- *   *period* or as the whole text, §3.4), not a four-digit run the words around it make an amount ("more than 2000
- *   units", as [NamedYear.bareYears] reads it), and not a wider window that reads only such a run as a year beside a
- *   year word ("last year for 2000"). A bare four-digit year alone is a span: the consumer decides (⚑TS-4).
+ * Chrono's own reads over windows of at most seven tokens in the first 128 tokens of a question. A returned span
+ * contains only words of a time and the phrase's small words; a smaller equivalent reading makes other words idle.
+ * Grain nouns belong only to their own unit. MonthWords blanks month look-alikes in place before recognition.
  *
- * A window that names no one period ([SpanReading.NoOnePeriod]: "next Q2", "excluding Q4", "Q2 since 2020", "Q2 vs
- * the same quarter last year", „1. pololetí letos a loni“) keeps every candidate it touches out: a part read alone
- * („Q2“, "Q4", "last year") would be a confident wrong period. Of the candidates left, the longest wins over any it
- * overlaps, then the earliest (§3.3). A window that names several periods side by side ([SpanReading.Several]) keeps
- * the spans it touches only when they are all of it — every time word in it lies in one, and each reads the same
- * without the question: "Q2 2025 vs Q2 2024" and "this quarter and last month" give two spans each; „leden až březen
- * 2025“ (*leden* borrows the year), „1. a 2. čtvrtletí“ and „minulý a tento měsíc“ (a word left out) give none. A
- * window of seven tokens can cut through a phrase: the phrase it cuts is read whole, and that reading decides
- * ("2025 vs Q2 2024" is a cut of "Q2 2025 vs Q2 2024"; "month of the year a year ago" of "the last month of the year
- * a year ago").
- *
- * Three kinds of word are blanked before the windows are read, as the caller blanks a quoted literal: a word with a
- * month's stem inside that is no month (*zařízení*, *červená* — [Months.find] reads a stem anywhere, which is right
- * for a span already known to be a date, not for a whole question), an English month abbreviation with no day or
- * year beside it ("Jan Novák"), and *may* / *march* as a verb ("may we see …"). Offsets are UTF-16 code units into
- * the text as given: it is split at whitespace and blanked in place, never rewritten, so a decomposed letter or a
- * surrogate pair moves no offset.
- *
- * The slice narrows nothing a rule reads on its own: a window with a slice term may read scope-free, as `Ground` does
- * (RV-42), and [Found.trigger] names the term, else the kind of period read. `Scan` never calls the LLM fallback.
+ * NoOnePeriod and Several suppress parts only across linked phrases. Several keeps its parts when every time word
+ * is covered and each part reads the same with an empty question slot and the conversation intact. Candidate and
+ * sub-window indexes bound selection work to local windows. Offsets remain original UTF-16 offsets. No LLM call.
  */
 class SpanScanner(
     private val recognizer: DateRecognizer = DateRecognizer(),
@@ -89,7 +60,10 @@ class SpanScanner(
      * The time phrases in [text], in text order, read against [reference]. [priorQuestions] are the user's earlier
      * questions, newest first, as `GroundingContext.prior_questions` carries them.
      */
-    data class Result(val spans: List<Found>, val truncated: Boolean)
+    data class Result(
+        val spans: List<Found>,
+        val truncated: Boolean,
+    )
 
     fun scan(
         text: String,
@@ -148,7 +122,9 @@ class SpanScanner(
                     w.size > 1 &&
                         unplacedNumber(r, textOfWindow(w)) &&
                         PeriodWords.findAll(Normalization.fold(textOfWindow(w)), PeriodUnit.YEAR).isNotEmpty() -> null
-                    within(w, read).any { (inner, r2) -> idle(w, inner, r2, reading, read, words, textOfWindow) } -> null
+                    within(w, read).any { (inner, r2) ->
+                        idle(w, inner, r2, reading, read, words, textOfWindow)
+                    } -> null
                     else -> Span(w, reading, confidence)
                 }
             }
@@ -159,9 +135,23 @@ class SpanScanner(
         // The phrase a window cuts through: the window and every candidate crossing its edge, read whole. A window of
         // seven tokens may end inside a longer phrase ("the last month of the year a year ago"), or begin inside the
         // phrase before it ("2025 vs Q2 2024" out of "Q2 2025 vs Q2 2024").
-        fun whole(w: Window): Pair<Window, SpanReading?> {
+        fun whole(window: Window): Pair<Window, SpanReading?> {
+            // A window ending after "Q2 10" cuts through the count in "Q2 10 stores". Read its noun too;
+            // otherwise the shortened window invents a two-digit year and suppresses Q2 (R11).
+            val w =
+                if (window.last < words.lastIndex &&
+                    Regex("""\d{1,2}""").matches(words[window.last]) &&
+                    !timeWords[window.last]
+                ) {
+                    Window(window.first, window.last + 1)
+                } else {
+                    window
+                }
             val crossing = (w.first..w.last).flatMap { candidatesAt[it] }.distinct().filter { !w.contains(it.window) }
-            if (crossing.isEmpty()) return w to read[w]
+            if (crossing.isEmpty()) {
+                return w to
+                    (read[w] ?: recognizer.readSpan(textOfWindow(w), reference, triggers, context))
+            }
             val u =
                 Window(
                     minOf(w.first, crossing.minOf { it.window.first }),
@@ -203,9 +193,11 @@ class SpanScanner(
         for (w in noOne) for (i in w.first..w.last) blocked[i] = true
         val spans = candidates.filter { c -> (c.window.first..c.window.last).none { blocked[it] } }
         val selected = arrayOfNulls<Span>(tokens.size)
-        for (size in MAX_WINDOW downTo 1) for (s in spans) {
-            if (s.window.size == size && (s.window.first..s.window.last).all { selected[it] == null }) {
-                for (i in s.window.first..s.window.last) selected[i] = s
+        for (size in MAX_WINDOW downTo 1) {
+            for (s in spans) {
+                if (s.window.size == size && (s.window.first..s.window.last).all { selected[it] == null }) {
+                    for (i in s.window.first..s.window.last) selected[i] = s
+                }
             }
         }
         // A phrase naming several periods keeps its parts only when they are all of it: every time word in it is in
@@ -223,10 +215,21 @@ class SpanScanner(
                 }
             val alone =
                 parts.all { p ->
-                    val own = recognizer.readSpan(textOfWindow(p.window), reference, triggers, priorQuestions)
+                    val own =
+                        recognizer.readSpan(
+                            textOfWindow(p.window),
+                            reference,
+                            triggers,
+                            listOf("") + priorQuestions,
+                        )
                     own != null && sameReading(own, p.reading)
                 }
-            if (r == SpanReading.NoOnePeriod || !covered || !alone) for (part in parts) for (i in part.window.first..part.window.last) selected[i] = null
+            if (r == SpanReading.NoOnePeriod ||
+                !covered ||
+                !alone
+            ) {
+                for (part in parts) for (i in part.window.first..part.window.last) selected[i] = null
+            }
         }
         return selected.filterIndexed { i, s -> s != null && s.window.first == i }.filterNotNull().map { s ->
             val start = tokens[s.window.first].first
@@ -237,12 +240,18 @@ class SpanScanner(
     }
 
     /** At most 28 sub-windows; unrelated parts of the question are never searched. */
-    private fun within(w: Window, read: Map<Window, SpanReading>): Sequence<Pair<Window, SpanReading>> = sequence {
-        for (first in w.first..w.last) for (last in first..w.last) {
-            val inner = Window(first, last)
-            read[inner]?.let { yield(inner to it) }
+    private fun within(
+        w: Window,
+        read: Map<Window, SpanReading>,
+    ): Sequence<Pair<Window, SpanReading>> =
+        sequence {
+            for (first in w.first..w.last) {
+                for (last in first..w.last) {
+                    val inner = Window(first, last)
+                    read[inner]?.let { yield(inner to it) }
+                }
+            }
         }
-    }
 
     /**
      * Is [inner], a smaller window inside [w] that reads the same, all [w] says — the words [w] adds idle? They are
@@ -275,7 +284,12 @@ class SpanScanner(
                     (v.first..v.last).any(extra) &&
                     !sameInterval(r, reading) &&
                     !unplacedNumber(r, textOf(w)) &&
-                    within(v, read).none { (u, ru) -> u != v && v.contains(u) && (u.first..u.last).none(extra) && alike(ru, r) }
+                    within(v, read).none { (u, ru) ->
+                        u != v &&
+                            v.contains(u) &&
+                            (u.first..u.last).none(extra) &&
+                            alike(ru, r)
+                    }
             }
         if (anotherTime) return false
         val nounBefore =
@@ -296,10 +310,17 @@ class SpanScanner(
     }
 
     /** A grain before a phrase belongs to it only when it names the interval's own unit. */
-    private fun nounOfReading(word: String, reading: ChronoReading): Boolean {
+    private fun nounOfReading(
+        word: String,
+        reading: ChronoReading,
+    ): Boolean {
         val r = (reading as? ChronoReading.Recognized)?.recognition ?: return false
-        val months = java.time.temporal.ChronoUnit.MONTHS.between(r.startInclusive, r.endExclusive)
-        val days = java.time.temporal.ChronoUnit.DAYS.between(r.startInclusive, r.endExclusive)
+        val months =
+            java.time.temporal.ChronoUnit.MONTHS
+                .between(r.startInclusive, r.endExclusive)
+        val days =
+            java.time.temporal.ChronoUnit.DAYS
+                .between(r.startInclusive, r.endExclusive)
         return when {
             Regex("""years?|rok|roku|roce|rokem""").matches(word) -> months == 12L
             Regex("""months?|mesic\w*""").matches(word) -> months == 1L
@@ -391,28 +412,51 @@ class SpanScanner(
             }
             val previous = words.getOrNull(i - 1).orEmpty()
             val next = words.getOrNull(i + 1).orEmpty()
-            val monthBeside = Months.ofWord(previous, withYear = true) != null || Months.ofWord(next, withYear = true) != null
-            val ordinal = w.endsWith(".") &&
-                (NOUN.matches(next) || (w.removeSuffix(".") in setOf("1", "2", "3", "4") &&
-                    words.subList(maxOf(0, i - 3), minOf(words.size, i + 4)).any { NOUN.matches(it) }))
-            val numericDate = Regex("""\d{1,2}\.\s*\d{1,2}\.\s*\d{4}""").containsMatchIn(
-                words.subList(maxOf(0, i - 2), minOf(words.size, i + 3)).joinToString(" "),
-            )
-            val count = Regex("""last|past|posledn\w*|minul\w*""").matches(previous) && (NOUN.matches(next) || Regex("""days?|den|dn[iu]|dny""").matches(next))
-            val shortYear = Regex("""q[1-4]|h[12]""").matches(previous) &&
-                (next.isEmpty() || WindowPeriods.timeWordRe.matches(next))
+            val monthBeside =
+                Months.ofWord(previous, withYear = true) != null || Months.ofWord(next, withYear = true) != null
+            val ordinal =
+                w.endsWith(".") &&
+                    (
+                        NOUN.matches(next) ||
+                            (
+                                w.removeSuffix(".") in setOf("1", "2", "3", "4") &&
+                                    words.subList(maxOf(0, i - 3), minOf(words.size, i + 4)).any { NOUN.matches(it) }
+                            )
+                    )
+            val numericDate =
+                Regex("""\d{1,2}\.\s*\d{1,2}\.\s*\d{4}""").containsMatchIn(
+                    words.subList(maxOf(0, i - 2), minOf(words.size, i + 3)).joinToString(" "),
+                )
+            val count =
+                Regex("""last|past|posledn\w*|minul\w*""").matches(previous) &&
+                    (NOUN.matches(next) || Regex("""days?|den|dn[iu]|dny""").matches(next))
+            val shortYear =
+                Regex("""q[1-4]|h[12]""").matches(previous) &&
+                    (next.isEmpty() || WindowPeriods.timeWordRe.matches(next))
             return monthBeside || ordinal || numericDate || count || shortYear
         }
-        return WindowPeriods.timeWordRe.matches(w) || phraseWord(w) ||
-            Months.ofWord(w, withYear = true) != null || MonthWords.find(w).isNotEmpty() || YEAR_WORD.matches(w) ||
-            EXTRA_TIME.matches(w) || COMPACT_TIME.matches(w) ||
+        return WindowPeriods.timeWordRe.matches(w) ||
+            phraseWord(w) ||
+            Months.ofWord(w, withYear = true) != null ||
+            MonthWords.find(w).isNotEmpty() ||
+            YEAR_WORD.matches(w) ||
+            EXTRA_TIME.matches(w) ||
+            COMPACT_TIME.matches(w) ||
             (w.contains(Regex("""[-–/]""")) && w.split(Regex("""[-–/]""")).all { COMPACT_TIME.matches(it) })
     }
 
-    private fun phraseWords(w: Window, words: List<String>, timeWords: List<Boolean>): Boolean =
+    private fun phraseWords(
+        w: Window,
+        words: List<String>,
+        timeWords: List<Boolean>,
+    ): Boolean =
         (w.first..w.last).all { i ->
-            timeWords[i] || SMALL.matches(words[i]) ||
-                (words[i] == "by" && Regex("""by (?:the )?end of .*""").matches(words.subList(i, w.last + 1).joinToString(" ")))
+            timeWords[i] ||
+                SMALL.matches(words[i]) ||
+                (
+                    words[i] == "by" &&
+                        Regex("""by (?:the )?end of .*""").matches(words.subList(i, w.last + 1).joinToString(" "))
+                )
         }
 
     /** At or above the threshold, its confidence; an unanchored reading carries the threshold it passed by rule. */
@@ -547,8 +591,12 @@ class SpanScanner(
                     """(?:fiskaln|financn|ucetn|hospodarsk|kalendarn)\w*""",
             )
         private val SMALL = Regex("""of|the|in|for|during|to|v|ve|za|z|ze|od|do|na|that""")
-        private val EXTRA_TIME = Regex("""zacatku|konce|beginning|start|end|date|dneska|dodnes|today|now|so|far|dosud|zatim|past|tento|tato|toto|tenhle|each|every|kazd\w*|uplynul\w*|posledn\w*""")
-        private val COMPACT_TIME = Regex("""q[1-4]|h[12]|fy\d{2,4}|\d{4}-\d{1,2}(?:-\d{1,2})?|\d{1,2}[./]\d{1,2}(?:[./]\d{4})?\.?""")
+        private val EXTRA_TIME =
+            Regex(
+                """zacatku|konce|beginning|start|end|date|dneska|dodnes|today|now|so|far|dosud|zatim|past|tento|tato|toto|tenhle|each|every|kazd\w*|uplynul\w*|posledn\w*""",
+            )
+        private val COMPACT_TIME =
+            Regex("""q[1-4]|h[12]|fy\d{2,4}|\d{4}-\d{1,2}(?:-\d{1,2})?|\d{1,2}[./]\d{1,2}(?:[./]\d{4})?\.?""")
         private val GLUE = Regex("""of|the|that|in|for""")
 
         /** What makes "year" a measure after it: "year over year", "year on year". */
@@ -575,7 +623,14 @@ class SpanScanner(
             for (t in tokens) {
                 val w = Normalization.fold(text.substring(t.first, t.last + 1))
                 if (Months.find(w) == null) continue
-                if (months.none { it.range.first >= t.first && it.range.last <= t.last }) for (k in t) out.setCharAt(k, ' ')
+                if (months.none { it.range.first >= t.first && it.range.last <= t.last }) {
+                    for (k in t) {
+                        out.setCharAt(
+                            k,
+                            ' ',
+                        )
+                    }
+                }
             }
             return out.toString()
         }
@@ -586,7 +641,10 @@ class SpanScanner(
          * a day and an ordinal. Trimmed by code point, so a surrogate pair is kept or dropped whole, and a combining
          * mark stays with its letter.
          */
-        internal fun tokens(text: String, limit: Int = Int.MAX_VALUE): List<IntRange> {
+        internal fun tokens(
+            text: String,
+            limit: Int = Int.MAX_VALUE,
+        ): List<IntRange> {
             val out = mutableListOf<IntRange>()
             var i = 0
             while (i < text.length && out.size < limit) {

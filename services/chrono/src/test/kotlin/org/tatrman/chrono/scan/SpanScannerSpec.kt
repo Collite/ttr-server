@@ -68,29 +68,39 @@ class SpanScannerSpec :
 
         "R230 R4 punctuation preserves month parts instead of leaking their year" {
             for (text in listOf(
-                "Revenue Jan-Mar 2025", "Revenue January–March 2025", "Tržby leden–březen 2025",
-                "Revenue in March/April 2025", "Tržby leden/únor 2025",
-            )) { spans(text).shouldBeEmpty() }
-            scanner.scan("Revenue mid-March 2025", ref).single().text.contains("March") shouldBe true
+                "Revenue Jan-Mar 2025",
+                "Revenue January–March 2025",
+                "Tržby leden–březen 2025",
+                "Revenue in March/April 2025",
+                "Tržby leden/únor 2025",
+            )) {
+                spans(text).shouldBeEmpty()
+            }
+            scanner
+                .scan("Revenue mid-March 2025", ref)
+                .single()
+                .text
+                .contains("March") shouldBe true
             spans("October's revenue") shouldBe listOf("October's")
             spans("Počet zařízení v Q2 2025") shouldBe listOf("Q2 2025")
             spans("Kolik objednal Jan Novák").shouldBeEmpty()
         }
 
         "R230 R5 measures attributes verbs and document numbers stay outside spans" {
-            val rows = listOf(
-                "Revenue this year, costs last month by product" to listOf("this year", "last month"),
-                "Revenue this year costs last month by product" to listOf("this year", "last month"),
-                "Revenue last year by region; margin this month by product" to listOf("last year", "this month"),
-                "Revenue last year with margin this month by product" to listOf("last year", "this month"),
-                "Revenue letos, náklady minulý měsíc by product" to listOf("letos", "minulý měsíc"),
-                "Revenue loni po regionech, marže tento měsíc by product" to listOf("loni", "tento měsíc"),
-                "Revenue this year costs in March by product" to listOf("this year", "March"),
-                "Document 202605 was issued last month" to listOf("last month"),
-                "Invoice 202605 from last month" to listOf("last month"),
-                "Tržby z faktury 202605 za minulý měsíc" to listOf("minulý měsíc"),
-                "Q2 sales last year by region" to listOf("Q2", "last year"),
-            )
+            val rows =
+                listOf(
+                    "Revenue this year, costs last month by product" to listOf("this year", "last month"),
+                    "Revenue this year costs last month by product" to listOf("this year", "last month"),
+                    "Revenue last year by region; margin this month by product" to listOf("last year", "this month"),
+                    "Revenue last year with margin this month by product" to listOf("last year", "this month"),
+                    "Revenue letos, náklady minulý měsíc by product" to listOf("letos", "minulý měsíc"),
+                    "Revenue loni po regionech, marže tento měsíc by product" to listOf("loni", "tento měsíc"),
+                    "Revenue this year costs in March by product" to listOf("this year", "March"),
+                    "Document 202605 was issued last month" to listOf("last month"),
+                    "Invoice 202605 from last month" to listOf("last month"),
+                    "Tržby z faktury 202605 za minulý měsíc" to listOf("minulý měsíc"),
+                    "Q2 sales last year by region" to listOf("Q2", "last year"),
+                )
             for ((text, expected) in rows) spans(text) shouldBe expected
             for (word in listOf("sales", "costs", "margin", "stores", "issued", "green", "202605")) {
                 spans("this year $word last month") shouldBe listOf("this year", "last month")
@@ -100,27 +110,35 @@ class SpanScannerSpec :
         }
 
         "R230 R6 only linked phrases suppress one another" {
-            val rows = listOf(
-                "Sales last year and costs this month" to listOf("last year", "this month"),
-                "Sales last year and costs last month" to listOf("last year", "last month"),
-                "How much did we sell last year and how much this month?" to listOf("last year", "this month"),
-                "Tržby loni a náklady tento měsíc" to listOf("loni", "tento měsíc"),
-                "tržby loni a náklady minulý měsíc" to listOf("loni", "minulý měsíc"),
-                "v březnu 2025 a kolik utratili minulý měsíc" to listOf("březnu 2025", "minulý měsíc"),
-                "Revenue last month for products launched next year" to listOf("last month"),
-                "Customers active since Q2 who bought last month" to listOf("last month"),
-                "Revenue in March for stores opened since Q3" to listOf("March"),
-                "Kolik jsme prodali minulý měsíc zákazníkům od 2. čtvrtletí" to listOf("minulý měsíc"),
-                "Sales for 2025 vs 2024 in 3 regions" to listOf("2025", "2024"),
-                "Q2 2025 vs Q2 2024 top 5" to listOf("Q2 2025", "Q2 2024"),
-                "Sales this quarter and last month for 10 stores" to listOf("this quarter", "last month"),
-            )
+            val rows =
+                listOf(
+                    "Sales last year and costs this month" to listOf("last year", "this month"),
+                    "Sales last year and costs last month" to listOf("last year", "last month"),
+                    "How much did we sell last year and how much this month?" to listOf("last year", "this month"),
+                    "Tržby loni a náklady tento měsíc" to listOf("loni", "tento měsíc"),
+                    "tržby loni a náklady minulý měsíc" to listOf("loni", "minulý měsíc"),
+                    "v březnu 2025 a kolik utratili minulý měsíc" to listOf("březnu 2025", "minulý měsíc"),
+                    "Revenue last month for products launched next year" to listOf("last month"),
+                    "Customers active since Q2 who bought last month" to listOf("last month"),
+                    "Revenue in March for stores opened since Q3" to listOf("March"),
+                    "Kolik jsme prodali minulý měsíc zákazníkům od 2. čtvrtletí" to listOf("minulý měsíc"),
+                    "Sales for 2025 vs 2024 in 3 regions" to listOf("2025", "2024"),
+                    "Q2 2025 vs Q2 2024 top 5" to listOf("Q2 2025", "Q2 2024"),
+                    "Sales this quarter and last month for 10 stores" to listOf("this quarter", "last month"),
+                )
             for ((text, expected) in rows) spans(text) shouldBe expected
             for (text in listOf(
-                "Q2 this year and last", "1. pololetí letos a loni", "Revenue this month and last year",
-                "Q2 revenue vs the same quarter last year", "revenue for Q2 this year vs last year",
-                "Q2 revenue since 2020", "next Q2", "in 2025 excluding Q4",
-            )) spans(text).shouldBeEmpty()
+                "Q2 this year and last",
+                "1. pololetí letos a loni",
+                "Revenue this month and last year",
+                "Q2 revenue vs the same quarter last year",
+                "revenue for Q2 this year vs last year",
+                "Q2 revenue since 2020",
+                "next Q2",
+                "in 2025 excluding Q4",
+            )) {
+                spans(text).shouldBeEmpty()
+            }
             spans("this quarter and last month") shouldBe listOf("this quarter", "last month")
             for (period in listOf("Q3", "third quarter", "3. čtvrtletí")) {
                 for (bound in listOf(
@@ -148,15 +166,21 @@ class SpanScannerSpec :
             }
             spans("Q2 revenue vs Q4 last year").shouldBeEmpty()
             for (padding in listOf("", "one two ", "one two three four five six seven eight ")) {
-                spans(padding + "v březnu 2025 a kolik utratili minulý měsíc") shouldBe listOf("březnu 2025", "minulý měsíc")
+                spans(padding + "v březnu 2025 a kolik utratili minulý měsíc") shouldBe
+                    listOf("březnu 2025", "minulý měsíc")
             }
         }
 
         "R230 R7 a grain before a different unit stays outside the span" {
             for (text in listOf(
-                "sales per quarter last year", "by quarter last year", "each quarter last year",
-                "every month last year", "sales in the same quarter last year",
-            )) spans(text) shouldBe listOf("last year")
+                "sales per quarter last year",
+                "by quarter last year",
+                "each quarter last year",
+                "every month last year",
+                "sales in the same quarter last year",
+            )) {
+                spans(text) shouldBe listOf("last year")
+            }
             spans("tržby po čtvrtletích loni") shouldBe listOf("loni")
             spans("tržby za každý měsíc loni") shouldBe listOf("loni")
             spans("Revenue fiscal year 2025 Q4") shouldBe listOf("fiscal year 2025 Q4")
@@ -168,16 +192,37 @@ class SpanScannerSpec :
 
         "R230 R9 months are blanked only where the shared helper finds verbs or names" {
             for ((text, expected) in listOf(
-                "May sales by region" to listOf("May"), "March revenue by product" to listOf("March"),
-                "may revenue by region" to listOf("may"), "show march revenue" to listOf("march"),
+                "May sales by region" to listOf("May"),
+                "March revenue by product" to listOf("March"),
+                "may revenue by region" to listOf("may"),
+                "show march revenue" to listOf("march"),
                 "compare march and april revenue" to listOf("march", "april"),
-                "Revenue in Jan" to listOf("Jan"), "Revenue in Dec." to listOf("Dec"),
-                "Show revenue, May vs April" to listOf("May", "April"), "What were May sales?" to listOf("May"),
+                "Revenue in Jan" to listOf("Jan"),
+                "Revenue in Dec." to listOf("Dec"),
+                "Show revenue, May vs April" to listOf("May", "April"),
+                "What were May sales?" to listOf("May"),
                 "Q2 2025 sales may rise" to listOf("Q2 2025"),
                 "May we see revenue for March" to listOf("March"),
                 "May I see sales for last month?" to listOf("last month"),
                 "Kolik objednal Jan Novák" to emptyList(),
-            )) spans(text) shouldBe expected
+            )) {
+                spans(text) shouldBe expected
+            }
+        }
+
+        "R230 R12 reading without the question keeps the question slot empty" {
+            val found =
+                scanner.scan(
+                    "Sales last month and the previous quarter",
+                    ref,
+                    priorQuestions = listOf("Revenue in Q2 2025 and the previous quarter"),
+                )
+            found.map { it.text } shouldBe listOf("last month", "previous quarter")
+            found.last().trigger shouldBe "conversation"
+        }
+
+        "R230 R11 a count beside a quarter stays outside it" {
+            spans("Revenue in Q2 10 stores") shouldBe listOf("Q2")
         }
 
         "a bare period noun is no span" {

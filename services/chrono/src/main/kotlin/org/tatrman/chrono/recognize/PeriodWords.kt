@@ -96,6 +96,14 @@ data class PeriodWord(
  * reference date ([DateRecognizer]'s week arm, unchanged).
  */
 object PeriodWords {
+    val scopedWeekRe =
+        Regex(
+            """\b(?:this|current|last|past|previous|prior)\s+${PeriodWords.EN_ADJ}week\b""" +
+                """|\b(?:tento|tato|toto|tohoto|tomto|tomuto|timto|tenhle|tohle|tomhle|tohohle""" +
+                """|aktualn\w*|soucasn\w*|minul\w*|predchoz\w*|predesl\w*|predminul\w*|uplynul\w*)""" +
+                """\s+${PeriodWords.CS_ADJ}(?:tyden|tydn\w*)""",
+        )
+
     private data class Rule(
         val unit: PeriodUnit,
         val kind: PeriodWordKind,

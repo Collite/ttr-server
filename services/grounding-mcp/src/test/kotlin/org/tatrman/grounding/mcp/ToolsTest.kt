@@ -261,6 +261,37 @@ class ToolsTest :
             coVerify(exactly = 0) { chrono.scan(any()) }
         }
 
+        "R230 R13 chrono ERROR is a tool error, warnings keep prefix spans" {
+            for (severity in listOf(Severity.ERROR, Severity.WARNING)) {
+                val chrono = client("chrono")
+                val response =
+                    replayedScan()
+                        .toBuilder()
+                        .clearMessages()
+                        .addMessages(
+                            ResponseMessage
+                                .newBuilder()
+                                .setSeverity(
+                                    severity,
+                                ).setCode("test_message")
+                                .setHumanMessage("test explanation"),
+                        ).build()
+                coEvery { chrono.scan(any()) } returns response
+                val tools = Tools(chrono, client("geo"), client("money"))
+                val args =
+                    buildJsonObject {
+                        put("text", "last month")
+                        putJsonObject("context") { put("referenceDatetime", "yesterday") }
+                    }
+                val result = tools.scanTimeCallback(request(args))
+                result.isError shouldBe (severity == Severity.ERROR)
+                textOf(result) shouldContain "test explanation"
+                (result.structuredContent as JsonObject)["messages"]!!.jsonArray.size shouldBe 1
+                tools.scanTimeCallback(request(buildJsonObject { put("text", "   ") })).isError shouldBe true
+                coVerify(exactly = 1) { chrono.scan(any()) }
+            }
+        }
+
         "scan_time transport failure → isError=true" {
             val chrono = client("chrono")
             coEvery { chrono.scan(any()) } throws RuntimeException("connection refused")

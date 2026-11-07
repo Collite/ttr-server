@@ -96,11 +96,15 @@ text as the question and `prior_questions` after it.
 
 - **A span reads** as a period at or above the threshold, or as an unanchored one (it *is* a time phrase; `Ground`
   answers it `no_anchor`).
-- **Its words all count.** A smaller window reading the same makes the rest idle — „za minulý měsíc“ is „minulý
-  měsíc“, *Tržby za minulý měsíc po týdnech* is „minulý měsíc“ — unless the rest is part of another time read across
-  it („od začátku roku 2025“, „loni od začátku roku“ stay whole) or a period noun of the phrase („loňského roku“,
-  "Q2 of the year", "fiscal year 2025 Q4"). Which column a word targets („splatné“) is not part of the reading.
-- **No part of what names no one period.** A window the recogniser finds names no one period — "next Q2", "excluding
+- **Only words of a time and the phrase's articles or prepositions belong in a span.** Measures, attributes, verbs,
+  conjunctions and numbers that no rule reads as a time stay outside it: "Q2 sales last year" gives "Q2" and "last
+  year". The consumer can still ground Q2 against the question's year. A smaller window reading the same makes
+  extra words idle. A period noun before it belongs only when it names the unit read ("year 2025"), or names its
+  fiscal calendar ("fiscal year 2025 Q4"); "per quarter last year" leaves "quarter" outside. A phrase keeps its own
+  words: „loňského roku“, "Q2 of the year", „od začátku roku 2025 do dneška“.
+- **Only linked phrases can suppress one another.** Small words join a phrase ("Q2 of last year"); comparisons,
+  bounds, exclusions, relative words and a conjunction directly before a time word link phrases. An unrelated
+  clause does not: "Sales last year and costs this month" gives both times. A window the recogniser finds names no one period — "next Q2", "excluding
   Q4", "Q2 since 2020", "Q2 vs the same quarter last year", „1. pololetí letos a loni“ — keeps every span it touches
   out, so the readings of review-215 RR17–RR19 hold through `Scan`. Periods side by side keep their spans only when
   they are all of the phrase and each reads the same without the question: "Q2 2025 vs Q2 2024" and "this quarter and
@@ -111,18 +115,23 @@ text as the question and `prior_questions` after it.
   *202605* alone); a four-digit run the words around it make an amount ("more than 2000 units") is none. A bare
   four-digit year is a span: the consumer's NER-stands rule decides it.
 - **No words that only look like months**, blanked before the windows are read: a month's stem inside another word
-  (*zařízení*), an abbreviation with no day or year beside it ("Jan Novák"), *may* / *march* as a verb.
+  (*zařízení*), or a name ("Jan Novák"). `MonthWords` is shared with the recognizer and conversation reader: *march*
+  is a month; *may* is a verb before a pronoun, or lowercase inside a clause without a preposition, number or joined
+  month. An abbreviation is a month after a preposition, beside a day/year or joined to another month. Blanking
+  checks each part of a token ("Jan-Mar", "March/April", "October's"), preserving UTF-16 offsets.
+- **At most 128 tokens.** Longer text returns the first 128 tokens' spans and a WARNING `text_too_long` message,
+  also passed through `scan_time`. Candidate checks visit only their own sub-windows; dense text is bounded too.
 
 It is a pure function of `(text, context, package, slice version)`. `src/test/resources/scan/planner-spans.json` holds
 review-215's planner spans with the reading each gives (`PlannerSpansSpec`); a scan of the corpus sentences takes
-p95 ≈ 4–5 ms (`SpanScannerBenchmarkSpec` fails above 20 ms).
+p95 below 20 ms (`SpanScannerBenchmarkSpec` fails above 20 ms).
 
 ## Metrics
 
 - `chrono_ground_total{outcome, source, application}` — `application` is `filter`, `join` or `values` for an `OK`,
   `none` otherwise; the `values` share is how often a question reached a model that declares no date column.
 - `chrono_ground_latency_ms{outcome, source}`.
-- `chrono_scan_total{spans}` — the spans a `Scan` found, `0`, `1`, `2` or `3+`; `chrono_scan_latency_ms`.
+- `chrono_scan_total{spans}` — the spans a `Scan` found, `0`, `1`, `2` or `3+` (`error` for invalid context); `chrono_scan_latency_ms`.
 
 ## Tests
 
