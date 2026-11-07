@@ -89,11 +89,32 @@ class SpanScanner(
      * The time phrases in [text], in text order, read against [reference]. [priorQuestions] are the user's earlier
      * questions, newest first, as `GroundingContext.prior_questions` carries them.
      */
+    data class Result(val spans: List<Found>, val truncated: Boolean)
+
     fun scan(
         text: String,
         reference: LocalDate,
         triggers: GroundingSlice = GroundingSlice.empty(CHRONO_KIND),
         priorQuestions: List<String> = emptyList(),
+    ): List<Found> = scanResult(text, reference, triggers, priorQuestions).spans
+
+    fun scanResult(
+        text: String,
+        reference: LocalDate,
+        triggers: GroundingSlice = GroundingSlice.empty(CHRONO_KIND),
+        priorQuestions: List<String> = emptyList(),
+    ): Result {
+        val bounds = tokens(text, MAX_TOKENS + 1)
+        val truncated = bounds.size > MAX_TOKENS
+        val prefix = if (truncated) text.substring(0, bounds[MAX_TOKENS - 1].last + 1) else text
+        return Result(scanPrefix(prefix, reference, triggers, priorQuestions), truncated)
+    }
+
+    private fun scanPrefix(
+        text: String,
+        reference: LocalDate,
+        triggers: GroundingSlice,
+        priorQuestions: List<String>,
     ): List<Found> {
         val working = blankNonMonths(text)
         val tokens = tokens(working)
@@ -127,16 +148,19 @@ class SpanScanner(
                     w.size > 1 &&
                         unplacedNumber(r, textOfWindow(w)) &&
                         PeriodWords.findAll(Normalization.fold(textOfWindow(w)), PeriodUnit.YEAR).isNotEmpty() -> null
-                    read.any { (inner, r2) -> idle(w, inner, r2, reading, read, words, textOfWindow) } -> null
+                    within(w, read).any { (inner, r2) -> idle(w, inner, r2, reading, read, words, textOfWindow) } -> null
                     else -> Span(w, reading, confidence)
                 }
             }
+
+        val candidatesAt = Array(tokens.size) { mutableListOf<Span>() }
+        for (c in candidates) for (i in c.window.first..c.window.last) candidatesAt[i] += c
 
         // The phrase a window cuts through: the window and every candidate crossing its edge, read whole. A window of
         // seven tokens may end inside a longer phrase ("the last month of the year a year ago"), or begin inside the
         // phrase before it ("2025 vs Q2 2024" out of "Q2 2025 vs Q2 2024").
         fun whole(w: Window): Pair<Window, SpanReading?> {
-            val crossing = candidates.filter { it.window.overlaps(w) && !w.contains(it.window) }
+            val crossing = (w.first..w.last).flatMap { candidatesAt[it] }.distinct().filter { !w.contains(it.window) }
             if (crossing.isEmpty()) return w to read[w]
             val u =
                 Window(
@@ -175,10 +199,14 @@ class SpanScanner(
             read.filterValues { it == SpanReading.NoOnePeriod }.keys.filter(::linked).mapNotNull { w ->
                 whole(w).let { (u, r) -> u.takeIf { r == SpanReading.NoOnePeriod && linked(u) } }
             }
-        val spans = candidates.filter { c -> noOne.none { it.overlaps(c.window) } }
-        val chosen = mutableListOf<Span>()
-        for (s in spans.sortedWith(compareByDescending<Span> { it.window.size }.thenBy { it.window.first })) {
-            if (chosen.none { it.window.overlaps(s.window) }) chosen += s
+        val blocked = BooleanArray(tokens.size)
+        for (w in noOne) for (i in w.first..w.last) blocked[i] = true
+        val spans = candidates.filter { c -> (c.window.first..c.window.last).none { blocked[it] } }
+        val selected = arrayOfNulls<Span>(tokens.size)
+        for (size in MAX_WINDOW downTo 1) for (s in spans) {
+            if (s.window.size == size && (s.window.first..s.window.last).all { selected[it] == null }) {
+                for (i in s.window.first..s.window.last) selected[i] = s
+            }
         }
         // A phrase naming several periods keeps its parts only when they are all of it: every time word in it is in
         // a part, and no part reads otherwise without the question — „leden“ in „leden až březen 2025“ borrows its
@@ -187,7 +215,7 @@ class SpanScanner(
             if (!linked(w0)) continue
             val (w, r) = whole(w0)
             if (!linked(w)) continue
-            val parts = chosen.filter { w.overlaps(it.window) }
+            val parts = (w.first..w.last).mapNotNull { selected[it] }.distinct()
             if (parts.isEmpty()) continue
             val covered =
                 (w.first..w.last).all { i ->
@@ -198,13 +226,21 @@ class SpanScanner(
                     val own = recognizer.readSpan(textOfWindow(p.window), reference, triggers, priorQuestions)
                     own != null && sameReading(own, p.reading)
                 }
-            if (r == SpanReading.NoOnePeriod || !covered || !alone) chosen.removeAll(parts)
+            if (r == SpanReading.NoOnePeriod || !covered || !alone) for (part in parts) for (i in part.window.first..part.window.last) selected[i] = null
         }
-        return chosen.sortedBy { it.window.first }.map { s ->
+        return selected.filterIndexed { i, s -> s != null && s.window.first == i }.filterNotNull().map { s ->
             val start = tokens[s.window.first].first
             val end = tokens[s.window.last].last + 1
             val span = text.substring(start, end)
             Found(start, end, span, s.confidence, triggers.matched(span)?.text ?: ruleOf(s.reading))
+        }
+    }
+
+    /** At most 28 sub-windows; unrelated parts of the question are never searched. */
+    private fun within(w: Window, read: Map<Window, SpanReading>): Sequence<Pair<Window, SpanReading>> = sequence {
+        for (first in w.first..w.last) for (last in first..w.last) {
+            val inner = Window(first, last)
+            read[inner]?.let { yield(inner to it) }
         }
     }
 
@@ -232,14 +268,14 @@ class SpanScanner(
         // Another time the extra words are part of: one that reads otherwise, and that no smaller window clear of the
         // extra words reads the same ("last year by region" is "last year"'s; „od začátku roku“ is its own).
         val anotherTime =
-            read.any { (v, r) ->
+            within(w, read).any { (v, r) ->
                 r is SpanReading.Read &&
                     v != w &&
                     w.contains(v) &&
                     (v.first..v.last).any(extra) &&
                     !sameInterval(r, reading) &&
                     !unplacedNumber(r, textOf(w)) &&
-                    read.none { (u, ru) -> u != v && v.contains(u) && (u.first..u.last).none(extra) && alike(ru, r) }
+                    within(v, read).none { (u, ru) -> u != v && v.contains(u) && (u.first..u.last).none(extra) && alike(ru, r) }
             }
         if (anotherTime) return false
         val nounBefore =
@@ -442,6 +478,8 @@ class SpanScanner(
          */
         const val MAX_WINDOW = 7
 
+        const val MAX_TOKENS = 128
+
         private val SIX_DIGITS = Regex("""\d{6}""")
 
         /** The stems the rules read a period, a day or a year by, folded; [anchor] asks them as substrings. */
@@ -548,10 +586,10 @@ class SpanScanner(
          * a day and an ordinal. Trimmed by code point, so a surrogate pair is kept or dropped whole, and a combining
          * mark stays with its letter.
          */
-        internal fun tokens(text: String): List<IntRange> {
+        internal fun tokens(text: String, limit: Int = Int.MAX_VALUE): List<IntRange> {
             val out = mutableListOf<IntRange>()
             var i = 0
-            while (i < text.length) {
+            while (i < text.length && out.size < limit) {
                 while (i < text.length && Character.isWhitespace(text.codePointAt(i))) {
                     i += Character.charCount(text.codePointAt(i))
                 }

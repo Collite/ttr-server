@@ -116,7 +116,7 @@ class ChronoGroundingService(
                             .setHumanMessage("reference_datetime is required (chrono never reads a clock)"),
                     ).build()
         val found =
-            scanner.scan(
+            scanner.scanResult(
                 request.text,
                 reference,
                 triggers.current().forLang(request.context.locale),
@@ -125,7 +125,7 @@ class ChronoGroundingService(
         return ScanResponse
             .newBuilder()
             .addAllSpans(
-                found.map {
+                found.spans.map {
                     TimeSpan
                         .newBuilder()
                         .setStart(it.start)
@@ -136,7 +136,12 @@ class ChronoGroundingService(
                         .setTrigger(it.trigger)
                         .build()
                 },
-            ).build()
+            ).also { response ->
+                if (found.truncated) response.addMessages(
+                    ResponseMessage.newBuilder().setSeverity(Severity.WARNING).setCode("text_too_long")
+                        .setHumanMessage("Scan reads the first ${SpanScanner.MAX_TOKENS} tokens; remaining text was skipped"),
+                )
+            }.build()
     }
 
     private suspend fun groundInternal(request: GroundRequest): GroundResponse {

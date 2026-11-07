@@ -2,6 +2,7 @@
 package org.tatrman.chrono.scan
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.doubles.shouldBeLessThan
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -17,6 +18,28 @@ import java.time.LocalDate
  */
 class SpanScannerBenchmarkSpec :
     StringSpec({
+        "R230 R8 dense 352 and 880 token texts are bounded at 128 tokens" {
+            val scanner = SpanScanner()
+            val ref = LocalDate.of(2026, 11, 1)
+            val sentence = "compare Q2 2025 vs Q2 2024 and last month vs this month "
+            repeat(3) { scanner.scan(sentence.repeat(30), ref) }
+            for (count in listOf(352, 880)) {
+                val text =
+                    sentence
+                        .repeat(74)
+                        .trim()
+                        .split(Regex("""\s+"""))
+                        .take(count)
+                        .joinToString(" ")
+                val start = System.nanoTime()
+                val result = scanner.scanResult(text, ref)
+                result.truncated shouldBe true
+                val elapsed = (System.nanoTime() - start) / 1_000_000.0
+                println("Scan dense $count tokens: $elapsed ms (limited to ${SpanScanner.MAX_TOKENS} tokens)")
+                elapsed shouldBeLessThan 1000.0
+            }
+        }
+
         "Scan p95 on the corpus sentences is under 20 ms" {
             val cases =
                 Json

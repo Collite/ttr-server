@@ -54,6 +54,13 @@ class ScanServiceSpec :
             r.messagesList.shouldBeEmpty()
         }
 
+        "R230 R8 long text returns prefix spans and a warning" {
+            val r = service.scan(request("last month " + "neutral ".repeat(130) + "last year"))
+            r.spansList.map { it.text } shouldBe listOf("last month")
+            r.messagesList.single().code shouldBe "text_too_long"
+            r.messagesList.single().severity shouldBe Severity.WARNING
+        }
+
         "with no reference date there are no spans, and a message says why" {
             val r = service.scan(request("Tržby za minulý měsíc", reference = ""))
             r.spansList.shouldBeEmpty()
