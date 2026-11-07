@@ -1046,6 +1046,21 @@
     }
   },
   {
+    "id": "chrono/r230-r3-joined-months",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "January and March",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
     "id": "chrono/rp-last-month-en",
     "tool": "ground_time",
     "kind": "DATE",

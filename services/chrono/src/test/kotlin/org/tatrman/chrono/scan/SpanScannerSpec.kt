@@ -59,6 +59,13 @@ class SpanScannerSpec :
             spans("Tržby za říjen 2025 a listopad 2025") shouldBe listOf("říjen 2025", "listopad 2025")
         }
 
+        "R230 R3 joined English months are scanned separately" {
+            spans("Sales in May and June") shouldBe listOf("May", "June")
+            spans("Sales in January and March") shouldBe listOf("January", "March")
+            spans("Q2 2025 sales may rise") shouldBe listOf("Q2 2025")
+            spans("May we see revenue for March") shouldBe listOf("March")
+        }
+
         "a bare period noun is no span" {
             spans("Tržby z tržiště po čtvrtletích").shouldBeEmpty()
             spans("Kolik je dní v měsíci").shouldBeEmpty()

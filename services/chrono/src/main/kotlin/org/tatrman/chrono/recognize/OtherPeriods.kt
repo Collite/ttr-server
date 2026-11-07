@@ -65,12 +65,6 @@ internal object OtherPeriods {
         )
 
     private val wordRe = Regex("""\b[a-z]+\b""")
-    private val yearAfterRe = Regex("""^\s+\d{4}\b""")
-    private val prepositionBeforeRe = Regex("""\b(?:in|for|of|during|since|until|from|through|by|to)\s+$""")
-
-    /** "may" and "march" are verbs too: a month only after a preposition or before a year. */
-    private val verbMonths = setOf("may", "march")
-
     /**
      * What joins a second year to a period: a comparison or a conjunction, cs and en. Not a comma: "Q2, last year" is
      * Q2 of last year.
@@ -196,13 +190,13 @@ internal object OtherPeriods {
         val words = wordRe.findAll(side).map { it.value }.toList()
         return PeriodWords.findAll(side).isNotEmpty() ||
             NamedYear.bareYears(side).isNotEmpty() ||
+            MonthWords.find(side).isNotEmpty() ||
             words.withIndex().any { (i, w) ->
                 if (scopeWordRe.matches(w)) {
                     i == words.lastIndex
                 } else {
                     WindowPeriods.timeWordRe.matches(w) ||
-                        comparedTimeWordRe.matches(w) ||
-                        Months.ofWord(w, withYear = false) != null
+                        comparedTimeWordRe.matches(w)
                 }
             }
     }
@@ -253,12 +247,6 @@ internal object OtherPeriods {
             WindowPeriods.yearToDateRe.findAll(n).forEach { add(it.range) }
             scopedWeekRe.findAll(n).forEach { add(it.range) }
             dayRe.findAll(n).forEach { add(it.range) }
-            for (m in wordRe.findAll(n)) {
-                val yearAfter = yearAfterRe.containsMatchIn(n.substring(m.range.last + 1))
-                Months.ofWord(m.value, withYear = yearAfter) ?: continue
-                val verb = m.value in verbMonths && !yearAfter
-                if (verb && !prepositionBeforeRe.containsMatchIn(n.substring(0, m.range.first))) continue
-                add(m.range)
-            }
+            MonthWords.find(n).forEach { add(it.range) }
         }
 }

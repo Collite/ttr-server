@@ -42,6 +42,15 @@ class DateRecognizerSpec :
             rec.recognize("Q2 2025", ref).shouldNotBeNull().periodCode shouldBe "2025Q2"
         }
 
+        "R230 R3 joined month forms name several periods" {
+            for (span in listOf(
+                "January and March", "March and April", "March or April", "April and March",
+                "May and June", "May to July", "June and May", "march and april 2025",
+                "March through May 2025", "Jan-Mar 2025", "March/April 2025", "in March and April",
+            )) { withClue(span) { rec.recognize(span, ref).shouldBeNull() } }
+            rec.recognize("May 2025", ref).shouldNotBeNull().periodCode shouldBe "202505"
+        }
+
         // ---- absolute: ISO ----
         "ISO date → single-day interval" {
             val r = rec.recognize("2026-03-15", ref).shouldNotBeNull()

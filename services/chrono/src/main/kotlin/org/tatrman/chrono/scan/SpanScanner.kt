@@ -5,6 +5,7 @@ import org.tatrman.chrono.recognize.ChronoKind
 import org.tatrman.chrono.recognize.ChronoReading
 import org.tatrman.chrono.recognize.ChronoRecognition
 import org.tatrman.chrono.recognize.DateRecognizer
+import org.tatrman.chrono.recognize.MonthWords
 import org.tatrman.chrono.recognize.Months
 import org.tatrman.chrono.recognize.NamedYear
 import org.tatrman.chrono.recognize.PeriodUnit
@@ -426,32 +427,6 @@ class SpanScanner(
                     """|first|second|third|fourth|1st|2nd|3rd|4th|prvn\w*|druh\w*|tret\w*|ctvrt(?!let)\w*""",
             )
 
-        /** Prepositions a month name stands after ("in May", "for March"): there it is no verb. */
-        private val MONTH_PREPOSITIONS =
-            setOf(
-                "in",
-                "for",
-                "of",
-                "during",
-                "since",
-                "until",
-                "till",
-                "from",
-                "through",
-                "thru",
-                "by",
-                "to",
-                "before",
-                "after",
-                "on",
-            )
-        private val DAY_NUMBER = Regex("""\d{1,2}(?:st|nd|rd|th)?\.?""")
-        private val YEAR_OR_DAY = Regex("""\d{1,2}(?:st|nd|rd|th)?[.,]?|\d{4}[.,]?""")
-
-        /** A Czech month adjective: „květnové období“, „lednový“. */
-        private val MONTH_ADJECTIVE =
-            Regex("""(?:ledn|unor|brezn|dubn|kvetn|cervn|cervenc|srpn|zarij|rijn|listopad|prosinc)ov\w*""")
-
         /**
          * [text] with the words that are no month blanked to spaces, length kept: a word [Months.find] reads by a stem
          * inside it that is neither a month nor a month adjective (*zařízení*); an English abbreviation with no day or
@@ -460,45 +435,15 @@ class SpanScanner(
          */
         internal fun blankNonMonths(text: String): String {
             val tokens = tokens(text)
-            val words = tokens.map { Normalization.fold(text.substring(it.first, it.last + 1)) }
+            val months = MonthWords.find(text)
             val out = StringBuilder(text)
-            for ((i, t) in tokens.withIndex()) {
-                val w = words[i]
+            for (t in tokens) {
+                val w = Normalization.fold(text.substring(t.first, t.last + 1))
                 if (Months.find(w) == null) continue
-                val noMonth =
-                    when {
-                        w == "may" || w == "march" -> verb(text, tokens, words, i)
-                        // "Jan", "Dec": a name or a word unless a day or a year stands beside it.
-                        Months.ofWord(w, withYear = false) == null && Months.ofWord(w, withYear = true) != null ->
-                            !numberBeside(words, i)
-                        Months.ofWord(w, withYear = false) != null || MONTH_ADJECTIVE.matches(w) -> false
-                        else -> true
-                    }
-                if (noMonth) for (k in t) out.setCharAt(k, ' ')
+                if (months.none { it.range == t }) for (k in t) out.setCharAt(k, ' ')
             }
             return out.toString()
         }
-
-        private fun numberBeside(
-            words: List<String>,
-            i: Int,
-        ): Boolean =
-            words.getOrNull(i - 1)?.let { DAY_NUMBER.matches(it) } == true ||
-                words.getOrNull(i + 1)?.let { YEAR_OR_DAY.matches(it) } == true
-
-        private fun verb(
-            text: String,
-            tokens: List<IntRange>,
-            words: List<String>,
-            i: Int,
-        ): Boolean {
-            if (words.getOrNull(i - 1) in MONTH_PREPOSITIONS || numberBeside(words, i)) return false
-            val first = text[tokens[i].first]
-            val sentenceStart = i == 0 || text.substring(0, tokens[i].first).trimEnd().lastOrNull() in SENTENCE_ENDS
-            return !(first.isUpperCase() && !sentenceStart)
-        }
-
-        private val SENTENCE_ENDS = setOf('.', '?', '!', ':')
 
         /**
          * The tokens of [text], as ranges of UTF-16 offsets: the runs between whitespace, less the punctuation at
