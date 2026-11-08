@@ -198,6 +198,7 @@ class ExecutePipelineSpec :
                 val pool = mockk<ConnectionPoolManager>()
                 every { pool.supportedConnections } returns setOf("pg-midas")
                 every { pool.requiresTenantId("pg-midas") } returns false
+                every { pool.isReadOnly("pg-midas") } returns true
                 every { pool.acquire("pg-midas") } returns conn
 
                 val pipeline = ExecutePipeline(pool, translator, limits)
@@ -284,6 +285,7 @@ class ExecutePipelineSpec :
                 val pool = mockk<ConnectionPoolManager>()
                 every { pool.supportedConnections } returns setOf("pg-midas")
                 every { pool.requiresTenantId("pg-midas") } returns false
+                every { pool.isReadOnly("pg-midas") } returns true
                 every { pool.acquire("pg-midas") } returns conn
 
                 val out =
@@ -366,6 +368,7 @@ class ExecutePipelineSpec :
                     val pool = mockk<ConnectionPoolManager>()
                     every { pool.supportedConnections } returns setOf("pg-midas")
                     every { pool.requiresTenantId("pg-midas") } returns false
+                    every { pool.isReadOnly("pg-midas") } returns true
                     every { pool.acquire("pg-midas") } returns conn
                     return runBlocking {
                         ExecutePipeline(pool, translator, limits)

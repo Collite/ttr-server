@@ -95,8 +95,8 @@ internal fun parseTimestampParam(iso: String): Timestamp {
  * RLS (contracts §2.1): for a connection marked `requires-tenant-id`, execution runs inside a
  * transaction that first binds the tenant via `SET LOCAL app.tenant_id = '<uuid>'` so Postgres
  * row-level-security policies scope every row. Missing tenant → `tenant_id_required` (nothing
- * runs); `SET LOCAL` failure → `rls_set_failed` + rollback. Connections without the flag run
- * with autocommit, exactly as Mssql does.
+ * runs); `SET LOCAL` failure → `rls_set_failed` + rollback. Reads on write-capable pools also
+ * use explicit read-only transactions; other connections without the flag retain autocommit.
  *
  * Cancellation: the surrounding gRPC context cancels the coroutine; the pipeline
  * catches CancellationException, calls `Statement.cancel()`, and releases the
@@ -167,6 +167,7 @@ class ExecutePipeline(
 
         // Step 2 — clamp options.
         val opt = clamp(request.options)
+        val readTransaction = requiresTenant || !pool.isReadOnly(request.connectionId)
 
         return flow {
             active.incrementAndGet()
@@ -215,6 +216,12 @@ class ExecutePipeline(
 
                 // Step 4 — acquire connection.
                 connection = pool.acquire(request.connectionId)
+                if (!pool.isReadOnly(request.connectionId)) {
+                    // pgjdbc's default readOnlyMode=transaction enforces this only in an
+                    // explicit transaction. Every non-row-write plan must remain read-only.
+                    connection.isReadOnly = true
+                    connection.autoCommit = false
+                }
 
                 // Step 4.5 — RLS envelope. `SET LOCAL` is only honoured inside an explicit
                 // transaction, so bind the tenant transaction-scoped (no bleed across pooled
@@ -381,11 +388,10 @@ class ExecutePipeline(
                         .build(),
                 )
 
-                // Close the RLS transaction cleanly (read-only — nothing to persist, but this ends
-                // the txn so the next pooled borrow starts fresh).
-                if (requiresTenant) connection.commit()
+                // End the explicit read-only transaction so the next pooled borrow starts fresh.
+                if (readTransaction) connection.commit()
             } catch (t: Throwable) {
-                if (requiresTenant) runCatching { connection?.rollback() }
+                if (readTransaction) runCatching { connection?.rollback() }
                 if (t is kotlinx.coroutines.CancellationException) {
                     runCatching { statement?.cancel() }
                     throw t

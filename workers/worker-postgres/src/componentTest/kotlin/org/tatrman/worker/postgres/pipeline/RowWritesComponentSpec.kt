@@ -248,6 +248,51 @@ class RowWritesComponentSpec :
             calls shouldBe 0
             count() shouldBe 0L
         }
+        "non-row-write DML is read-only and the same physical connection can then commit row writes" {
+            val pool = ConnectionPoolManager(
+                mapOf("writer" to ConnectionConfig(
+                    id = "writer", jdbcUrl = pg.jdbcUrl, username = pg.username, password = pg.password,
+                    database = pg.databaseName, defaultSchema = "cz", readOnly = false, maxPoolSize = 1,
+                )),
+            )
+            var readSql = "INSERT INTO cz.rw_orders VALUES (1, 'bypass') RETURNING id"
+            val translator = object : TranslatorClient {
+                override suspend fun probe() = Unit
+                override suspend fun unparse(request: UnparseRequest): UnparseResponse {
+                    if (request.plan.nodeCase != PlanNode.NodeCase.ROW_WRITES) {
+                        return UnparseResponse.newBuilder().setOutput(readSql).setContext(request.context).build()
+                    }
+                    val result = RowWriteUnparser.unparse(
+                        request.plan.rowWrites.rowsList.single(), SqlDialect.POSTGRESQL,
+                        request.context.parametersList, listOf("id"),
+                    )
+                    return UnparseResponse.newBuilder().setOutput(result.sql)
+                        .setContext(request.context.toBuilder().clearParameters().addAllParameters(result.parameters)).build()
+                }
+            }
+            pool.use {
+                fun backendPid() = pool.acquire("writer").use { c -> c.unwrap(org.postgresql.PGConnection::class.java).backendPID }
+                val pid = backendPid()
+                RootAllocator().use { allocator ->
+                    val pipeline = ExecutePipeline(pool, translator, ExecutePipeline.ExecutionLimits(100, 1000, 30, 60, 1048576), allocator)
+                    suspend fun run(plan: PlanNode) = pipeline.execute(
+                        ExecuteRequest.newBuilder().setPlan(plan).setConnectionId("writer").build(),
+                    ).toList()
+                    val readPlan = PlanNode.newBuilder().setTableScan(TableScanNode.newBuilder().setTable(target)).build()
+                    val rejected = run(readPlan).single()
+                    rejected.messagesList.single().code shouldBe "worker_execution_failed"
+                    rejected.messagesList.single().humanMessage shouldContain "read-only transaction"
+                    count() shouldBe 0L
+                    readSql = "SELECT id, state FROM cz.rw_orders"
+                    run(readPlan).last().messagesCount shouldBe 0
+                    val written = run(PlanNode.newBuilder().setRowWrites(RowWrites.newBuilder().addRows(insert(2, "allowed"))).build()).single()
+                    written.messagesCount shouldBe 0
+                    decode(written) shouldBe listOf(listOf(0, 1L, null))
+                    count() shouldBe 1L
+                    backendPid() shouldBe pid
+                }
+            }
+        }
         "SELECT retains normal streaming behavior on a read-write connection" {
             sql("INSERT INTO cz.rw_orders VALUES (1, 'open')")
             val (batches, calls) = execute(emptyList(), select = true)
