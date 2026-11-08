@@ -108,3 +108,19 @@ sealed interface ChronoReading {
         val reason: String,
     ) : ChronoReading
 }
+
+/** What [DateRecognizer.readSpan] made of a span that is a time: a reading, or no one period. */
+internal sealed interface SpanReading {
+    data class Read(
+        val reading: ChronoReading,
+    ) : SpanReading
+
+    /**
+     * A rule recognised the span's shape, and a word in it changes what any part of it means: "next Q2", "excluding
+     * Q4", "Q2 since 2020", "Q2 vs the same quarter last year". No part of it is a period on its own.
+     */
+    data object NoOnePeriod : SpanReading
+
+    /** The span names several periods side by side („1. a 2. čtvrtletí“, "Q2 2025 vs 2024"); a part may be one. */
+    data object Several : SpanReading
+}

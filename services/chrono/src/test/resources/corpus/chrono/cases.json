@@ -74,6 +74,12 @@
   {"name": "ts-quarter-last-of-next-year-cs", "span": "poslední čtvrtletí příštího roku", "question": "Plán tržeb na poslední čtvrtletí příštího roku", "reference": "2026-11-01", "locale": "cs-CZ", "periodTable": false, "expect": {"status": "UNGROUNDABLE"}},
   {"name": "ts-quarter-next-year-en", "span": "Q2 next year", "question": "Planned revenue for Q2 next year", "reference": "2026-11-01", "locale": "en-US", "periodTable": false, "expect": {"status": "UNGROUNDABLE"}},
   {"name": "ts-quarter-bare-digit-year-en", "span": "Q2 sales 2025", "question": "Q2 sales 2025 by region", "reference": "2026-11-01", "locale": "en-US", "periodTable": false, "expect": {"status": "UNGROUNDABLE"}},
+  {"name": "ts-quarter-two-digit-year-en", "span": "Q2 FY25", "question": "Q2 FY25 revenue by region", "reference": "2026-11-01", "locale": "en-US", "periodTable": false, "expect": {"status": "UNGROUNDABLE"}},
+  {"name": "ts-quarter-year-earlier-cs", "span": "2. čtvrtletí o rok dříve", "question": "Tržby za 2. čtvrtletí o rok dříve", "reference": "2026-11-01", "locale": "cs-CZ", "periodTable": false, "expect": {"status": "UNGROUNDABLE"}},
+  {"name": "ts-quarter-since-year-en", "span": "Q2 since 2020", "question": "Q2 revenue since 2020 by region", "reference": "2026-11-01", "locale": "en-US", "periodTable": false, "expect": {"status": "UNGROUNDABLE"}},
+  {"name": "ts-quarter-excluded-en", "span": "in 2025 excluding Q4", "question": "Revenue in 2025 excluding Q4", "reference": "2026-11-01", "locale": "en-US", "periodTable": false, "expect": {"status": "UNGROUNDABLE"}},
+  {"name": "ts-month-range-cs", "span": "leden až březen 2025", "question": "Tržby za leden až březen 2025", "reference": "2026-11-01", "locale": "cs-CZ", "periodTable": false, "expect": {"status": "UNGROUNDABLE"}},
+  {"name": "ts-month-of-fiscal-year-en", "span": "December of fiscal year 2025", "question": "Revenue in December of fiscal year 2025", "reference": "2026-11-01", "locale": "en-US", "expect": {"status": "OK", "intervalStart": "2025-12-01", "periodCode": "202512"}},
   {"name": "ts-quarter-of-fiscal-year-en", "span": "Q4 of fiscal year 2025", "question": "Revenue in Q4 of fiscal year 2025", "reference": "2026-11-01", "locale": "en-US", "expect": {"status": "OK", "intervalStart": "2025-10-01"}},
   {"name": "ts-month-last-of-last-year-en", "span": "the last month of last year", "question": "Revenue in the last month of last year", "reference": "2026-11-01", "locale": "en-US", "expect": {"status": "OK", "intervalStart": "2025-12-01", "periodCode": "202512"}},
   {"name": "ts-half-last-of-last-year-cs", "span": "poslední pololetí loňského roku", "question": "Tržby za poslední pololetí loňského roku", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2025-07-01"}},
@@ -115,5 +121,7 @@
   {"name": "gi1-1-pololeti", "span": "1. pololetí", "question": "Tržby z webu za 1. pololetí", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-01-01"}},
   {"name": "gi1-2-ctvrtleti", "span": "2. čtvrtletí", "question": "Porovnej tržby ve 2. čtvrtletí podle prodejny", "reference": "2026-11-01", "locale": "cs-CZ", "periodTable": false, "expect": {"status": "OK", "intervalStart": "2026-04-01"}},
   {"name": "gi1-uplynuly-mesic", "span": "uplynulý měsíc", "question": "Výpadky zásob za uplynulý měsíc", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-10-01"}},
-  {"name": "gi1-od-cervna", "span": "od června", "question": "Vratky od června podle kategorie", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-06-01"}}
+  {"name": "gi1-od-cervna", "span": "od června", "question": "Vratky od června podle kategorie", "reference": "2026-11-01", "locale": "cs-CZ", "expect": {"status": "OK", "intervalStart": "2026-06-01"}},
+  {"name":"r230-r1-numeric-slash-date","span":"15/3/2025","reference":"2026-11-01","locale":"en-US","expect":{"status":"OK","intervalStart":"2025-03-15"}},
+  {"name":"r230-r3-joined-months","span":"January and March","reference":"2026-11-01","locale":"en-US","expect":{"status":"UNGROUNDABLE"}}
 ]

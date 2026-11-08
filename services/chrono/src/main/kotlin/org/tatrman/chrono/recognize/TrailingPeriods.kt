@@ -41,7 +41,11 @@ internal object TrailingPeriods {
      * "the last month": in "the last month of the last year" the year is still the trailing one, which no reading
      * settles, as in "the last quarter of the last year" (RR16).
      */
-    fun findAll(n: String): List<Trailing> {
+    fun findAll(n: String): List<Trailing> = memo(n)
+
+    private val memo = SpanMemo(compute = ::find)
+
+    private fun find(n: String): List<Trailing> {
         val partOf = PartOfPeriods.findAll(n)
         val lastMonths = NumberedPeriods.lastMonths(n).map { it.range.first }
         return re

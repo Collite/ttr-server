@@ -96,6 +96,14 @@ data class PeriodWord(
  * reference date ([DateRecognizer]'s week arm, unchanged).
  */
 object PeriodWords {
+    val scopedWeekRe =
+        Regex(
+            """\b(?:this|current|last|past|previous|prior)\s+${PeriodWords.EN_ADJ}week\b""" +
+                """|\b(?:tento|tato|toto|tohoto|tomto|tomuto|timto|tenhle|tohle|tomhle|tohohle""" +
+                """|aktualn\w*|soucasn\w*|minul\w*|predchoz\w*|predesl\w*|predminul\w*|uplynul\w*)""" +
+                """\s+${PeriodWords.CS_ADJ}(?:tyden|tydn\w*)""",
+        )
+
     private data class Rule(
         val unit: PeriodUnit,
         val kind: PeriodWordKind,
@@ -246,6 +254,11 @@ object PeriodWords {
     fun findAll(
         n: String,
         unit: PeriodUnit,
+    ): List<PeriodWord> = unitMemos.getValue(unit)(n)
+
+    private fun find(
+        n: String,
+        unit: PeriodUnit,
     ): List<PeriodWord> {
         val numbered =
             when (unit) {
@@ -265,5 +278,8 @@ object PeriodWords {
     }
 
     /** Every relative word of any unit in the folded text [n]. */
-    fun findAll(n: String): List<PeriodWord> = PeriodUnit.entries.flatMap { findAll(n, it) }
+    fun findAll(n: String): List<PeriodWord> = allMemo(n)
+
+    private val allMemo = SpanMemo { n -> PeriodUnit.entries.flatMap { findAll(n, it) } }
+    private val unitMemos = PeriodUnit.entries.associateWith { unit -> SpanMemo { find(it, unit) } }
 }

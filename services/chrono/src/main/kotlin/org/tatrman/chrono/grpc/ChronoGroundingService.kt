@@ -4,6 +4,7 @@ package org.tatrman.chrono.grpc
 import com.google.protobuf.util.JsonFormat
 import org.tatrman.grounding.v1.ClarificationOption
 import org.tatrman.grounding.v1.DateTimeInterval
+import org.tatrman.grounding.v1.EntityKind
 import org.tatrman.grounding.lexicon.GroundingSliceSource
 import org.tatrman.grounding.v1.GetStatusRequest
 import org.tatrman.grounding.v1.GetStatusResponse
@@ -13,6 +14,9 @@ import org.tatrman.grounding.v1.GroundingContext
 import org.tatrman.grounding.v1.GroundingResult
 import org.tatrman.grounding.v1.GroundingServiceGrpcKt
 import org.tatrman.grounding.v1.Normalized
+import org.tatrman.grounding.v1.ScanRequest
+import org.tatrman.grounding.v1.ScanResponse
+import org.tatrman.grounding.v1.TimeSpan
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import org.slf4j.LoggerFactory
@@ -25,6 +29,7 @@ import org.tatrman.chrono.recognize.PeriodCodes
 import org.tatrman.chrono.recognize.ChronoReading
 import org.tatrman.chrono.recognize.ChronoRecognition
 import org.tatrman.chrono.recognize.DateRecognizer
+import org.tatrman.chrono.scan.SpanScanner
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.Month
@@ -61,6 +66,7 @@ class ChronoGroundingService(
     private val logger = LoggerFactory.getLogger(ChronoGroundingService::class.java)
     private val recognizer = DateRecognizer()
     private val recipeBuilder = RecipeBuilder(discovery)
+    private val scanner = SpanScanner(recognizer, confidenceThreshold)
 
     override suspend fun ground(request: GroundRequest): GroundResponse {
         // System.nanoTime is a monotonic duration timer, not a wall clock — grounding still reads
@@ -82,6 +88,71 @@ class ChronoGroundingService(
             source,
         )
         return response
+    }
+
+    /**
+     * TS-P0 S0.3 (contracts §3) — the time phrases in [ScanRequest.getText], by chrono's own rules ([SpanScanner]).
+     * The context is checked as for `Ground`: the reference date is required (chrono never reads a clock), the locale
+     * narrows the slice, the earlier questions feed the conversational reading. Never the LLM fallback.
+     */
+    override suspend fun scan(request: ScanRequest): ScanResponse {
+        val startNanos = System.nanoTime()
+        val response = scanInternal(request)
+        metrics.recordScan(
+            response.spansCount,
+            (System.nanoTime() - startNanos) / 1_000_000.0,
+            response.messagesList.any { it.severity == Severity.ERROR },
+        )
+        logger.debug("chrono scan text='{}' → {} span(s)", request.text, response.spansCount)
+        return response
+    }
+
+    private fun scanInternal(request: ScanRequest): ScanResponse {
+        val reference =
+            parseReference(request.context)
+                ?: return ScanResponse
+                    .newBuilder()
+                    .addMessages(
+                        ResponseMessage
+                            .newBuilder()
+                            .setSeverity(Severity.ERROR)
+                            .setCode("reference_required")
+                            .setHumanMessage("reference_datetime is required (chrono never reads a clock)"),
+                    ).build()
+        val found =
+            scanner.scanResult(
+                request.text,
+                reference,
+                triggers.current().forLang(request.context.locale),
+                request.context.priorQuestionsList,
+            )
+        return ScanResponse
+            .newBuilder()
+            .addAllSpans(
+                found.spans.map {
+                    TimeSpan
+                        .newBuilder()
+                        .setStart(it.start)
+                        .setEnd(it.end)
+                        .setText(it.text)
+                        .setKind(EntityKind.DATE_TIME)
+                        .setConfidence(it.confidence.toFloat())
+                        .setTrigger(it.trigger)
+                        .build()
+                },
+            ).also { response ->
+                if (found.truncated) {
+                    response.addMessages(
+                        ResponseMessage
+                            .newBuilder()
+                            .setSeverity(Severity.WARNING)
+                            .setCode("text_too_long")
+                            .setHumanMessage(
+                                "Scan reads the first ${SpanScanner.MAX_TOKENS} tokens; remaining text was skipped",
+                            ),
+                    )
+                }
+            }.build()
     }
 
     private suspend fun groundInternal(request: GroundRequest): GroundResponse {

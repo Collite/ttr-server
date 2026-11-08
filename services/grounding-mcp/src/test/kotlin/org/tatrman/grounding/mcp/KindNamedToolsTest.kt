@@ -37,9 +37,10 @@ class KindNamedToolsTest :
             return r
         }
 
-        "the three kind-named capability ids are registered from the manifests" {
+        "the kind-named capability ids are registered from the manifests, Scan's with them (TS-P0 S0.3)" {
             val ids = ManifestLoader().loadAll().map { it.tool.capabilityId }
-            ids shouldContainExactlyInAnyOrder listOf("grounding.time:v1", "grounding.geo:v1", "grounding.money:v1")
+            ids shouldContainExactlyInAnyOrder
+                listOf("grounding.time:v1", "grounding.geo:v1", "grounding.money:v1", "grounding.time.scan:v1")
             ManifestLoader().loadAll().all { it.tool.category == "grounding" } shouldBe true
         }
 

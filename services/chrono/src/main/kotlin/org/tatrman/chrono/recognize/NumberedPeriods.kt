@@ -142,14 +142,27 @@ internal object NumberedPeriods {
             Regex("""\b($CS_LAST_MONTH)(?:$CS_OF_YEAR|$CS_IN_YEAR)"""),
         )
 
+    /** A plural Czech quarter or half noun: „čtvrtletích“, „kvartálech“, „pololetími“ (RR17). */
+    private val pluralRe = Regex("""(?:ctvrtlet|pololet)(?:ich|imi)\b|kvartal(?:y|um|ech)\b""")
+
+    /** Does [one] name its period with a plural noun („ve 2. čtvrtletích“)? Then it is no one period. */
+    fun plural(
+        n: String,
+        one: Numbered,
+    ): Boolean = pluralRe.containsMatchIn(n.substring(one.range))
+
     /** The quarters the folded [n] names by number, in the order the patterns find them. */
-    fun quarters(n: String): List<Numbered> = find(n, quarterWithYear, quarterYearless, ::quarterOf)
+    fun quarters(n: String): List<Numbered> = quarterMemo(n)
+
+    private val quarterMemo = SpanMemo { find(it, quarterWithYear, quarterYearless, ::quarterOf) }
+    private val halfMemo = SpanMemo { find(it, halfWithYear, halfYearless, ::halfOf) }
+    private val lastMonthMemo = SpanMemo { find(it, monthWithYear, monthYearless) { 12 } }
 
     /** The half-years the folded [n] names by number. */
-    fun halves(n: String): List<Numbered> = find(n, halfWithYear, halfYearless, ::halfOf)
+    fun halves(n: String): List<Numbered> = halfMemo(n)
 
     /** The last months of a year the folded [n] names: each is December, its [Numbered.number] 12. */
-    fun lastMonths(n: String): List<Numbered> = find(n, monthWithYear, monthYearless) { 12 }
+    fun lastMonths(n: String): List<Numbered> = lastMonthMemo(n)
 
     private fun find(
         n: String,

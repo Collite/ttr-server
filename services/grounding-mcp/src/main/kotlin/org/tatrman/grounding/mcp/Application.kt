@@ -79,6 +79,9 @@ fun main(): Unit =
                                 server.addTool(tools.groundMoneyTool) { req ->
                                     safeMcpTool("ground_money", TOOL_TIMEOUT_MS) { tools.groundMoneyCallback(it) }(req)
                                 }
+                                server.addTool(tools.scanTimeTool) { req ->
+                                    safeMcpTool("scan_time", TOOL_TIMEOUT_MS) { tools.scanTimeCallback(it) }(req)
+                                }
                             }
                         }
                     }
