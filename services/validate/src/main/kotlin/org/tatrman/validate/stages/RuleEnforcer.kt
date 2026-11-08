@@ -69,11 +69,11 @@ class RuleEnforcer(
             for (row in node.rowWrites.rowsList) {
                 val columns =
                     row.valuesList.mapTo(mutableSetOf()) { it.name } + row.readBeforeList +
-                        RowWriteColumns.names(row.where)
+                        ColumnUsage.columnNames(row.where)
                 if (columnRules.any {
                         it.table == row.target &&
                             it.column in columns &&
-                            it.action in listOf(ColumnRule.Action.DENY, ColumnRule.Action.MASK)
+                            it.action in WRITE_REFUSING_ACTIONS
                     }
                 ) {
                     messages +=
@@ -305,6 +305,8 @@ class RuleEnforcer(
     }
 
     companion object {
+        private val WRITE_REFUSING_ACTIONS = setOf(ColumnRule.Action.DENY, ColumnRule.Action.MASK)
+
         private val log = LoggerFactory.getLogger(RuleEnforcer::class.java)
 
         /** The code of the WARNING raised when the row cap bounds a plan below what was asked. */

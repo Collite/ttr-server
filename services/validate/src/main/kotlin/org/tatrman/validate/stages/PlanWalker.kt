@@ -477,6 +477,9 @@ internal object ColumnUsage {
             PlanWalker.nodesOutsideBoundaries(plan).forEach { node -> collectColumns(node, this) }
         }
 
+    /** Columns in an expression; a subquery's separate plan is outside this expression. */
+    fun columnNames(expression: Expression): Set<String> = buildSet { collectColumnsInExpr(expression, this) }
+
     /** The columns ONE node names; its inputs and its subqueries' plans are nodes of their own. */
     private fun collectColumns(
         plan: PlanNode,
