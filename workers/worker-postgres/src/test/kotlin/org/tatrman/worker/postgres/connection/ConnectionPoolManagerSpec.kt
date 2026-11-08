@@ -43,6 +43,22 @@ class ConnectionPoolManagerSpec :
             us.database shouldBe "automation"
         }
 
+        "read-only pools preserve the role search_path while write pools set their declared schema" {
+            val mgr = ConnectionPoolManager(emptyMap())
+            val cfg =
+                ConnectionConfig(
+                    id = "reader",
+                    jdbcUrl = "jdbc:postgresql://localhost/db",
+                    username = "u",
+                    password = "p",
+                    database = "db",
+                    defaultSchema = "cz",
+                    readOnly = true,
+                )
+            mgr.poolConfig("reader", cfg).schema shouldBe null
+            mgr.poolConfig("writer", cfg.copy(readOnly = false)).schema shouldBe "cz"
+        }
+
         "fromConfig parses connections block" {
             val config =
                 ConfigFactory.parseString(
