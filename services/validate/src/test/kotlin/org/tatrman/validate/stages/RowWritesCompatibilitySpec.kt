@@ -105,6 +105,39 @@ class RowWritesCompatibilitySpec :
                 )
             permitted.plan shouldBe plan
         }
+        "real policy engine returns a target MASK and SecurityApplier refuses the write without a plan" {
+            val policy =
+                Policy(
+                    "mask-state",
+                    TableMatcher.Exact(table),
+                    PolicyPredicate.Eq("tenant", PolicyValue.Literal("one", "text")),
+                    columnRules =
+                        listOf(
+                            org.tatrman.validate.policy.ColumnRule(
+                                "state",
+                                ColumnAction.Mask(PolicyValue.Literal("***", "text")),
+                            ),
+                        ),
+                )
+            val engine = PolicyEngine(PolicyRegistry(listOf(policy)))
+            val plan = write("read_before")
+            val policies =
+                engine.evaluatePolicies(
+                    org.tatrman.security.v1.EvaluatePoliciesRequest
+                        .newBuilder()
+                        .setPlan(plan)
+                        .setContext(request(plan).context)
+                        .build(),
+                )
+            policies.columnRulesList.single().action shouldBe ColumnRule.Action.MASK
+            policies.columnRulesList.single().table shouldBe table
+            policies.columnRulesList
+                .single()
+                .maskExpression.literal.stringValue shouldBe "***"
+            val response = service(SecurityClient { engine.evaluatePolicies(it) }).validate(request(plan))
+            response.hasPlan() shouldBe false
+            response.messagesList.first().code shouldBe "write_under_row_policy"
+        }
         "DENY and MASK on values, where or read_before refuse rather than mask a write" {
             for (slot in listOf("values", "where", "read_before")) {
                 for (action in listOf(ColumnRule.Action.DENY, ColumnRule.Action.MASK)) {
