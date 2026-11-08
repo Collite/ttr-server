@@ -13,6 +13,7 @@ import org.tatrman.dispatch.v1.WorkerInfo
 import org.tatrman.meta.v1.OverallStatus
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
+import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.PipelineContext
 import org.tatrman.plan.v1.Warning
 import org.tatrman.worker.receipt.ExecutionReceiptBuilder
@@ -78,6 +79,16 @@ class DispatchServiceImpl(
         // hasn't advertised one (legacy / Phase-B-only workers).
         val info = worker.connectionInfo(routing.connectionId)
         val rewriteResult = PlanQnameRewriter.applyDefaultSchema(request.plan, info?.defaultSchema.orEmpty())
+        if (request.plan.nodeCase == PlanNode.NodeCase.ROW_WRITES &&
+            (info?.defaultSchema.isNullOrBlank() || rewriteResult.mismatches.isNotEmpty())
+        ) {
+            return flowOf(
+                errorBatch(
+                    "row_writes_schema_mismatch",
+                    "Row-write targets must match connection '${routing.connectionId}' default_schema '${info?.defaultSchema.orEmpty()}'.",
+                ),
+            )
+        }
         rewriteResult.mismatches.forEach { m ->
             warnings.add(
                 warning(
@@ -195,6 +206,12 @@ class DispatchServiceImpl(
                 derived.isEmpty() -> explicit
                 derived.single() == explicit -> explicit
                 else -> {
+                    if (request.plan.nodeCase == PlanNode.NodeCase.ROW_WRITES) {
+                        throw RoutingError(
+                            "row_writes_connection_mismatch",
+                            "Caller supplied connection_id=$explicit; row-write targets derive ${derived.single()}.",
+                        )
+                    }
                     warnings.add(
                         warning(
                             "connection_id_overrides_derived",

@@ -55,8 +55,16 @@ class DispatchServiceImplSpec :
             stateful: Boolean = false,
             connections: List<String> = listOf("pg-store"),
             execute: (ExecuteRequest) -> Flow<ResultBatch> = { defaultStream() },
+            connectionInfos: List<ConnectionInfo> = emptyList(),
+            worldConfig: WorldConfig = world,
         ): Pair<DispatchServiceImpl, StickyRegistry> {
-            val client = StubClient(connections = connections, supportsStateful = stateful, execute = execute)
+            val client =
+                StubClient(
+                    connections = connections,
+                    supportsStateful = stateful,
+                    execute = execute,
+                    connectionInfos = connectionInfos,
+                )
             val registry = WorkerRegistry()
             registry.seed(
                 listOf(
@@ -72,7 +80,7 @@ class DispatchServiceImplSpec :
                 ),
             )
             val sticky = StickyRegistry()
-            return DispatchServiceImpl(registry, sticky, world) to sticky
+            return DispatchServiceImpl(registry, sticky, worldConfig) to sticky
         }
 
         fun fixtureWithFailover(): Pair<DispatchServiceImpl, StickyRegistry> {
@@ -142,38 +150,81 @@ class DispatchServiceImplSpec :
             out.messagesList.single().code shouldBe "cross_database_not_supported"
         }
 
-        "row write targets use the worker default schema and preserve explicit mismatch warnings" {
-            val target = storeSales.toBuilder().clearNamespace().build()
-            val row =
-                org.tatrman.plan.v1.RowWrite
-                    .newBuilder()
-                    .setTarget(
-                        target,
-                    ).setOp(org.tatrman.plan.v1.RowWriteOp.INSERT)
-                    .build()
-            val plan =
+        "row writes refuse connection and schema mismatches without executing but concretize a blank namespace" {
+            val captured = mutableListOf<ExecuteRequest>()
+            val config = WorldConfig.fromConfig(ConfigFactory.parseString("world.default-connection = cz"))
+            val infos =
+                listOf("cz", "other").map {
+                    ConnectionInfo
+                        .newBuilder()
+                        .setConnectionId(it)
+                        .setDefaultSchema("cz")
+                        .build()
+                }
+            val (svc, _) =
+                fixture(
+                    connections = listOf("cz", "other"),
+                    connectionInfos = infos,
+                    worldConfig = config,
+                    execute = {
+                        captured += it
+                        defaultStream()
+                    },
+                )
+
+            fun plan(namespace: String) =
                 PlanNode
                     .newBuilder()
                     .setRowWrites(
-                        org.tatrman.plan.v1.RowWrites
-                            .newBuilder()
-                            .addRows(row),
-                    ).build()
-            val rewritten = PlanQnameRewriter.applyDefaultSchema(plan, "cz")
-            rewritten.plan.rowWrites.rowsList
-                .single()
-                .target.namespace shouldBe "cz"
-            rewritten.mismatches.size shouldBe 0
-            val explicit =
-                plan
-                    .toBuilder()
-                    .setRowWrites(
-                        plan.rowWrites.toBuilder().setRows(
-                            0,
-                            row.toBuilder().setTarget(target.toBuilder().setNamespace("other")),
+                        org.tatrman.plan.v1.RowWrites.newBuilder().addRows(
+                            org.tatrman.plan.v1.RowWrite
+                                .newBuilder()
+                                .setTarget(qname("db", namespace, "obligation"))
+                                .setOp(org.tatrman.plan.v1.RowWriteOp.INSERT),
                         ),
                     ).build()
-            PlanQnameRewriter.applyDefaultSchema(explicit, "cz").mismatches.size shouldBe 1
+
+            suspend fun dispatch(
+                plan: PlanNode,
+                connection: String = "cz",
+            ) = svc
+                .dispatch(
+                    DispatchRequest
+                        .newBuilder()
+                        .setPlan(plan)
+                        .setConnectionId(connection)
+                        .build(),
+                ).toList()
+                .single()
+            dispatch(plan("us")).messagesList.single().code shouldBe "row_writes_schema_mismatch"
+            dispatch(plan("cz"), "other").messagesList.single().code shouldBe "row_writes_connection_mismatch"
+            captured.size shouldBe 0
+            val (legacy, _) =
+                fixture(connections = listOf("cz"), worldConfig = config, execute = {
+                    captured += it
+                    defaultStream()
+                })
+            legacy
+                .dispatch(DispatchRequest.newBuilder().setPlan(plan("cz")).build())
+                .toList()
+                .single()
+                .messagesList
+                .single()
+                .code shouldBe "row_writes_schema_mismatch"
+            captured.size shouldBe 0
+            dispatch(plan("")).messagesCount shouldBe 0
+            captured
+                .single()
+                .plan.rowWrites.rowsList
+                .single()
+                .target.namespace shouldBe "cz"
+            dispatch(plan("cz")).messagesCount shouldBe 0
+            captured.size shouldBe 2
+            val read = dispatch(scan(qname("db", "us", "obligation")), "other")
+            read.messagesCount shouldBe 0
+            read.context.warningsList.map { it.code } shouldContain "schema_mismatch"
+            read.context.warningsList.map { it.code } shouldContain "connection_id_overrides_derived"
+            captured.size shouldBe 3
         }
 
         "cross-database plan rejected with cross_database_not_supported" {
