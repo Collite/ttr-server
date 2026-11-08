@@ -121,7 +121,9 @@ text as the question and `prior_questions` after it.
   (*zařízení*), or a name ("Jan Novák"). `MonthWords` is shared with the recognizer and conversation reader: *march*
   is a month; *may* is a verb before a pronoun, or lowercase inside a clause without a preposition, number or joined
   month. An abbreviation is a month after a preposition, beside a day/year or joined to another month. Blanking
-  checks each part of a token ("Jan-Mar", "March/April", "October's"), preserving UTF-16 offsets.
+  checks each part of a token ("Jan-Mar", "March/April", "October's"), preserving UTF-16 offsets. Month words
+  join across punctuation and whitespace alone (including abbreviation dots, `&` and `+`), or one joining word;
+  "Jan.–Mar. 2025" and "Jan & Mar 2025" give no month or year part.
 - **At most 128 tokens.** Longer text returns the first 128 tokens' spans and a WARNING `text_too_long` message,
   also passed through `scan_time`. Candidate checks visit only their own sub-windows; dense text is bounded too.
 

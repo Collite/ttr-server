@@ -18,7 +18,8 @@ outside this repo could notice is in.
 
 - **chrono / grounding-mcp — S0.3 review-230 repairs.** Dates such as `15/3/2025` and `Mar-2025` keep their original
   readings. Month ranges and months bounding fiscal years are left unread. One contextual month helper serves
-  recognition, conversation anchors and scanner blanking, including joined tokens and possessives. Scan returns
+  recognition, conversation anchors and scanner blanking, including joined tokens and possessives. Month pairs
+  join across any punctuation (including abbreviation dots, `&` and `+`) or one joining word. Scan returns
   only time words and phrase glue, leaves a different grain noun outside, and suppresses a phrase only when it is
   linked to the conflicting phrase. It reads at most 128 tokens and returns WARNING `text_too_long` with prefix
   spans; window checks visit their own sub-windows. Czech calendar weeks read again;

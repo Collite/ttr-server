@@ -37,9 +37,16 @@ internal object MonthWords {
             "do",
         )
     private val pronouns = setOf("i", "we", "you", "they", "he", "she", "it", "one")
-    private val join = Regex("""\s*(?:[-–/'’,]|and|or|to|through|thru|till|until|vs\.?|versus|a|i|nebo|az)\s*""")
+    private val joinWord = Regex("""and|or|to|through|thru|till|until|vs|versus|a|i|nebo|az""")
+    private val joinNoise = Regex("""[\s\p{P}&+]""")
     private val day = Regex("""\d{1,2}(?:st|nd|rd|th)?""")
     private val dayOrYear = Regex("""\d{1,2}(?:st|nd|rd|th)?|\d{4}""")
+
+    /** Month pairs may be separated only by punctuation/space, or by one joining word. */
+    private fun joinedBy(between: String): Boolean {
+        val joining = joinNoise.replace(between, "")
+        return joining.isEmpty() || joinWord.matches(joining)
+    }
 
     fun find(text: String): List<Mention> {
         val tokens = word.findAll(text).toList()
@@ -52,7 +59,7 @@ internal object MonthWords {
         val joined = mutableSetOf<Int>()
         forms.indices.filter { forms[it] != null }.zipWithNext().forEach { (left, right) ->
             val between = Normalization.fold(text.substring(tokens[left].range.last + 1, tokens[right].range.first))
-            if (join.matches(between)) {
+            if (joinedBy(between)) {
                 joined += left
                 joined += right
             }

@@ -86,6 +86,24 @@ class SpanScannerSpec :
             spans("Kolik objednal Jan Novák").shouldBeEmpty()
         }
 
+        "R230 S2 joined month abbreviations give no month or year part" {
+            for (text in listOf(
+                "Revenue Jan.-Mar. 2025",
+                "Revenue Jan.–Mar. 2025",
+                "Revenue Jan. - Mar. 2025",
+                "Revenue Sep.-Dec. 2025 by store",
+                "Revenue Jan & Mar 2025",
+                "Revenue Jan + Mar 2025",
+                "Revenue Jan.:/—Mar. 2025",
+            )) {
+                spans(text).shouldBeEmpty()
+            }
+            spans("Revenue in Mar. 2025") shouldBe listOf("Mar. 2025")
+            spans("Revenue Jan. 15, 2025 by store") shouldBe listOf("Jan. 15, 2025")
+            spans("Revenue in Dec.") shouldBe listOf("Dec")
+            spans("Kolik objednal Jan Novák a Petr").shouldBeEmpty()
+        }
+
         "R230 R5 measures attributes verbs and document numbers stay outside spans" {
             val rows =
                 listOf(

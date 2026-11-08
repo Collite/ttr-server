@@ -69,6 +69,27 @@ class DateRecognizerSpec :
             rec.recognize("May 2025", ref).shouldNotBeNull().periodCode shouldBe "202505"
         }
 
+        "R230 S2 punctuation and joining words connect month abbreviations" {
+            for (span in listOf(
+                "Jan.-Mar. 2025",
+                "Jan.–Mar. 2025",
+                "Jan. - Mar. 2025",
+                "Jan & Mar 2025",
+                "Sep.-Dec. 2025",
+                "Jan & Mar",
+                "Jan + Mar 2025",
+                "Jan.:/—Mar. 2025",
+                "Jan. and Mar. 2025",
+                "Jan. through Mar. 2025",
+                "January & March",
+                "March + April",
+                "March, April and May",
+            )) {
+                withClue(span) { rec.recognize(span, ref).shouldBeNull() }
+            }
+            rec.recognize("Mar. 2025", ref).shouldNotBeNull().periodCode shouldBe "202503"
+        }
+
         "R230 R10 Czech calendar week shares the scoped week grammar" {
             val nov = LocalDate.of(2026, 11, 1)
             rec.recognize("minulý kalendářní týden", nov).shouldNotBeNull().startInclusive shouldBe day(2026, 10, 19)
