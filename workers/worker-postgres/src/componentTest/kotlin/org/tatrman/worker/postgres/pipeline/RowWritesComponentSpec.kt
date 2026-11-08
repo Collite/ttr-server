@@ -33,7 +33,7 @@ class RowWritesComponentSpec :
             }
         beforeTest {
             sql(
-                "CREATE SCHEMA IF NOT EXISTS cz; DROP TABLE IF EXISTS cz.rw_orders; CREATE TABLE cz.rw_orders (id bigint PRIMARY KEY, state text NOT NULL)",
+                "CREATE SCHEMA IF NOT EXISTS cz; DROP TABLE IF EXISTS cz.rw_orders; DROP TABLE IF EXISTS cz.rw_parents; CREATE TABLE cz.rw_orders (id bigint PRIMARY KEY, state text NOT NULL)",
             )
         }
         val target =
@@ -231,6 +231,23 @@ class RowWritesComponentSpec :
             batch.arrowIpc.isEmpty shouldBe true
             count() shouldBe 0L
         }
+        "deferred constraint failure is a commit error with a receipt and no seq" {
+            sql(
+                "CREATE TABLE cz.rw_parents (id bigint PRIMARY KEY); ALTER TABLE cz.rw_orders ADD CONSTRAINT rw_parent FOREIGN KEY (id) REFERENCES cz.rw_parents(id) DEFERRABLE INITIALLY DEFERRED",
+            )
+            val batch = execute(listOf(insert(1, "orphan"))).first.single()
+            batch.messagesList.single().code shouldBe "worker_execution_failed"
+            batch.messagesList.single().humanMessage shouldContain "row_writes commit:"
+            batch.messagesList
+                .single()
+                .humanMessage
+                .contains("seq") shouldBe false
+            batch.hasReceipt() shouldBe true
+            batch.receipt.connectionId shouldBe "writer"
+            batch.receipt.statementKind shouldBe org.tatrman.worker.v1.StatementKind.SQL_EXECUTED
+            batch.arrowIpc.isEmpty shouldBe true
+            count() shouldBe 0L
+        }
         "if_absent unique conflict answers zero without error" {
             sql("INSERT INTO cz.rw_orders VALUES (1, 'open')")
             val batch = execute(listOf(insert(1, "ignored", true))).first.single()
@@ -249,43 +266,98 @@ class RowWritesComponentSpec :
             count() shouldBe 0L
         }
         "non-row-write DML is read-only and the same physical connection can then commit row writes" {
-            val pool = ConnectionPoolManager(
-                mapOf("writer" to ConnectionConfig(
-                    id = "writer", jdbcUrl = pg.jdbcUrl, username = pg.username, password = pg.password,
-                    database = pg.databaseName, defaultSchema = "cz", readOnly = false, maxPoolSize = 1,
-                )),
-            )
+            val pool =
+                ConnectionPoolManager(
+                    mapOf(
+                        "writer" to
+                            ConnectionConfig(
+                                id = "writer",
+                                jdbcUrl = pg.jdbcUrl,
+                                username = pg.username,
+                                password = pg.password,
+                                database = pg.databaseName,
+                                defaultSchema = "cz",
+                                readOnly = false,
+                                maxPoolSize = 1,
+                            ),
+                    ),
+                )
             var readSql = "INSERT INTO cz.rw_orders VALUES (1, 'bypass') RETURNING id"
-            val translator = object : TranslatorClient {
-                override suspend fun probe() = Unit
-                override suspend fun unparse(request: UnparseRequest): UnparseResponse {
-                    if (request.plan.nodeCase != PlanNode.NodeCase.ROW_WRITES) {
-                        return UnparseResponse.newBuilder().setOutput(readSql).setContext(request.context).build()
+            val translator =
+                object : TranslatorClient {
+                    override suspend fun probe() = Unit
+
+                    override suspend fun unparse(request: UnparseRequest): UnparseResponse {
+                        if (request.plan.nodeCase != PlanNode.NodeCase.ROW_WRITES) {
+                            return UnparseResponse
+                                .newBuilder()
+                                .setOutput(readSql)
+                                .setContext(request.context)
+                                .build()
+                        }
+                        val result =
+                            RowWriteUnparser.unparse(
+                                request.plan.rowWrites.rowsList
+                                    .single(),
+                                SqlDialect.POSTGRESQL,
+                                request.context.parametersList,
+                                listOf("id"),
+                            )
+                        return UnparseResponse
+                            .newBuilder()
+                            .setOutput(result.sql)
+                            .setContext(
+                                request.context
+                                    .toBuilder()
+                                    .clearParameters()
+                                    .addAllParameters(result.parameters),
+                            ).build()
                     }
-                    val result = RowWriteUnparser.unparse(
-                        request.plan.rowWrites.rowsList.single(), SqlDialect.POSTGRESQL,
-                        request.context.parametersList, listOf("id"),
-                    )
-                    return UnparseResponse.newBuilder().setOutput(result.sql)
-                        .setContext(request.context.toBuilder().clearParameters().addAllParameters(result.parameters)).build()
                 }
-            }
             pool.use {
-                fun backendPid() = pool.acquire("writer").use { c -> c.unwrap(org.postgresql.PGConnection::class.java).backendPID }
+                fun backendPid() =
+                    pool.acquire("writer").use { c ->
+                        c.unwrap(org.postgresql.PGConnection::class.java).backendPID
+                    }
                 val pid = backendPid()
                 RootAllocator().use { allocator ->
-                    val pipeline = ExecutePipeline(pool, translator, ExecutePipeline.ExecutionLimits(100, 1000, 30, 60, 1048576), allocator)
-                    suspend fun run(plan: PlanNode) = pipeline.execute(
-                        ExecuteRequest.newBuilder().setPlan(plan).setConnectionId("writer").build(),
-                    ).toList()
-                    val readPlan = PlanNode.newBuilder().setTableScan(TableScanNode.newBuilder().setTable(target)).build()
+                    val pipeline =
+                        ExecutePipeline(
+                            pool,
+                            translator,
+                            ExecutePipeline.ExecutionLimits(100, 1000, 30, 60, 1048576),
+                            allocator,
+                        )
+
+                    suspend fun run(plan: PlanNode) =
+                        pipeline
+                            .execute(
+                                ExecuteRequest
+                                    .newBuilder()
+                                    .setPlan(plan)
+                                    .setConnectionId("writer")
+                                    .build(),
+                            ).toList()
+                    val readPlan =
+                        PlanNode
+                            .newBuilder()
+                            .setTableScan(
+                                TableScanNode.newBuilder().setTable(target),
+                            ).build()
                     val rejected = run(readPlan).single()
                     rejected.messagesList.single().code shouldBe "worker_execution_failed"
                     rejected.messagesList.single().humanMessage shouldContain "read-only transaction"
                     count() shouldBe 0L
                     readSql = "SELECT id, state FROM cz.rw_orders"
                     run(readPlan).last().messagesCount shouldBe 0
-                    val written = run(PlanNode.newBuilder().setRowWrites(RowWrites.newBuilder().addRows(insert(2, "allowed"))).build()).single()
+                    val written =
+                        run(
+                            PlanNode
+                                .newBuilder()
+                                .setRowWrites(
+                                    RowWrites.newBuilder().addRows(insert(2, "allowed")),
+                                ).build(),
+                        ).single()
                     written.messagesCount shouldBe 0
                     decode(written) shouldBe listOf(listOf(0, 1L, null))
                     count() shouldBe 1L

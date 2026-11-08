@@ -453,7 +453,16 @@ class ExecutePipeline(
     ): Flow<ResultBatch> {
         if (pool.isReadOnly(request.connectionId)) {
             return flowOf(
-                errorBatch("connection_read_only", "Row writes require a read-write connection.", request.context),
+                errorBatch(
+                    "connection_read_only",
+                    "Row writes require a read-write connection.",
+                    request.context,
+                    receipt(
+                        request,
+                        sql = null,
+                        rls = if (requiresTenant) RlsOutcome.RLS_FAILED else RlsOutcome.RLS_NOT_REQUIRED,
+                    ),
+                ),
             )
         }
         return flow {
@@ -461,36 +470,40 @@ class ExecutePipeline(
             var connection: Connection? = null
             var statement: PreparedStatement? = null
             var seq = 0
+            var committing = false
             val statements = mutableListOf<String>()
             val bindings = mutableListOf<ParameterBinding>()
             val started = System.nanoTime()
-            val rls = if (requiresTenant) RlsOutcome.RLS_APPLIED else RlsOutcome.RLS_NOT_REQUIRED
+            var rls = if (requiresTenant) RlsOutcome.RLS_FAILED else RlsOutcome.RLS_NOT_REQUIRED
             val batch =
                 try {
                     require(request.plan.rowWrites.rowsCount > 0) { "row_writes must not be empty" }
-                    val unparsed = request.plan.rowWrites.rowsList.mapIndexed { index, row ->
-                        seq = index
-                        currentCoroutineContext().ensureActive()
-                        val unparse =
-                            translator.unparse(
-                                UnparseRequest
-                                    .newBuilder()
-                                    .setPlan(PlanNode.newBuilder().setRowWrites(RowWrites.newBuilder().addRows(row)))
-                                    .setTargetLanguage(Language.SQL)
-                                    .setTargetDialect(SqlDialect.POSTGRESQL)
-                                    .setOptimize(false)
-                                    .setContext(request.context)
-                                    .build(),
-                            )
-                        unparse.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let {
-                            throw RowWriteFailure(it.code, it.humanMessage)
+                    val unparsed =
+                        request.plan.rowWrites.rowsList.mapIndexed { index, row ->
+                            seq = index
+                            currentCoroutineContext().ensureActive()
+                            val unparse =
+                                translator.unparse(
+                                    UnparseRequest
+                                        .newBuilder()
+                                        .setPlan(
+                                            PlanNode.newBuilder().setRowWrites(RowWrites.newBuilder().addRows(row)),
+                                        ).setTargetLanguage(Language.SQL)
+                                        .setTargetDialect(SqlDialect.POSTGRESQL)
+                                        .setOptimize(false)
+                                        .setContext(request.context)
+                                        .build(),
+                                )
+                            unparse.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let {
+                                throw RowWriteFailure(it.code, it.humanMessage)
+                            }
+                            unparse
                         }
-                        unparse
-                    }
                     connection = pool.acquire(request.connectionId)
                     connection.autoCommit = false
                     if (requiresTenant) {
                         connection.createStatement().use { it.execute("SET LOCAL app.tenant_id = '$tenantUuid'") }
+                        rls = RlsOutcome.RLS_APPLIED
                     }
                     val answers = mutableListOf<Pair<Long, String?>>()
                     for ((index, unparse) in unparsed.withIndex()) {
@@ -541,6 +554,7 @@ class ExecutePipeline(
                             ArrowIpcSerializer.serializeBatch(root)
                         }
                     currentCoroutineContext().ensureActive()
+                    committing = true
                     connection.commit()
                     ResultBatch
                         .newBuilder()
@@ -566,8 +580,15 @@ class ExecutePipeline(
                     if (t is kotlinx.coroutines.CancellationException) throw t
                     errorBatch(
                         (t as? RowWriteFailure)?.code ?: "worker_execution_failed",
-                        "row_writes seq $seq: ${t.message ?: t.javaClass.simpleName}",
+                        "row_writes ${if (committing) "commit" else "seq $seq"}: ${t.message ?: t.javaClass.simpleName}",
                         request.context,
+                        receipt(
+                            request,
+                            statements.takeIf { it.isNotEmpty() }?.joinToString(";\n"),
+                            bindings,
+                            startedNanos = started,
+                            rls = rls,
+                        ),
                     )
                 } finally {
                     runCatching { statement?.close() }
