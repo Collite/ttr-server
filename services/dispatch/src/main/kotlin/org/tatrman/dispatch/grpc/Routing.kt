@@ -45,7 +45,7 @@ internal object PlanScanCollector {
                 walk(plan.store.input, acc)
             }
             PlanNode.NodeCase.WORKSPACE_REF -> Unit
-            PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET -> Unit
+            PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET, PlanNode.NodeCase.ROW_WRITES -> Unit
         }
     }
 }
@@ -174,6 +174,7 @@ internal object PlanQnameRewriter {
             PlanNode.NodeCase.WORKSPACE_REF,
             PlanNode.NodeCase.VALUES,
             PlanNode.NodeCase.NODE_NOT_SET,
+            PlanNode.NodeCase.ROW_WRITES,
             -> plan
         }
     }
@@ -220,6 +221,6 @@ internal object WorkspaceRefDetector {
             PlanNode.NodeCase.LIMIT_OFFSET -> hasWorkspaceRef(plan.limitOffset.input)
             PlanNode.NodeCase.SUBQUERY -> hasWorkspaceRef(plan.subquery.subquery)
             PlanNode.NodeCase.STORE -> hasWorkspaceRef(plan.store.input)
-            PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET -> false
+            PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET, PlanNode.NodeCase.ROW_WRITES -> false
         }
 }
