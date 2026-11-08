@@ -228,6 +228,20 @@ class SpanScannerSpec :
             }
         }
 
+        "R230 S3 an ordinal day beside its month stays inside the date" {
+            for (phrase in listOf("March 15th 2025", "December 31st, 2025", "March 2nd 2025", "March 3rd 2025")) {
+                val text = "Revenue on $phrase"
+                val found = scanner.scan(text, ref)
+                found.map { it.text } shouldBe listOf(phrase)
+                (found.single().start to found.single().end) shouldBe at(text, phrase)
+            }
+            spans("Revenue in 1st quarter 2025") shouldBe listOf("1st quarter 2025")
+            spans("Revenue in 2nd half 2025") shouldBe listOf("2nd half 2025")
+            spans("Revenue on March 15, 2025") shouldBe listOf("March 15, 2025")
+            spans("Revenue on the 15th of March 2025") shouldBe listOf("March 2025")
+            spans("Revenue the first 10 days of March") shouldBe listOf("March")
+        }
+
         "R230 R12 reading without the question keeps the question slot empty" {
             val found =
                 scanner.scan(

@@ -393,7 +393,8 @@ class SpanScanner(
         tokens: List<IntRange>,
     ): Boolean {
         val w = words[i]
-        if (w.all(Char::isDigit) || ORDINAL.matches(w.removeSuffix("."))) {
+        val ordinalDay = ORDINAL_DAY.matches(w)
+        if (w.all(Char::isDigit) || ORDINAL.matches(w.removeSuffix(".")) || ordinalDay) {
             if (SIX_DIGITS.matches(w)) return words.getOrNull(i - 1) in setOf("period", "obdobi") || tokens.size == 1
             if (Regex("""\d{4}""").matches(w)) {
                 val around = Window(maxOf(0, i - 2), minOf(words.lastIndex, i + 1))
@@ -403,6 +404,7 @@ class SpanScanner(
             val next = words.getOrNull(i + 1).orEmpty()
             val monthBeside =
                 Months.ofWord(previous, withYear = true) != null || Months.ofWord(next, withYear = true) != null
+            if (ordinalDay) return monthBeside || YEAR_WORD.matches(w)
             val ordinal =
                 w.endsWith(".") &&
                     (
@@ -659,6 +661,7 @@ class SpanScanner(
         }
 
         private val ORDINAL = Regex("""\d{1,2}""")
+        private val ORDINAL_DAY = Regex("""\d{1,2}(?:st|nd|rd|th)""")
 
         /** A letter, a digit or a combining mark: a decomposed „ý“ ends its word with its accent. */
         private fun isWord(cp: Int): Boolean =

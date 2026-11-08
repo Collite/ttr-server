@@ -25,7 +25,8 @@ outside this repo could notice is in.
   spans; window checks visit their own sub-windows. Czech calendar weeks read again;
   conversation slots are preserved. A short number after a yearless period keeps it unread: `Q2 25` and
   `Q2 10 stores` both fail closed. `scan_time` preserves warnings, reports chrono ERRORs as tool errors and
-  rejects blank text; invalid scans count as `spans="error"`.
+  rejects blank text; invalid scans count as `spans="error"`. An ordinal day beside a month stays in its date
+  span ("March 15th 2025").
 
 - **chrono — `Scan`: the time phrases of a question, by chrono's own rules (TS-P0 S0.3).** The new RPC returns one
   `TimeSpan` per time phrase — UTF-16 offsets into the text as sent, the text, `DATE_TIME`, a confidence and the trigger
