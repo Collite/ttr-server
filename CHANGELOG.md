@@ -14,6 +14,16 @@ outside this repo could notice is in.
 >
 > While versions are `< 1.0.0`, minor bumps may contain breaking changes.
 
+## TS-P0 internal producer cut — 2026-11-08
+
+- `server-libs/v0.11.36` publishes `org.tatrman:server-proto:0.11.36` with the additive
+  `GroundingService.Scan` RPC and its messages. `chrono/v0.11.31` and
+  `grounding-mcp/v0.11.31` ship the time-span scanner, reviewed recognition repairs,
+  and the `scan_time` tool from ttr-server#380. Consumers can resolve the library
+  from GitHub Packages and both images from GHCR. Source, digests and clean bp-dsk
+  resolution checks are recorded in [PUBLISHING.md](./PUBLISHING.md#ts-p0-internal-release--2026-11-08).
+  Consumer adoption and cluster rolls follow in later TS stages.
+
 ## Unreleased
 
 - **chrono / grounding-mcp — S0.3 review-230 repairs.** Dates such as `15/3/2025` and `Mar-2025` keep their original
