@@ -67,7 +67,13 @@ class PolicyEngine(
             for (policy in registry.policiesFor(target, caller)) {
                 denials.add(
                     error(
-                        POLICY_RESTRICTED_WRITE,
+                        if (request.plan.nodeCase ==
+                            org.tatrman.plan.v1.PlanNode.NodeCase.ROW_WRITES
+                        ) {
+                            "write_under_row_policy"
+                        } else {
+                            POLICY_RESTRICTED_WRITE
+                        },
                         "Policy '${policy.id}' restricts the rows of '${target.dotted()}' for this caller; " +
                             "a write to it cannot be narrowed to those rows.",
                     ),
@@ -112,7 +118,12 @@ class PolicyEngine(
                 }
             }
         }
-        if (denials.isNotEmpty()) return denied(context, denials, response.messagesList)
+        if (denials.isNotEmpty()) {
+            if (request.plan.nodeCase == org.tatrman.plan.v1.PlanNode.NodeCase.ROW_WRITES) {
+                return response.addAllMessages(denials).build()
+            }
+            return denied(context, denials, response.messagesList)
+        }
 
         // Metadata-aware: flag a table the model doesn't know (typo / dropped table). Only for a
         // request that will run — a refusal does not wait on one lookup per table — and concurrently.

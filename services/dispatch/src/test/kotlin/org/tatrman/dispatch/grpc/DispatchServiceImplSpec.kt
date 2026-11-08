@@ -119,6 +119,63 @@ class DispatchServiceImplSpec :
             out[0].context.warningsList.map { it.code } shouldContain "routing_decision"
         }
 
+        "row writes route by every target and reject a cross-connection batch" {
+            fun row(target: QualifiedName) =
+                org.tatrman.plan.v1.RowWrite
+                    .newBuilder()
+                    .setTarget(
+                        target,
+                    ).setOp(org.tatrman.plan.v1.RowWriteOp.INSERT)
+                    .build()
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setRowWrites(
+                        org.tatrman.plan.v1.RowWrites
+                            .newBuilder()
+                            .addRows(row(storeSales))
+                            .addRows(row(customerAddress)),
+                    ).build()
+            PlanScanCollector.collect(plan) shouldBe setOf(storeSales, customerAddress)
+            val (svc, _) = fixture(connections = listOf("pg-store", "pg-customer"))
+            val out = svc.dispatch(DispatchRequest.newBuilder().setPlan(plan).build()).toList().single()
+            out.messagesList.single().code shouldBe "cross_database_not_supported"
+        }
+
+        "row write targets use the worker default schema and preserve explicit mismatch warnings" {
+            val target = storeSales.toBuilder().clearNamespace().build()
+            val row =
+                org.tatrman.plan.v1.RowWrite
+                    .newBuilder()
+                    .setTarget(
+                        target,
+                    ).setOp(org.tatrman.plan.v1.RowWriteOp.INSERT)
+                    .build()
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setRowWrites(
+                        org.tatrman.plan.v1.RowWrites
+                            .newBuilder()
+                            .addRows(row),
+                    ).build()
+            val rewritten = PlanQnameRewriter.applyDefaultSchema(plan, "cz")
+            rewritten.plan.rowWrites.rowsList
+                .single()
+                .target.namespace shouldBe "cz"
+            rewritten.mismatches.size shouldBe 0
+            val explicit =
+                plan
+                    .toBuilder()
+                    .setRowWrites(
+                        plan.rowWrites.toBuilder().setRows(
+                            0,
+                            row.toBuilder().setTarget(target.toBuilder().setNamespace("other")),
+                        ),
+                    ).build()
+            PlanQnameRewriter.applyDefaultSchema(explicit, "cz").mismatches.size shouldBe 1
+        }
+
         "cross-database plan rejected with cross_database_not_supported" {
             val (svc, _) = fixture(connections = listOf("pg-store", "pg-customer"))
             val req =

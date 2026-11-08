@@ -50,7 +50,14 @@ internal object PlanWalker {
      * can be placed on it — so a row policy that covers one cannot narrow the write (LR C-5·2).
      */
     fun writeTargets(plan: PlanNode): Set<QualifiedName> =
-        nodes(plan).filter { it.nodeCase == PlanNode.NodeCase.STORE }.mapTo(LinkedHashSet()) { it.store.target }
+        nodes(plan)
+            .flatMap { node ->
+                when (node.nodeCase) {
+                    PlanNode.NodeCase.STORE -> listOf(node.store.target)
+                    PlanNode.NodeCase.ROW_WRITES -> node.rowWrites.rowsList.map { it.target }
+                    else -> emptyList()
+                }
+            }.toCollection(LinkedHashSet())
 
     /**
      * Every node of [plan], pre-order — the nodes of expression subqueries included. What the

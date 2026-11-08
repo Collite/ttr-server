@@ -92,6 +92,7 @@ class QueryServiceImpl(
     rawSavedQueries: SavedQueryClient? = null,
     /** BI (C-9) — `QUERY_WORLDS`: the connection each `RunRequest.world` runs on. */
     private val worlds: Worlds = Worlds.NONE,
+    private val rowWritesPrincipals: Set<String> = emptySet(),
 ) : QueryServiceGrpcKt.QueryServiceCoroutineImplBase() {
     private val tracer = openTelemetry.getTracer("query")
 
@@ -124,6 +125,7 @@ class QueryServiceImpl(
         get() = activeRuns.get()
 
     override fun run(request: RunRequest): Flow<ResultBatch> {
+        if (isRowWrites(request)) return runRowWrites(request)
         val context = ensureCorrelationId(request.context)
         val key = cacheKeyFor(request)
         val window = request.rowWindow
@@ -137,10 +139,6 @@ class QueryServiceImpl(
                     // #261 / BI (C-9) — choose the execution world before compilation or cache lookup.
                     worldRefusal(request.world, context)?.let {
                         emit(it)
-                        return@flow
-                    }
-                    rowWritesRefusal(request)?.let {
-                        emit(errorBatch(it.code, it.humanMessage, context))
                         return@flow
                     }
                     windowRefusal(window)?.let { reason ->
@@ -637,13 +635,7 @@ class QueryServiceImpl(
 
     override suspend fun compile(request: RunRequest): CompileResponse {
         val context = ensureCorrelationId(request.context)
-        rowWritesRefusal(request)?.let {
-            return CompileResponse
-                .newBuilder()
-                .setContext(context)
-                .addMessages(it)
-                .build()
-        }
+        if (isRowWrites(request)) return compileRowWrites(request, context)
         val window = request.rowWindow
         windowRefusal(window)?.let { reason ->
             return CompileResponse
@@ -1470,21 +1462,125 @@ class QueryServiceImpl(
     @Suppress("unused")
     private fun <T> single(value: T): Flow<T> = flowOf(value)
 
-    /** D1 compatibility only: D2 removes this guard when the door can validate and execute row writes. */
-    private fun rowWritesRefusal(request: RunRequest): ResponseMessage? {
-        if (request.sourceLanguage != Language.REL_NODE) return null
-        val plan =
+    /** Ordered writes bypass the read cache and read-result limits. */
+    private fun isRowWrites(request: RunRequest): Boolean =
+        request.sourceLanguage == Language.REL_NODE &&
             try {
-                PlanNode.parseFrom(request.source.toByteArray(Charsets.ISO_8859_1))
+                PlanNode.parseFrom(request.source.toByteArray(Charsets.ISO_8859_1)).nodeCase ==
+                    PlanNode.NodeCase.ROW_WRITES
             } catch (_: InvalidProtocolBufferException) {
-                // Preserve the translator's existing refusal for malformed REL_NODE input.
-                return null
+                false // The ordinary translator path owns malformed input.
             }
-        return if (plan.nodeCase == PlanNode.NodeCase.ROW_WRITES) {
-            errorMessage("row_writes_unsupported", "Query does not support row writes yet.")
-        } else {
-            null
+
+    private fun runRowWrites(request: RunRequest): Flow<ResultBatch> =
+        flow {
+            activeRuns.incrementAndGet()
+            val context = ensureCorrelationId(request.context)
+            try {
+                val compiled = compileRowWrites(request, context)
+                if (!compiled.hasPlan() || compiled.messagesList.any { it.severity == Severity.ERROR }) {
+                    emit(
+                        ResultBatch
+                            .newBuilder()
+                            .setIsFirst(true)
+                            .setIsLast(true)
+                            .setContext(compiled.context)
+                            .addAllMessages(compiled.messagesList)
+                            .build(),
+                    )
+                    return@flow
+                }
+                val missing = ParameterCheck.unbound(compiled.plan, request.context)
+                if (missing.isNotEmpty()) {
+                    emit(errorBatch(ParameterCheck.PARAMETER_UNBOUND, ParameterCheck.message(missing), context))
+                    return@flow
+                }
+                // No execute retry: the worker's commit may already have happened.
+                emitAll(
+                    dispatcher.dispatch(
+                        DispatchRequest
+                            .newBuilder()
+                            .setPlan(compiled.plan)
+                            .setContext(compiled.context)
+                            .setConnectionId(worlds.connectionOf(request.world).orEmpty())
+                            .setOptions(request.executionOptions)
+                            .build(),
+                    ),
+                )
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                emit(errorBatch("query_failed", t.message ?: "row write failed", context))
+            } finally {
+                activeRuns.decrementAndGet()
+            }
+        }.tracedFlow(tracer, "query.run")
+
+    private suspend fun compileRowWrites(
+        request: RunRequest,
+        context: PipelineContext,
+    ): CompileResponse {
+        val response = CompileResponse.newBuilder().setContext(context)
+
+        fun refuse(
+            code: String,
+            detail: String,
+        ): CompileResponse = response.addMessages(errorMessage(code, detail)).build()
+        worlds.refusal(request.world)?.let { return refuse(it.first, it.second) }
+        if (request.hasAllowedErReads()) return refuse("out-of-scope-read", "row_writes")
+        if (context.userId.isBlank()) return refuse("identity", "row_writes requires user_id")
+        if (context.userId !in
+            rowWritesPrincipals
+        ) {
+            return refuse("row_writes_principal", "row_writes principal is not allowed")
         }
+        var planSource = request.source
+        var workingContext = context
+        for (schema in listOf(SchemaCode.ER, SchemaCode.DB)) {
+            val parsed =
+                parseSingle(planSource, Language.REL_NODE, request.sourceSchema, schema, workingContext)
+                    ?: return refuse("translator_unavailable", "row_writes translation unavailable")
+            response.addAllMessages(parsed.messagesList)
+            if (parsed.messagesList.any { it.severity == Severity.ERROR }) return response.build()
+            workingContext = parsed.context
+            val validated =
+                when (
+                    val result =
+                        retry.execute("validator.row_writes") {
+                            validator.validate(
+                                ValidateRequest
+                                    .newBuilder()
+                                    .setPlan(parsed.plan)
+                                    .setContext(workingContext)
+                                    .setOptions(
+                                        ValidationOptions.newBuilder().setApplySecurity(true).setEnforceTopN(false),
+                                    ).build(),
+                            )
+                        }
+                ) {
+                    is RetryOutcome.Success -> result.value
+                    is RetryOutcome.Failure -> return refuse(
+                        "validator_unavailable",
+                        "row_writes validation unavailable",
+                    )
+                }
+            response.addAllMessages(validated.messagesList)
+            if (!validated.hasPlan() ||
+                validated.messagesList.any { it.severity == Severity.ERROR }
+            ) {
+                return response.build()
+            }
+            check(validated.plan.nodeCase == PlanNode.NodeCase.ROW_WRITES) { "validator changed row_writes root" }
+            workingContext = validated.context
+            planSource = validated.plan.toByteArray().toString(Charsets.ISO_8859_1)
+            response.setContext(workingContext)
+            if (schema == SchemaCode.DB) {
+                response
+                    .setPlan(validated.plan)
+                    .setPredictedSchemaFingerprint(PredictedFingerprintComputer.compute(validated.plan))
+                    .addAllRequiredParameters(ParameterCheck.required(validated.plan, context, parsed.context))
+            }
+        }
+        return response.build()
     }
 
     private suspend fun resolveSchema(

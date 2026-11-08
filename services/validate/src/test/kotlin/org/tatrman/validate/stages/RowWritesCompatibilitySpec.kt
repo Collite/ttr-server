@@ -3,21 +3,14 @@ package org.tatrman.validate.stages
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import org.tatrman.plan.v1.ColumnRef
-import org.tatrman.plan.v1.ColumnValue
-import org.tatrman.plan.v1.Expression
-import org.tatrman.plan.v1.Literal
-import org.tatrman.plan.v1.NamedExpression
-import org.tatrman.plan.v1.PlanNode
-import org.tatrman.plan.v1.ProjectNode
-import org.tatrman.plan.v1.QualifiedName
-import org.tatrman.plan.v1.RowWrite
-import org.tatrman.plan.v1.RowWriteOp
-import org.tatrman.plan.v1.RowWrites
-import org.tatrman.plan.v1.SchemaCode
-import org.tatrman.plan.v1.TableScanNode
-import org.tatrman.plan.v1.UnionNode
+import org.tatrman.plan.v1.*
 import org.tatrman.security.v1.ColumnRule
+import org.tatrman.security.v1.EvaluatePoliciesResponse
+import org.tatrman.validate.client.SecurityClient
+import org.tatrman.validate.client.StaticMetadataClient
+import org.tatrman.validate.grpc.ValidateServiceImpl
+import org.tatrman.validate.policy.*
+import org.tatrman.validate.v1.ValidateRequest
 import org.tatrman.validate.v1.ValidationOptions
 
 class RowWritesCompatibilitySpec :
@@ -25,71 +18,141 @@ class RowWritesCompatibilitySpec :
         val table =
             QualifiedName
                 .newBuilder()
-                .setSchemaCode(
-                    SchemaCode.DB,
-                ).setNamespace("public")
+                .setSchemaCode(SchemaCode.DB)
+                .setNamespace("dbo")
                 .setName("orders")
                 .build()
         val column = Expression.newBuilder().setColumnRef(ColumnRef.newBuilder().setName("state")).build()
-        val masked = Expression.newBuilder().setLiteral(Literal.newBuilder().setStringValue("hidden")).build()
-        val writes =
+        val literal = Expression.newBuilder().setLiteral(Literal.newBuilder().setStringValue("held")).build()
+
+        fun write(slot: String) =
             PlanNode
                 .newBuilder()
                 .setRowWrites(
                     RowWrites.newBuilder().addRows(
-                        RowWrite
-                            .newBuilder()
-                            .setTarget(table)
-                            .setOp(RowWriteOp.UPDATE)
-                            .addValues(ColumnValue.newBuilder().setName("state").setValue(masked))
-                            .setWhere(column)
-                            .addReadBefore("state"),
+                        RowWrite.newBuilder().setTarget(table).setOp(RowWriteOp.UPDATE).apply {
+                            when (slot) {
+                                "values" -> addValues(ColumnValue.newBuilder().setName("state").setValue(literal))
+                                "where" ->
+                                    setWhere(
+                                        Expression.newBuilder().setFunction(
+                                            FunctionCall
+                                                .newBuilder()
+                                                .setOperation("eq")
+                                                .addOperands(column)
+                                                .addOperands(literal),
+                                        ),
+                                    )
+                                "read_before" -> addReadBefore("state")
+                            }
+                        },
                     ),
                 ).build()
 
-        "row writes are leaves for scan walking, column collection and expression rewriting" {
-            PlanWalker.nodes(writes) shouldBe listOf(writes)
-            PlanWalker.scannedTables(writes) shouldBe emptySet()
-            PlanWalker.writeTargets(writes) shouldBe emptySet()
-            (PlanWalker.wrapScans(writes) { error("row writes are not scans") } === writes) shouldBe true
-            ColumnUsage.tableQnames(writes) shouldBe emptySet()
-            ColumnUsage.columnNames(writes) shouldBe emptySet()
-            (ExpressionRewriter.rewriteColumnRefs(writes) { error("row writes are leaves") } === writes) shouldBe true
-        }
+        fun request(
+            plan: PlanNode,
+            user: String = "writer",
+        ) = ValidateRequest
+            .newBuilder()
+            .setPlan(plan)
+            .setContext(PipelineContext.newBuilder().setUserId(user).addAuthRoles("reader"))
+            .setOptions(ValidationOptions.newBuilder().setApplySecurity(true).setEnforceTopN(true))
+            .build()
 
-        "mask bare-column detection treats row writes as a leaf beside a masked read" {
-            val read =
-                PlanNode
-                    .newBuilder()
-                    .setProject(
-                        ProjectNode
+        fun service(client: SecurityClient) =
+            ValidateServiceImpl(
+                SecurityApplier(client),
+                RuleEnforcer(),
+                LlmGuard(enabled = false),
+                StaticMetadataClient(""),
+            )
+        "row write targets participate in policy checks but are never wrapped as scans" {
+            val plan = write("values")
+            PlanWalker.writeTargets(plan) shouldBe setOf(table)
+            PlanWalker.scannedTables(plan) shouldBe emptySet()
+            PlanWalker.wrapScans(plan) { error("write target cannot be filtered") } shouldBe plan
+            val policy =
+                Policy(
+                    "narrow",
+                    TableMatcher.Exact(table),
+                    PolicyPredicate.Eq("tenant", PolicyValue.Literal("one", "text")),
+                    roles = listOf("reader"),
+                )
+            val engine = PolicyEngine(PolicyRegistry(listOf(policy)))
+            val response = service(SecurityClient { engine.evaluatePolicies(it) }).validate(request(plan))
+            response.hasPlan() shouldBe false
+            response.messagesList.first().code shouldBe "write_under_row_policy"
+            val bypass =
+                request(plan)
+                    .toBuilder()
+                    .setContext(request(plan).context.toBuilder().addAuthRoles("query-platform-admin"))
+                    .setOptions(ValidationOptions.newBuilder().setApplySecurity(false))
+                    .build()
+            service(SecurityClient { engine.evaluatePolicies(it) })
+                .validate(bypass)
+                .messagesList
+                .first()
+                .code shouldBe "write_under_row_policy"
+
+            val permitted =
+                service(SecurityClient { engine.evaluatePolicies(it) }).validate(
+                    request(
+                        plan,
+                    ).toBuilder()
+                        .setContext(
+                            PipelineContext.newBuilder().setUserId("writer").addAuthRoles("exempt"),
+                        ).build(),
+                )
+            permitted.plan shouldBe plan
+        }
+        "DENY and MASK on values, where or read_before refuse rather than mask a write" {
+            for (slot in listOf("values", "where", "read_before")) {
+                for (action in listOf(ColumnRule.Action.DENY, ColumnRule.Action.MASK)) {
+                    val rule =
+                        ColumnRule
                             .newBuilder()
-                            .setInput(PlanNode.newBuilder().setTableScan(TableScanNode.newBuilder().setTable(table)))
-                            .addExpressions(NamedExpression.newBuilder().setExpression(column)),
-                    ).build()
-            val plan = PlanNode.newBuilder().setUnion(UnionNode.newBuilder().addInputs(writes).addInputs(read)).build()
+                            .setTable(
+                                table,
+                            ).setColumn("state")
+                            .setAction(action)
+                            .setMaskExpression(literal)
+                            .build()
+                    val response =
+                        service(
+                            SecurityClient {
+                                EvaluatePoliciesResponse.newBuilder().addColumnRules(rule).build()
+                            },
+                        ).validate(request(write(slot)))
+                    response.hasPlan() shouldBe false
+                    response.messagesList.first().code shouldBe "write_under_column_rule"
+                }
+            }
+        }
+        "an unrelated column rule leaves a write intact, with no read TopN wrapper" {
             val rule =
                 ColumnRule
                     .newBuilder()
-                    .setTable(table)
-                    .setColumn("state")
-                    .setAction(ColumnRule.Action.MASK)
-                    .setMaskExpression(masked)
-                    .setRuleId("d1-mask")
+                    .setTable(
+                        table,
+                    ).setColumn("another")
+                    .setAction(ColumnRule.Action.DENY)
                     .build()
-            val result =
-                RuleEnforcer().enforce(
-                    plan,
-                    ValidationOptions.newBuilder().setEnforceTopN(false).build(),
-                    listOf(rule),
-                )
-
-            result.rejected shouldBe false
-            result.messages shouldBe emptyList()
-            result.plan.union.inputsList[0] shouldBe writes
-            result.plan.union.inputsList[1]
-                .project.expressionsList
-                .single()
-                .expression shouldBe masked
+            val response =
+                service(
+                    SecurityClient {
+                        EvaluatePoliciesResponse.newBuilder().addColumnRules(rule).build()
+                    },
+                ).validate(request(write("values")))
+            response.plan shouldBe write("values")
+        }
+        "missing identity is refused before metadata or policy work" {
+            val response =
+                service(
+                    SecurityClient {
+                        error("anonymous writes cannot reach policies")
+                    },
+                ).validate(request(write("values"), ""))
+            response.hasPlan() shouldBe false
+            response.messagesList.single().code shouldBe "identity"
         }
     })

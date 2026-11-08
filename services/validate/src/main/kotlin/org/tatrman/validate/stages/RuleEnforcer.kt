@@ -64,6 +64,31 @@ class RuleEnforcer(
     ): Result {
         val messages = mutableListOf<ResponseMessage>()
 
+        // D-172: a write is refused under DENY/MASK, never masked into another write.
+        for (node in PlanWalker.nodes(plan).filter { it.nodeCase == PlanNode.NodeCase.ROW_WRITES }) {
+            for (row in node.rowWrites.rowsList) {
+                val columns =
+                    row.valuesList.mapTo(mutableSetOf()) { it.name } + row.readBeforeList +
+                        RowWriteColumns.names(row.where)
+                if (columnRules.any {
+                        it.table == row.target &&
+                            it.column in columns &&
+                            it.action in listOf(ColumnRule.Action.DENY, ColumnRule.Action.MASK)
+                    }
+                ) {
+                    messages +=
+                        ResponseMessage
+                            .newBuilder()
+                            .setSeverity(Severity.ERROR)
+                            .setCode("write_under_column_rule")
+                            .setHumanMessage("Row write references a column restricted by DENY/MASK.")
+                            .build()
+                    return Result(plan, messages, true)
+                }
+            }
+        }
+        if (plan.nodeCase == PlanNode.NodeCase.ROW_WRITES) return Result(plan, messages, false)
+
         // 1. Column rule enforcement.
         val (rewritten, rejected) = applyColumnRules(plan, columnRules, messages)
         if (rejected) {
