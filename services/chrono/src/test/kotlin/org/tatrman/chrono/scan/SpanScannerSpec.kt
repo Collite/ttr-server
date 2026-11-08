@@ -221,8 +221,20 @@ class SpanScannerSpec :
             found.last().trigger shouldBe "conversation"
         }
 
-        "R230 R11 a count beside a quarter stays outside it" {
-            spans("Revenue in Q2 10 stores") shouldBe listOf("Q2")
+        "R230 S1 short digits beside a quarter keep its parts out" {
+            for (text in listOf(
+                "Revenue in Q2 10 stores",
+                "Q2 25 revenue by region",
+                "Revenue in Q2 25 by region",
+                "H1 25 revenue",
+                "Q3 24 margin",
+                "Q2 FY25",
+                "Q2 '25",
+                "Q2/25",
+            )) {
+                spans(text).shouldBeEmpty()
+            }
+            spans("Revenue in Q2 2025") shouldBe listOf("Q2 2025")
         }
 
         "a bare period noun is no span" {

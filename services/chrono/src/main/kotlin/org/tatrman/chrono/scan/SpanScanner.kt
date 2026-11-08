@@ -135,18 +135,7 @@ class SpanScanner(
         // The phrase a window cuts through: the window and every candidate crossing its edge, read whole. A window of
         // seven tokens may end inside a longer phrase ("the last month of the year a year ago"), or begin inside the
         // phrase before it ("2025 vs Q2 2024" out of "Q2 2025 vs Q2 2024").
-        fun whole(window: Window): Pair<Window, SpanReading?> {
-            // A window ending after "Q2 10" cuts through the count in "Q2 10 stores". Read its noun too;
-            // otherwise the shortened window invents a two-digit year and suppresses Q2 (R11).
-            val w =
-                if (window.last < words.lastIndex &&
-                    Regex("""\d{1,2}""").matches(words[window.last]) &&
-                    !timeWords[window.last]
-                ) {
-                    Window(window.first, window.last + 1)
-                } else {
-                    window
-                }
+        fun whole(w: Window): Pair<Window, SpanReading?> {
             val crossing = (w.first..w.last).flatMap { candidatesAt[it] }.distinct().filter { !w.contains(it.window) }
             if (crossing.isEmpty()) {
                 return w to

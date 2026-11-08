@@ -130,15 +130,7 @@ internal object YearPhrases {
         val before = n.substring(0, own.first)
         val after = n.substring(own.last + 1)
         if (relativeBeforeRe.containsMatchIn(before) || relativeAfterRe.containsMatchIn(after)) return true
-        digitsAfterRe.find(after)?.let { digits ->
-            val next = Regex("""^[a-z]+""").find(after.substring(digits.range.last + 1).trimStart())?.value
-            if (next == null ||
-                WindowPeriods.timeWordRe.matches(next) ||
-                Months.ofWord(next, withYear = true) != null
-            ) {
-                return true
-            }
-        }
+        if (digitsAfterRe.containsMatchIn(after)) return true
         val rest = before + OWN.toString().repeat(own.last - own.first + 1) + after
         if (twoDigitYearRe.containsMatchIn(rest)) return true
         val unframed = neutralRes.fold(rest) { s, re -> re.replace(s) { " ".repeat(it.value.length) } }

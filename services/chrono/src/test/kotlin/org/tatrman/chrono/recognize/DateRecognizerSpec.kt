@@ -76,11 +76,25 @@ class DateRecognizerSpec :
             rec.recognize("last calendar week", nov).shouldNotBeNull().startInclusive shouldBe day(2026, 10, 19)
         }
 
-        "R230 R11 a count after a quarter is not a two digit year" {
-            for (span in listOf("Q2 10 stores", "Q2 5 regions")) {
-                rec.recognize(span, LocalDate.of(2026, 11, 1)).shouldNotBeNull().periodCode shouldBe "2026Q2"
+        "R230 S1 short digits after a yearless period keep it unread" {
+            for (span in listOf(
+                "Q2 25 revenue",
+                "Q2 10 stores",
+                "Q2 5 regions",
+                "Q2 25 sales",
+                "Q2 25 results",
+                "H1 25 revenue",
+                "Q3 24 margin",
+                "Q2 25 by region",
+                "Q2 25",
+                "Q2 '25",
+                "Q2/25",
+                "Q2 FY25",
+            )) {
+                withClue(span) { rec.recognize(span, LocalDate.of(2026, 11, 1)).shouldBeNull() }
             }
-            for (span in listOf("Q2 25", "Q2 '25", "Q2/25", "Q2 FY25")) rec.recognize(span, ref).shouldBeNull()
+            rec.recognize("Q2 25% growth", ref).shouldNotBeNull().periodCode shouldBe "2026Q2"
+            rec.recognize("Q2 2025", ref).shouldNotBeNull().periodCode shouldBe "2025Q2"
         }
 
         // ---- absolute: ISO ----

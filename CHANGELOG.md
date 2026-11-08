@@ -21,8 +21,9 @@ outside this repo could notice is in.
   recognition, conversation anchors and scanner blanking, including joined tokens and possessives. Scan returns
   only time words and phrase glue, leaves a different grain noun outside, and suppresses a phrase only when it is
   linked to the conflicting phrase. It reads at most 128 tokens and returns WARNING `text_too_long` with prefix
-  spans; window checks visit their own sub-windows. Czech calendar weeks and quarters beside counts read again;
-  conversation slots are preserved. `scan_time` preserves warnings, reports chrono ERRORs as tool errors and
+  spans; window checks visit their own sub-windows. Czech calendar weeks read again;
+  conversation slots are preserved. A short number after a yearless period keeps it unread: `Q2 25` and
+  `Q2 10 stores` both fail closed. `scan_time` preserves warnings, reports chrono ERRORs as tool errors and
   rejects blank text; invalid scans count as `spans="error"`.
 
 - **chrono — `Scan`: the time phrases of a question, by chrono's own rules (TS-P0 S0.3).** The new RPC returns one
