@@ -468,14 +468,7 @@ class ExecutePipeline(
             val batch =
                 try {
                     require(request.plan.rowWrites.rowsCount > 0) { "row_writes must not be empty" }
-                    connection = pool.acquire(request.connectionId)
-                    connection.autoCommit = false
-                    if (requiresTenant) {
-                        connection.createStatement().use { it.execute("SET LOCAL app.tenant_id = '$tenantUuid'") }
-                    }
-                    val answers = mutableListOf<Pair<Long, String?>>()
-                    for ((index, row) in request.plan.rowWrites.rowsList
-                        .withIndex()) {
+                    val unparsed = request.plan.rowWrites.rowsList.mapIndexed { index, row ->
                         seq = index
                         currentCoroutineContext().ensureActive()
                         val unparse =
@@ -492,6 +485,17 @@ class ExecutePipeline(
                         unparse.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let {
                             throw RowWriteFailure(it.code, it.humanMessage)
                         }
+                        unparse
+                    }
+                    connection = pool.acquire(request.connectionId)
+                    connection.autoCommit = false
+                    if (requiresTenant) {
+                        connection.createStatement().use { it.execute("SET LOCAL app.tenant_id = '$tenantUuid'") }
+                    }
+                    val answers = mutableListOf<Pair<Long, String?>>()
+                    for ((index, unparse) in unparsed.withIndex()) {
+                        seq = index
+                        currentCoroutineContext().ensureActive()
                         statements += unparse.output
                         bindings += unparse.context.parametersList
                         val prepared = connection.prepareStatement(unparse.output)

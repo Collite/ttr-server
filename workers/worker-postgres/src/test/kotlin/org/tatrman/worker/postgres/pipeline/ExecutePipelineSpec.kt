@@ -129,6 +129,68 @@ class ExecutePipelineSpec :
             }
         }
 
+        "row-write translator refusal at seq 1 acquires no connection" {
+            val pool = mockk<ConnectionPoolManager>()
+            every { pool.supportedConnections } returns setOf("writer")
+            every { pool.requiresTenantId("writer") } returns false
+            every { pool.isReadOnly("writer") } returns false
+            var calls = 0
+            val translator =
+                translator { req ->
+                    calls++
+                    UnparseResponse
+                        .newBuilder()
+                        .setContext(req.context)
+                        .apply {
+                            if (calls == 2) {
+                                addMessages(
+                                    ResponseMessage
+                                        .newBuilder()
+                                        .setSeverity(Severity.ERROR)
+                                        .setCode("row_writes_shape")
+                                        .setHumanMessage("refused"),
+                                )
+                            } else {
+                                setOutput("SELECT 1")
+                            }
+                        }.build()
+                }
+            RootAllocator().use { allocator ->
+                val pipeline = ExecutePipeline(pool, translator, limits, allocator)
+                val row =
+                    org.tatrman.plan.v1.RowWrite
+                        .newBuilder()
+                        .setTarget(
+                            QualifiedName.newBuilder().setName("orders"),
+                        ).build()
+                val plan =
+                    PlanNode
+                        .newBuilder()
+                        .setRowWrites(
+                            org.tatrman.plan.v1.RowWrites
+                                .newBuilder()
+                                .addRows(row)
+                                .addRows(row)
+                                .addRows(row),
+                        ).build()
+                val batch =
+                    pipeline
+                        .execute(
+                            ExecuteRequest
+                                .newBuilder()
+                                .setPlan(plan)
+                                .setConnectionId("writer")
+                                .build(),
+                        ).toList()
+                        .single()
+                calls shouldBe 2
+                batch.messagesList.single().code shouldBe "row_writes_shape"
+                batch.messagesList.single().humanMessage shouldBe "row_writes seq 1: refused"
+                io.mockk.verify(exactly = 0) { pool.acquire(any()) }
+                pipeline.activeQueries shouldBe 0
+            }
+        }
+
         "activeQueries returns 0 between calls" {
             val pool = ConnectionPoolManager(emptyMap())
             val translator = translator { _ -> UnparseResponse.getDefaultInstance() }
