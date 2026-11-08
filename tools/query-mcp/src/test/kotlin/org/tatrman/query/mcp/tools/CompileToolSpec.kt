@@ -117,6 +117,54 @@ class CompileToolSpec :
                 },
             )
 
+        "REL_NODE row writes are refused before any upstream call while reads and malformed sources pass" {
+            val captured = mutableListOf<ParseRequest>()
+            val tool = CompileTool(cfg, capturingTranslator(captured), fakeValidator { validated(it) })
+
+            fun request(
+                source: String,
+                language: String,
+            ) = CallToolRequest(
+                params =
+                    CallToolRequestParams(
+                        name = "compile",
+                        arguments =
+                            buildJsonObject {
+                                put("source", JsonPrimitive(source))
+                                put("source_language", JsonPrimitive(language))
+                                put("target_dialect", JsonPrimitive("postgresql"))
+                            },
+                    ),
+            )
+            val write =
+                PlanNode
+                    .newBuilder()
+                    .setRowWrites(
+                        org.tatrman.plan.v1.RowWrites
+                            .getDefaultInstance(),
+                    ).build()
+                    .toByteArray()
+                    .toString(Charsets.ISO_8859_1)
+            for (language in listOf("rel_node", "relnode")) {
+                val result = tool.execute(request(write, language), identity = null)
+                result.isError shouldBe true
+                val messages = result.structuredContent!!["messages"] as JsonArray
+                ((messages[0] as JsonObject)["code"] as JsonPrimitive).content shouldBe "row_writes_not_at_edge"
+            }
+            captured.size shouldBe 0
+            val read =
+                PlanNode
+                    .newBuilder()
+                    .setTableScan(
+                        TableScanNode.newBuilder().setTable(QualifiedName.newBuilder().setName("orders")),
+                    ).build()
+                    .toByteArray()
+                    .toString(Charsets.ISO_8859_1)
+            tool.execute(request(read, "rel_node"), identity = null)
+            tool.execute(request("malformed", "rel_node"), identity = null)
+            captured.map { it.source } shouldBe listOf(read, "malformed")
+        }
+
         "happy path with apply_security=true: parse → validate → unparse" {
             var parsed = false
             var validated = false

@@ -120,6 +120,68 @@ class QueryToolSpec :
             return out.toByteArray()
         }
 
+        "REL_NODE row writes are refused at the edge without calling Query while reads and malformed sources pass" {
+            val captured = mutableListOf<RunRequest>()
+            val runner =
+                object : QueryRunnerClient {
+                    override fun run(request: RunRequest): Flow<ResultBatch> {
+                        captured += request
+                        return flowOf(
+                            ResultBatch
+                                .newBuilder()
+                                .setIsFirst(true)
+                                .setIsLast(true)
+                                .build(),
+                        )
+                    }
+
+                    override suspend fun compile(request: RunRequest): CompileResponse = error("no compile")
+                }
+            val tool = QueryTool(cfg, runner, fakeMetadata)
+
+            fun request(
+                source: String,
+                language: String,
+            ) = CallToolRequest(
+                params =
+                    CallToolRequestParams(
+                        name = "query",
+                        arguments =
+                            buildJsonObject {
+                                put("source", JsonPrimitive(source))
+                                put("source_language", JsonPrimitive(language))
+                            },
+                    ),
+            )
+            val write =
+                PlanNode
+                    .newBuilder()
+                    .setRowWrites(
+                        org.tatrman.plan.v1.RowWrites
+                            .getDefaultInstance(),
+                    ).build()
+                    .toByteArray()
+                    .toString(Charsets.ISO_8859_1)
+            for (language in listOf("rel_node", "relnode")) {
+                val result = tool.execute(request(write, language), identity = null)
+                result.isError shouldBe true
+                val messages = result.structuredContent!!["messages"] as JsonArray
+                ((messages[0] as JsonObject)["code"] as JsonPrimitive).content shouldBe "row_writes_not_at_edge"
+            }
+            captured.size shouldBe 0
+            val read =
+                PlanNode
+                    .newBuilder()
+                    .setTableScan(
+                        TableScanNode.newBuilder().setTable(QualifiedName.newBuilder().setName("orders")),
+                    ).build()
+                    .toByteArray()
+                    .toString(Charsets.ISO_8859_1)
+            tool.execute(request(read, "rel_node"), identity = null)
+            tool.execute(request("malformed", "rel_node"), identity = null)
+            captured.map { it.source } shouldBe listOf(read, "malformed")
+        }
+
         "missing source/source_language returns missing_required_field" {
             val tool = QueryTool(cfg, fakeRunner(emptyList()), fakeMetadata)
             val req =
