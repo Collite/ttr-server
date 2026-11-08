@@ -11,6 +11,38 @@ import io.kotest.matchers.string.shouldContain
 
 class ConnectionPoolManagerSpec :
     StringSpec({
+        "AU writer connections are inert without host env and activate read-write with their declared schemas" {
+            val names = listOf("cz-writer", "us-writer", "automation-cz", "automation-us").map { "pg-hartland-$it" }
+            val raw = ConfigFactory.parseResources("application.conf")
+            val absent = raw.resolve()
+            ConnectionPoolManager.fromConfig(absent).use { mgr ->
+                names.forEach { (it in mgr.supportedConnections) shouldBe false }
+            }
+            val activated =
+                ConfigFactory
+                    .parseString(
+                        """
+                        POSTGRES_PG_HARTLAND_CZ_WRITER_HOST = "writer.test"
+                        POSTGRES_PG_HARTLAND_US_WRITER_HOST = "writer.test"
+                        POSTGRES_PG_HARTLAND_AUTOMATION_CZ_HOST = "ledger.test"
+                        POSTGRES_PG_HARTLAND_AUTOMATION_US_HOST = "ledger.test"
+                        """.trimIndent(),
+                    ).withFallback(raw)
+                    .resolve()
+            ConnectionPoolManager.fromConfig(activated).use { mgr ->
+                names.forEach {
+                    (it in mgr.supportedConnections) shouldBe true
+                    mgr.isReadOnly(it) shouldBe false
+                }
+            }
+            val cz = ConnectionConfig.fromConfig("cz", activated.getConfig("connections.pg-hartland-automation-cz"))
+            val us = ConnectionConfig.fromConfig("us", activated.getConfig("connections.pg-hartland-automation-us"))
+            cz.defaultSchema shouldBe "cz"
+            us.defaultSchema shouldBe "us"
+            cz.database shouldBe "automation"
+            us.database shouldBe "automation"
+        }
+
         "fromConfig parses connections block" {
             val config =
                 ConfigFactory.parseString(

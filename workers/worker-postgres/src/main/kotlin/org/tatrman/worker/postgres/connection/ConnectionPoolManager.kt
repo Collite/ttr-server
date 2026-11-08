@@ -60,6 +60,9 @@ class ConnectionPoolManager(
      */
     fun requiresTenantId(connectionId: String): Boolean = configs[connectionId]?.requiresTenantId ?: false
 
+    /** Row DML is opt-in per declared connection; unknown ids fail closed. */
+    fun isReadOnly(connectionId: String): Boolean = configs[connectionId]?.readOnly ?: true
+
     /** Acquires a connection from the pool for [connectionId], opening the pool on first use. */
     fun acquire(connectionId: String): Connection {
         val cfg = configs[connectionId] ?: throw UnknownConnectionException(connectionId)
@@ -162,6 +165,7 @@ class ConnectionPoolManager(
                 idleTimeout = cfg.idleTimeoutMillis
                 maxLifetime = cfg.maxLifetimeMillis
                 isReadOnly = cfg.readOnly
+                schema = cfg.defaultSchema
                 poolName = "postgres-worker-$id"
             }
         return HikariDataSource(hc)
