@@ -99,6 +99,21 @@ Source: master `8d506b7208fbcaf5a0370641eab9fb67a2e99fd7` (S0.3,
 Versions are selected by the tags below; `gradle.properties` keeps its local-development default.
 The library cut advances the 0.11 line from `server-libs/v0.11.35` to `server-libs/v0.11.36`.
 
+`server-libs/v0.12.1`–`v0.12.4` (MW-P1, 2026-11-01) are numbered higher but were
+cut from earlier source (`v0.12.4` at `ae1ca313`, an ancestor of `8d506b72`) and have
+no `Scan`. Version 0.11.36 contains everything in 0.12.4 plus `Scan`, but Gradle's
+highest-version resolution selects 0.12.4 when the dependency graph also requests
+that version, losing `Scan`. Per ✅D-MW-71, the next shared `server-libs` cut is
+`v0.12.5+` from master, carrying `Scan` and restoring version-number order; MW owns
+that cut after TC-ap-P2. A consumer whose graph may contain 0.12.x waits for that
+cut rather than forcing 0.11.36; a consumer with no 0.12.x in its graph may pin
+0.11.36 meanwhile. TS makes no additional library cut (✅R239-A).
+
+The images replace chrono and grounding-mcp 0.11.30, built by the
+[`server-libs/v0.11.30` run 40215659266](https://github.com/Collite/ttr-server/actions/runs/40215659266)
+from `d0f56fc5`; 0.11.31 is the next free version on GHCR, despite the gaps in the
+per-service Git tags.
+
 | Tag | Published artifact | Release CI |
 |---|---|---|
 | `server-libs/v0.11.36` | `org.tatrman:server-proto:0.11.36` and the standard server library set, GitHub Packages | [42505408371](https://github.com/Collite/ttr-server/actions/runs/42505408371) |
