@@ -180,7 +180,14 @@ class DispatchServiceImpl(
 
     private fun resolveRouting(request: DispatchRequest): Routing {
         val tables = PlanScanCollector.collect(request.plan)
-        val derived = tables.map { world.resolveOrDefault(it) }.toSet()
+        val derived =
+            if (request.plan.nodeCase == PlanNode.NodeCase.ROW_WRITES) {
+                // R238-A: only table patterns constrain the writer's explicit connection.
+                // The read-oriented default is a fallback, not a conflicting target route.
+                tables.mapNotNull { world.routingFor(it) }.toSet()
+            } else {
+                tables.map { world.resolveOrDefault(it) }.toSet()
+            }
         val explicit = request.connectionId
         val warnings = mutableListOf<Warning>()
 
