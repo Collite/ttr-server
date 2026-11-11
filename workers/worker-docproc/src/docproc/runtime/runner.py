@@ -357,6 +357,11 @@ class ProcessorRunner:
                     output = []
                     completion.status, completion.error = CompletionStatus.FAILED, "timeout"
                 except Exception as exc:
+                    # A store read inside the kind (link's /sources, /findSimilar, /pages; diff's /sources) that fails
+                    # transiently — 401/429/5xx or transport, a store roll — is a redelivery after the VT, not a FAILED
+                    # attempt (review-182: transient; review-244 F4). Nothing is staged or loaded yet.
+                    if transient(exc):
+                        raise
                     output = []
                     completion.status = CompletionStatus.FAILED
                     completion.error = f"{type(exc).__name__}: {exc}"

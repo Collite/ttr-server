@@ -427,6 +427,73 @@ def test_transient_graph_failure_redelivers(
     assert result.status == CompletionStatus.SUCCEEDED
 
 
+class KnnRead:
+    """A kind that reads the store mid-run as link's kNN does (`/findSimilar` in the source's mart)."""
+
+    def __init__(self, warehouse: FakeWarehouse) -> None:
+        self.warehouse = warehouse
+
+    def run(self, ctx: RunContext) -> KindResult:
+        self.warehouse.find_similar("hartland-public", "Aurora broke.", ["page"], 5)
+        return Noop().run(ctx)
+
+
+@pytest.mark.parametrize("failure", ["503", "429", "connect"])
+def test_transient_store_error_inside_a_kind_redelivers(
+    runtime: tuple[ProcessorRunner, WorkItem], monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """review-244 F4: a store roll mid-kind leaves the message unacked, with no completion and nothing staged or
+    loaded; the redelivery after the VT runs the kind again and succeeds."""
+    import httpx
+
+    from docproc.sdk.store import StoreError
+
+    runner, item = runtime
+    warehouse = runner.warehouse
+    assert isinstance(warehouse, FakeWarehouse)
+    runner.kinds.kinds["classify"] = KnnRead(warehouse)
+    original = warehouse.find_similar
+
+    def unavailable(*args: Any) -> None:
+        if failure == "connect":
+            raise httpx.ConnectError("refused")
+        raise StoreError(int(failure), "", "store rolling")
+
+    monkeypatch.setattr(warehouse, "find_similar", unavailable)
+    message = enqueue(runner, item)
+    with pytest.raises((httpx.ConnectError, StoreError)):
+        runner.process(message)
+    assert completions(runner, item) == [] and warehouse.loads == 0 and staged_rows(runner, item) == 0
+    assert runner.bus.fetch(message.queue, 30) == []  # remains leased until the VT
+    monkeypatch.setattr(warehouse, "find_similar", original)
+    runner.bus.extend(message, 0)
+    result = runner.process(runner.bus.fetch(message.queue, 30)[0])
+    assert result is not None and result.status == CompletionStatus.SUCCEEDED
+    assert warehouse.similar_calls and len(completions(runner, item)) == 1
+
+
+def test_permanent_store_error_inside_a_kind_fails_the_attempt(
+    runtime: tuple[ProcessorRunner, WorkItem], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 4xx refusal inside a kind (not 401/429) is a FAILED attempt, completed and acked, as before."""
+    from docproc.sdk.store import StoreError
+
+    runner, item = runtime
+    warehouse = runner.warehouse
+    assert isinstance(warehouse, FakeWarehouse)
+    runner.kinds.kinds["classify"] = KnnRead(warehouse)
+
+    def refused(*args: Any) -> None:
+        raise StoreError(400, "bad-request", "nodeKinds must be chunk | page")
+
+    monkeypatch.setattr(warehouse, "find_similar", refused)
+    message = enqueue(runner, item)
+    result = runner.process(message)
+    assert result is not None and result.status == CompletionStatus.FAILED
+    assert result.error == "StoreError: 400 bad-request: nodeKinds must be chunk | page"
+    assert len(completions(runner, item)) == 1 and runner.bus.fetch(message.queue, 30) == []
+
+
 def test_store_refusal_finishes_once(
     runtime: tuple[ProcessorRunner, WorkItem], monkeypatch: pytest.MonkeyPatch
 ) -> None:
