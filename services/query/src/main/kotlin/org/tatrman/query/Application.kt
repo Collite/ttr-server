@@ -131,6 +131,14 @@ fun Application.module(config: Config) {
             openTelemetry = openTelemetry,
             rawSavedQueries = savedQueryClient,
             worlds = worlds,
+            rowWritesPrincipals =
+                config
+                    .getString(
+                        "query.row-writes-principals",
+                    ).split(',')
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .toSet(),
         )
 
     val grpcPort = config.getInt("grpc.port")

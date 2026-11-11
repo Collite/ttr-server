@@ -72,6 +72,16 @@ class ValidateServiceImpl(
         val responseMessages = mutableListOf<ResponseMessage>()
         val contextBuilder = incomingContext.toBuilder()
 
+        if (incomingPlan.nodeCase == org.tatrman.plan.v1.PlanNode.NodeCase.ROW_WRITES &&
+            incomingContext.userId.isBlank()
+        ) {
+            return rejection(
+                incomingContext,
+                emptyList(),
+                listOf(message(Severity.ERROR, "identity", "row_writes requires user_id")),
+            )
+        }
+
         // §60 — mixed-layer rejection: reject plans that contain both ER ScanNode and DB TableScanNode.
         if (MixedLayerDetector.hasMixedLayers(incomingPlan)) {
             responseMessages.add(
@@ -143,7 +153,9 @@ class ValidateServiceImpl(
         // DF-V02 admin gating for `apply_security = false` — honoured iff the caller carries the
         // configured admin role in the effective role set (bearer, or bearer + whois enrichment).
         val applySecurity =
-            if (!options.applySecurity) {
+            if (incomingPlan.nodeCase == org.tatrman.plan.v1.PlanNode.NodeCase.ROW_WRITES) {
+                true // Ordered writes always enforce the caller's row and column policies.
+            } else if (!options.applySecurity) {
                 if (adminRole in effectiveRoles) {
                     false
                 } else {

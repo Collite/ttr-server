@@ -45,7 +45,8 @@ internal object PlanScanCollector {
                 walk(plan.store.input, acc)
             }
             PlanNode.NodeCase.WORKSPACE_REF -> Unit
-            PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET, PlanNode.NodeCase.ROW_WRITES -> Unit
+            PlanNode.NodeCase.ROW_WRITES -> plan.rowWrites.rowsList.forEach { acc.add(it.target) }
+            PlanNode.NodeCase.VALUES, PlanNode.NodeCase.NODE_NOT_SET -> Unit
         }
     }
 }
@@ -171,10 +172,23 @@ internal object PlanQnameRewriter {
                 concretize(plan.store.target, defaultSchema, mismatches)?.let { storeBuilder.setTarget(it) }
                 b.setStore(storeBuilder).build()
             }
+            PlanNode.NodeCase.ROW_WRITES ->
+                b
+                    .setRowWrites(
+                        plan.rowWrites.toBuilder().clearRows().addAllRows(
+                            plan.rowWrites.rowsList.map { row ->
+                                concretize(
+                                    row.target,
+                                    defaultSchema,
+                                    mismatches,
+                                )?.let { row.toBuilder().setTarget(it).build() }
+                                    ?: row
+                            },
+                        ),
+                    ).build()
             PlanNode.NodeCase.WORKSPACE_REF,
             PlanNode.NodeCase.VALUES,
             PlanNode.NodeCase.NODE_NOT_SET,
-            PlanNode.NodeCase.ROW_WRITES,
             -> plan
         }
     }

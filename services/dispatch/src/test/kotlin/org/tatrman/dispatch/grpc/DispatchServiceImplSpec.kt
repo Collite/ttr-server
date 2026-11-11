@@ -55,8 +55,16 @@ class DispatchServiceImplSpec :
             stateful: Boolean = false,
             connections: List<String> = listOf("pg-store"),
             execute: (ExecuteRequest) -> Flow<ResultBatch> = { defaultStream() },
+            connectionInfos: List<ConnectionInfo> = emptyList(),
+            worldConfig: WorldConfig = world,
         ): Pair<DispatchServiceImpl, StickyRegistry> {
-            val client = StubClient(connections = connections, supportsStateful = stateful, execute = execute)
+            val client =
+                StubClient(
+                    connections = connections,
+                    supportsStateful = stateful,
+                    execute = execute,
+                    connectionInfos = connectionInfos,
+                )
             val registry = WorkerRegistry()
             registry.seed(
                 listOf(
@@ -72,7 +80,7 @@ class DispatchServiceImplSpec :
                 ),
             )
             val sticky = StickyRegistry()
-            return DispatchServiceImpl(registry, sticky, world) to sticky
+            return DispatchServiceImpl(registry, sticky, worldConfig) to sticky
         }
 
         fun fixtureWithFailover(): Pair<DispatchServiceImpl, StickyRegistry> {
@@ -117,6 +125,227 @@ class DispatchServiceImplSpec :
             out.size shouldBe 1
             out[0].isLast shouldBe true
             out[0].context.warningsList.map { it.code } shouldContain "routing_decision"
+        }
+
+        "row writes route by every target and reject a cross-connection batch" {
+            fun row(target: QualifiedName) =
+                org.tatrman.plan.v1.RowWrite
+                    .newBuilder()
+                    .setTarget(
+                        target,
+                    ).setOp(org.tatrman.plan.v1.RowWriteOp.INSERT)
+                    .build()
+            val plan =
+                PlanNode
+                    .newBuilder()
+                    .setRowWrites(
+                        org.tatrman.plan.v1.RowWrites
+                            .newBuilder()
+                            .addRows(row(storeSales))
+                            .addRows(row(customerAddress)),
+                    ).build()
+            PlanScanCollector.collect(plan) shouldBe setOf(storeSales, customerAddress)
+            val (svc, _) = fixture(connections = listOf("pg-store", "pg-customer"))
+            val out = svc.dispatch(DispatchRequest.newBuilder().setPlan(plan).build()).toList().single()
+            out.messagesList.single().code shouldBe "cross_database_not_supported"
+        }
+
+        "row writes use the explicit writer over the read default without an override warning" {
+            val captured = mutableListOf<ExecuteRequest>()
+            val (svc, _) =
+                fixture(
+                    connections = listOf("read", "writer"),
+                    connectionInfos =
+                        listOf(
+                            ConnectionInfo
+                                .newBuilder()
+                                .setConnectionId("writer")
+                                .setDefaultSchema("public")
+                                .build(),
+                        ),
+                    worldConfig = WorldConfig(defaultConnection = "read", patterns = emptyList()),
+                    execute = {
+                        captured += it
+                        defaultStream()
+                    },
+                )
+            val plan = rowWrites(qname("db", "public", "obligation"))
+            val out =
+                svc
+                    .dispatch(
+                        DispatchRequest
+                            .newBuilder()
+                            .setPlan(plan)
+                            .setConnectionId("writer")
+                            .build(),
+                    ).toList()
+                    .single()
+
+            out.messagesCount shouldBe 0
+            out.context.warningsList.map { it.code } shouldBe listOf("routing_decision")
+            captured.single().connectionId shouldBe "writer"
+            captured.single().plan shouldBe plan
+        }
+
+        "row writes refuse a conflicting table pattern before calling the worker" {
+            val captured = mutableListOf<ExecuteRequest>()
+            val (svc, _) =
+                fixture(
+                    connections = listOf("writer", "other"),
+                    connectionInfos =
+                        listOf(
+                            ConnectionInfo
+                                .newBuilder()
+                                .setConnectionId("writer")
+                                .setDefaultSchema("public")
+                                .build(),
+                        ),
+                    worldConfig = WorldConfig("read", listOf("db.public.obligation" to "other")),
+                    execute = {
+                        captured += it
+                        defaultStream()
+                    },
+                )
+            val out =
+                svc
+                    .dispatch(
+                        DispatchRequest
+                            .newBuilder()
+                            .setPlan(rowWrites(qname("db", "public", "obligation")))
+                            .setConnectionId("writer")
+                            .build(),
+                    ).toList()
+                    .single()
+
+            out.messagesList.single().code shouldBe "row_writes_connection_mismatch"
+            captured.size shouldBe 0
+        }
+
+        "row-write patterns decide mixed batches and multiple pattern connections still refuse" {
+            val obligation = qname("db", "public", "obligation")
+            val history = qname("db", "public", "history")
+            val cases =
+                listOf(
+                    listOf("db.public.obligation" to "writer") to null,
+                    listOf("db.public.obligation" to "other") to "row_writes_connection_mismatch",
+                    listOf("db.public.obligation" to "writer", "db.public.history" to "other") to
+                        "cross_database_not_supported",
+                )
+            for ((patterns, error) in cases) {
+                val captured = mutableListOf<ExecuteRequest>()
+                val (svc, _) =
+                    fixture(
+                        connections = listOf("writer", "other"),
+                        connectionInfos =
+                            listOf(
+                                ConnectionInfo
+                                    .newBuilder()
+                                    .setConnectionId(
+                                        "writer",
+                                    ).setDefaultSchema("public")
+                                    .build(),
+                            ),
+                        worldConfig = WorldConfig("read", patterns),
+                        execute = {
+                            captured += it
+                            defaultStream()
+                        },
+                    )
+                val out =
+                    svc
+                        .dispatch(
+                            DispatchRequest
+                                .newBuilder()
+                                .setPlan(rowWrites(obligation, history))
+                                .setConnectionId("writer")
+                                .build(),
+                        ).toList()
+                        .single()
+                if (error == null) {
+                    out.messagesCount shouldBe 0
+                    out.context.warningsList.map { it.code } shouldBe listOf("routing_decision")
+                    captured.single().connectionId shouldBe "writer"
+                } else {
+                    out.messagesList.single().code shouldBe error
+                    captured.size shouldBe 0
+                }
+            }
+        }
+
+        "row writes refuse schema mismatches without executing but concretize a blank namespace" {
+            val captured = mutableListOf<ExecuteRequest>()
+            val config = WorldConfig.fromConfig(ConfigFactory.parseString("world.default-connection = cz"))
+            val infos =
+                listOf("cz", "other").map {
+                    ConnectionInfo
+                        .newBuilder()
+                        .setConnectionId(it)
+                        .setDefaultSchema("cz")
+                        .build()
+                }
+            val (svc, _) =
+                fixture(
+                    connections = listOf("cz", "other"),
+                    connectionInfos = infos,
+                    worldConfig = config,
+                    execute = {
+                        captured += it
+                        defaultStream()
+                    },
+                )
+
+            fun plan(namespace: String) =
+                PlanNode
+                    .newBuilder()
+                    .setRowWrites(
+                        org.tatrman.plan.v1.RowWrites.newBuilder().addRows(
+                            org.tatrman.plan.v1.RowWrite
+                                .newBuilder()
+                                .setTarget(qname("db", namespace, "obligation"))
+                                .setOp(org.tatrman.plan.v1.RowWriteOp.INSERT),
+                        ),
+                    ).build()
+
+            suspend fun dispatch(
+                plan: PlanNode,
+                connection: String = "cz",
+            ) = svc
+                .dispatch(
+                    DispatchRequest
+                        .newBuilder()
+                        .setPlan(plan)
+                        .setConnectionId(connection)
+                        .build(),
+                ).toList()
+                .single()
+            dispatch(plan("us")).messagesList.single().code shouldBe "row_writes_schema_mismatch"
+            captured.size shouldBe 0
+            val (legacy, _) =
+                fixture(connections = listOf("cz"), worldConfig = config, execute = {
+                    captured += it
+                    defaultStream()
+                })
+            legacy
+                .dispatch(DispatchRequest.newBuilder().setPlan(plan("cz")).build())
+                .toList()
+                .single()
+                .messagesList
+                .single()
+                .code shouldBe "row_writes_schema_mismatch"
+            captured.size shouldBe 0
+            dispatch(plan("")).messagesCount shouldBe 0
+            captured
+                .single()
+                .plan.rowWrites.rowsList
+                .single()
+                .target.namespace shouldBe "cz"
+            dispatch(plan("cz")).messagesCount shouldBe 0
+            captured.size shouldBe 2
+            val read = dispatch(scan(qname("db", "us", "obligation")), "other")
+            read.messagesCount shouldBe 0
+            read.context.warningsList.map { it.code } shouldContain "schema_mismatch"
+            read.context.warningsList.map { it.code } shouldContain "connection_id_overrides_derived"
+            captured.size shouldBe 3
         }
 
         "cross-database plan rejected with cross_database_not_supported" {
@@ -694,6 +923,21 @@ private fun scan(table: QualifiedName): PlanNode =
         .newBuilder()
         .setTableScan(TableScanNode.newBuilder().setTable(table))
         .build()
+
+private fun rowWrites(vararg targets: QualifiedName): PlanNode =
+    PlanNode
+        .newBuilder()
+        .setRowWrites(
+            org.tatrman.plan.v1.RowWrites.newBuilder().addAllRows(
+                targets.map {
+                    org.tatrman.plan.v1.RowWrite
+                        .newBuilder()
+                        .setTarget(it)
+                        .setOp(org.tatrman.plan.v1.RowWriteOp.INSERT)
+                        .build()
+                },
+            ),
+        ).build()
 
 private fun workspaceRef(name: String): PlanNode =
     PlanNode

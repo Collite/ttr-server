@@ -240,6 +240,7 @@ private fun pool(requiresTenant: Boolean = false): ConnectionPoolManager =
     mockk<ConnectionPoolManager>().also {
         every { it.supportedConnections } returns setOf(CONN)
         every { it.requiresTenantId(CONN) } returns requiresTenant
+        every { it.isReadOnly(CONN) } returns true
     }
 
 private fun request(

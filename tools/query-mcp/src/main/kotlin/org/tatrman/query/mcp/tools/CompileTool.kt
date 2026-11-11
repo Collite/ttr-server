@@ -144,6 +144,13 @@ class CompileTool(
                     "unknown_source_language",
                     "Unknown source_language '$sourceLanguageStr'. Use sql | transdsl | dfdsl | rel_node.",
                 )
+        if (isRowWriteSource(source, sourceLanguage)) {
+            return buildErrorResult(
+                name,
+                "row_writes_not_at_edge",
+                "Row writes are accepted only from the service writer.",
+            )
+        }
         val targetDialect =
             parseSqlDialect(targetDialectStr)
                 ?: return buildErrorResult(

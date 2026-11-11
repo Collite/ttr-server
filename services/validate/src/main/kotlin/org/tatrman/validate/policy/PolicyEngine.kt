@@ -45,6 +45,31 @@ class PolicyEngine(
         // enforced for it. Any entry refuses the whole request (see the end of this function).
         val denials = mutableListOf<ResponseMessage>()
 
+        fun addColumnRules(
+            policy: Policy,
+            table: QualifiedName,
+        ) {
+            for (rule in policy.columnRules) {
+                val b =
+                    ProtoColumnRule
+                        .newBuilder()
+                        .setTable(table)
+                        .setColumn(rule.column)
+                        .setRuleId(policy.id)
+                when (val action = rule.action) {
+                    is ColumnAction.Deny -> b.action = ProtoColumnRule.Action.DENY
+                    is ColumnAction.Mask -> {
+                        b.action = ProtoColumnRule.Action.MASK
+                        b.maskExpression =
+                            enforceable(policy, table, context.userId, denials) {
+                                PolicyToExpression.maskExpression(action.maskValue, identity)
+                            } ?: continue
+                    }
+                }
+                response.addColumnRules(b)
+            }
+        }
+
         // Metadata-aware: flag a stale plan (request model_version ≠ live model version).
         if (context.modelVersion.isNotEmpty()) {
             val live = metadata.currentVersion()
@@ -65,9 +90,16 @@ class PolicyEngine(
         // updates or deletes. A row policy that covers it for this caller refuses the write.
         for (target in PlanWalker.writeTargets(request.plan)) {
             for (policy in registry.policiesFor(target, caller)) {
+                addColumnRules(policy, target)
                 denials.add(
                     error(
-                        POLICY_RESTRICTED_WRITE,
+                        if (request.plan.nodeCase ==
+                            org.tatrman.plan.v1.PlanNode.NodeCase.ROW_WRITES
+                        ) {
+                            "write_under_row_policy"
+                        } else {
+                            POLICY_RESTRICTED_WRITE
+                        },
                         "Policy '${policy.id}' restricts the rows of '${target.dotted()}' for this caller; " +
                             "a write to it cannot be narrowed to those rows.",
                     ),
@@ -89,30 +121,15 @@ class PolicyEngine(
                         .setRuleId(policy.id)
                         .setPredicateSummary(policy.description.ifEmpty { policy.id }),
                 )
-                // Column-level rules (DF-S02) — Validate's RuleEnforcer checks the actual query's
-                // columns against these (deny → reject; mask → rewrite).
-                for (rule in policy.columnRules) {
-                    val b =
-                        ProtoColumnRule
-                            .newBuilder()
-                            .setTable(table)
-                            .setColumn(rule.column)
-                            .setRuleId(policy.id)
-                    when (val action = rule.action) {
-                        is ColumnAction.Deny -> b.action = ProtoColumnRule.Action.DENY
-                        is ColumnAction.Mask -> {
-                            b.action = ProtoColumnRule.Action.MASK
-                            b.maskExpression =
-                                enforceable(policy, table, context.userId, denials) {
-                                    PolicyToExpression.maskExpression(action.maskValue, identity)
-                                } ?: continue
-                        }
-                    }
-                    response.addColumnRules(b)
-                }
+                addColumnRules(policy, table)
             }
         }
-        if (denials.isNotEmpty()) return denied(context, denials, response.messagesList)
+        if (denials.isNotEmpty()) {
+            if (request.plan.nodeCase == org.tatrman.plan.v1.PlanNode.NodeCase.ROW_WRITES) {
+                return response.addAllMessages(denials).build()
+            }
+            return denied(context, denials, response.messagesList)
+        }
 
         // Metadata-aware: flag a table the model doesn't know (typo / dropped table). Only for a
         // request that will run — a refusal does not wait on one lookup per table — and concurrently.

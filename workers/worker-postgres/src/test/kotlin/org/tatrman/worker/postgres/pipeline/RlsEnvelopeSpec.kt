@@ -102,6 +102,7 @@ class RlsEnvelopeSpec :
             val p = mockk<ConnectionPoolManager>()
             every { p.supportedConnections } returns setOf("pg-midas")
             every { p.requiresTenantId("pg-midas") } returns true
+            every { p.isReadOnly("pg-midas") } returns true
             every { p.acquire("pg-midas") } returns conn
             return p
         }
@@ -154,6 +155,7 @@ class RlsEnvelopeSpec :
                 val tpcdsPool = mockk<ConnectionPoolManager>()
                 every { tpcdsPool.supportedConnections } returns setOf("pg-tpcds")
                 every { tpcdsPool.requiresTenantId("pg-tpcds") } returns false
+                every { tpcdsPool.isReadOnly("pg-tpcds") } returns true
                 every { tpcdsPool.acquire("pg-tpcds") } returns conn
                 val pipeline = ExecutePipeline(tpcdsPool, translator("SELECT n FROM store_sales"), limits)
 

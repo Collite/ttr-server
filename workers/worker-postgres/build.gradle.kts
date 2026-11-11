@@ -124,6 +124,7 @@ dependencies {
     "componentTestImplementation"(libs.arrow.vector)
     "componentTestImplementation"(libs.arrow.memory.netty)
     "componentTestImplementation"(libs.postgresql)
+    "componentTestImplementation"(libs.tatrman.ttr.translator)
 }
 
 // Arrow's Netty allocator needs these JDK-module opens on the componentTest JVM, exactly as the

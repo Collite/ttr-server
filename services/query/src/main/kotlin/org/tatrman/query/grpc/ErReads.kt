@@ -33,12 +33,12 @@ internal object ErReads {
                             )
                         }
                     PlanNode.NodeCase.TABLE_SCAN, PlanNode.NodeCase.WORKSPACE_REF,
-                    PlanNode.NodeCase.STORE, PlanNode.NodeCase.NODE_NOT_SET,
+                    PlanNode.NodeCase.STORE, PlanNode.NodeCase.ROW_WRITES, PlanNode.NodeCase.NODE_NOT_SET,
                     ->
                         error("read scope requires a read-only ER tree")
                     PlanNode.NodeCase.FILTER, PlanNode.NodeCase.JOIN, PlanNode.NodeCase.UNION,
                     PlanNode.NodeCase.AGGREGATE, PlanNode.NodeCase.SORT, PlanNode.NodeCase.LIMIT_OFFSET,
-                    PlanNode.NodeCase.SUBQUERY, PlanNode.NodeCase.VALUES, PlanNode.NodeCase.ROW_WRITES,
+                    PlanNode.NodeCase.SUBQUERY, PlanNode.NodeCase.VALUES,
                     -> Unit
                 }
             }

@@ -5,6 +5,17 @@ import com.google.protobuf.kotlin.toByteString
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
 import org.tatrman.plan.v1.Warning as PlanWarning
+import org.tatrman.plan.v1.PlanNode
+import org.tatrman.plan.v1.RowWrites
+import org.apache.arrow.vector.VectorSchemaRoot
+import org.apache.arrow.vector.IntVector
+import org.apache.arrow.vector.BigIntVector
+import org.apache.arrow.vector.VarCharVector
+import org.apache.arrow.vector.types.pojo.ArrowType
+import org.apache.arrow.vector.types.pojo.Field
+import org.apache.arrow.vector.types.pojo.FieldType
+import org.apache.arrow.vector.types.pojo.Schema
+import kotlinx.coroutines.ensureActive
 import org.tatrman.plan.v1.ParameterBinding
 import org.tatrman.plan.v1.Value
 import org.tatrman.translate.v1.Language
@@ -84,8 +95,8 @@ internal fun parseTimestampParam(iso: String): Timestamp {
  * RLS (contracts §2.1): for a connection marked `requires-tenant-id`, execution runs inside a
  * transaction that first binds the tenant via `SET LOCAL app.tenant_id = '<uuid>'` so Postgres
  * row-level-security policies scope every row. Missing tenant → `tenant_id_required` (nothing
- * runs); `SET LOCAL` failure → `rls_set_failed` + rollback. Connections without the flag run
- * with autocommit, exactly as Mssql does.
+ * runs); `SET LOCAL` failure → `rls_set_failed` + rollback. Reads on write-capable pools also
+ * use explicit read-only transactions; other connections without the flag retain autocommit.
  *
  * Cancellation: the surrounding gRPC context cancels the coroutine; the pipeline
  * catches CancellationException, calls `Statement.cancel()`, and releases the
@@ -150,8 +161,13 @@ class ExecutePipeline(
                 null
             }
 
+        if (request.plan.nodeCase == PlanNode.NodeCase.ROW_WRITES) {
+            return executeRowWrites(request, requiresTenant, tenantUuid)
+        }
+
         // Step 2 — clamp options.
         val opt = clamp(request.options)
+        val readTransaction = requiresTenant || !pool.isReadOnly(request.connectionId)
 
         return flow {
             active.incrementAndGet()
@@ -200,6 +216,12 @@ class ExecutePipeline(
 
                 // Step 4 — acquire connection.
                 connection = pool.acquire(request.connectionId)
+                if (!pool.isReadOnly(request.connectionId)) {
+                    // pgjdbc's default readOnlyMode=transaction enforces this only in an
+                    // explicit transaction. Every non-row-write plan must remain read-only.
+                    connection.isReadOnly = true
+                    connection.autoCommit = false
+                }
 
                 // Step 4.5 — RLS envelope. `SET LOCAL` is only honoured inside an explicit
                 // transaction, so bind the tenant transaction-scoped (no bleed across pooled
@@ -366,11 +388,10 @@ class ExecutePipeline(
                         .build(),
                 )
 
-                // Close the RLS transaction cleanly (read-only — nothing to persist, but this ends
-                // the txn so the next pooled borrow starts fresh).
-                if (requiresTenant) connection.commit()
+                // End the explicit read-only transaction so the next pooled borrow starts fresh.
+                if (readTransaction) connection.commit()
             } catch (t: Throwable) {
-                if (requiresTenant) runCatching { connection?.rollback() }
+                if (readTransaction) runCatching { connection?.rollback() }
                 if (t is kotlinx.coroutines.CancellationException) {
                     runCatching { statement?.cancel() }
                     throw t
@@ -423,6 +444,165 @@ class ExecutePipeline(
             }
         }.flowOn(Dispatchers.IO)
     }
+
+    /** One ordered request, one transaction, and no success batch before commit. */
+    private fun executeRowWrites(
+        request: ExecuteRequest,
+        requiresTenant: Boolean,
+        tenantUuid: UUID?,
+    ): Flow<ResultBatch> {
+        if (pool.isReadOnly(request.connectionId)) {
+            return flowOf(
+                errorBatch(
+                    "connection_read_only",
+                    "Row writes require a read-write connection.",
+                    request.context,
+                    receipt(
+                        request,
+                        sql = null,
+                        rls = if (requiresTenant) RlsOutcome.RLS_FAILED else RlsOutcome.RLS_NOT_REQUIRED,
+                    ),
+                ),
+            )
+        }
+        return flow {
+            active.incrementAndGet()
+            var connection: Connection? = null
+            var statement: PreparedStatement? = null
+            var seq = 0
+            var committing = false
+            val statements = mutableListOf<String>()
+            val bindings = mutableListOf<ParameterBinding>()
+            val started = System.nanoTime()
+            var rls = if (requiresTenant) RlsOutcome.RLS_FAILED else RlsOutcome.RLS_NOT_REQUIRED
+            val batch =
+                try {
+                    require(request.plan.rowWrites.rowsCount > 0) { "row_writes must not be empty" }
+                    val unparsed =
+                        request.plan.rowWrites.rowsList.mapIndexed { index, row ->
+                            seq = index
+                            currentCoroutineContext().ensureActive()
+                            val unparse =
+                                translator.unparse(
+                                    UnparseRequest
+                                        .newBuilder()
+                                        .setPlan(
+                                            PlanNode.newBuilder().setRowWrites(RowWrites.newBuilder().addRows(row)),
+                                        ).setTargetLanguage(Language.SQL)
+                                        .setTargetDialect(SqlDialect.POSTGRESQL)
+                                        .setOptimize(false)
+                                        .setContext(request.context)
+                                        .build(),
+                                )
+                            unparse.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let {
+                                throw RowWriteFailure(it.code, it.humanMessage)
+                            }
+                            unparse
+                        }
+                    connection = pool.acquire(request.connectionId)
+                    connection.autoCommit = false
+                    if (requiresTenant) {
+                        connection.createStatement().use { it.execute("SET LOCAL app.tenant_id = '$tenantUuid'") }
+                        rls = RlsOutcome.RLS_APPLIED
+                    }
+                    val answers = mutableListOf<Pair<Long, String?>>()
+                    for ((index, unparse) in unparsed.withIndex()) {
+                        seq = index
+                        currentCoroutineContext().ensureActive()
+                        statements += unparse.output
+                        bindings += unparse.context.parametersList
+                        val prepared = connection.prepareStatement(unparse.output)
+                        statement = prepared
+                        prepared.use { ps ->
+                            bindParameters(ps, unparse.context.parametersList)
+                            ps.queryTimeout = clamp(request.options).timeoutSeconds
+                            ps.executeQuery().use { rs ->
+                                check(rs.next()) { "row write must answer exactly one row" }
+                                val affected = rs.getLong("rows_affected")
+                                check(!rs.wasNull()) { "rows_affected must not be null" }
+                                val prior = rs.getString("prior")
+                                check(!rs.next()) { "row write answered more than one row" }
+                                answers += affected to prior
+                            }
+                        }
+                        statement = null
+                    }
+                    val schema =
+                        Schema(
+                            listOf(
+                                Field("seq", FieldType.notNullable(ArrowType.Int(32, true)), null),
+                                Field("rows_affected", FieldType.notNullable(ArrowType.Int(64, true)), null),
+                                Field("prior", FieldType.nullable(ArrowType.Utf8()), null),
+                            ),
+                        )
+                    val bytes =
+                        VectorSchemaRoot.create(schema, allocator).use { root ->
+                            root.allocateNew()
+                            answers.forEachIndexed { index, (affected, prior) ->
+                                (root.getVector(0) as IntVector).setSafe(index, index)
+                                (root.getVector(1) as BigIntVector).setSafe(index, affected)
+                                val vector = root.getVector(2) as VarCharVector
+                                if (prior ==
+                                    null
+                                ) {
+                                    vector.setNull(index)
+                                } else {
+                                    vector.setSafe(index, prior.toByteArray(Charsets.UTF_8))
+                                }
+                            }
+                            root.rowCount = answers.size
+                            ArrowIpcSerializer.serializeBatch(root)
+                        }
+                    currentCoroutineContext().ensureActive()
+                    committing = true
+                    connection.commit()
+                    ResultBatch
+                        .newBuilder()
+                        .setIsFirst(true)
+                        .setIsLast(true)
+                        .setArrowIpc(bytes.toByteString())
+                        .setBatchRowCount(answers.size.toLong())
+                        .setSchemaFingerprint(ArrowIpcSerializer.fingerprintFor(schema))
+                        .setContext(request.context)
+                        .setReceiptIfPresent(
+                            receipt(
+                                request,
+                                statements.joinToString(";\n"),
+                                bindings,
+                                answers.size.toLong(),
+                                started,
+                                rls,
+                            ),
+                        ).build()
+                } catch (t: Throwable) {
+                    runCatching { statement?.cancel() }
+                    runCatching { connection?.rollback() }
+                    if (t is kotlinx.coroutines.CancellationException) throw t
+                    errorBatch(
+                        (t as? RowWriteFailure)?.code ?: "worker_execution_failed",
+                        "row_writes ${if (committing) "commit" else "seq $seq"}: ${t.message ?: t.javaClass.simpleName}",
+                        request.context,
+                        receipt(
+                            request,
+                            statements.takeIf { it.isNotEmpty() }?.joinToString(";\n"),
+                            bindings,
+                            startedNanos = started,
+                            rls = rls,
+                        ),
+                    )
+                } finally {
+                    runCatching { statement?.close() }
+                    runCatching { connection?.close() }
+                    active.decrementAndGet()
+                }
+            emit(batch)
+        }.flowOn(Dispatchers.IO)
+    }
+
+    private class RowWriteFailure(
+        val code: String,
+        message: String,
+    ) : RuntimeException(message)
 
     private fun clamp(options: org.tatrman.worker.v1.ExecutionOptions): ClampedOptions {
         val batch = options.batchSizeRows.takeIf { it > 0 } ?: limits.defaultBatchSizeRows

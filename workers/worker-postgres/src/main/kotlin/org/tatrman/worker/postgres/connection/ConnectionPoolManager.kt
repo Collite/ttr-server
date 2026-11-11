@@ -60,6 +60,9 @@ class ConnectionPoolManager(
      */
     fun requiresTenantId(connectionId: String): Boolean = configs[connectionId]?.requiresTenantId ?: false
 
+    /** Row DML is opt-in per declared connection; unknown ids fail closed. */
+    fun isReadOnly(connectionId: String): Boolean = configs[connectionId]?.readOnly ?: true
+
     /** Acquires a connection from the pool for [connectionId], opening the pool on first use. */
     fun acquire(connectionId: String): Connection {
         val cfg = configs[connectionId] ?: throw UnknownConnectionException(connectionId)
@@ -152,20 +155,25 @@ class ConnectionPoolManager(
         cfg: ConnectionConfig,
     ): HikariDataSource {
         log.info("Opening JDBC pool for connection_id={}", id)
-        val hc =
-            HikariConfig().apply {
-                jdbcUrl = cfg.jdbcUrl
-                username = cfg.username
-                password = cfg.password
-                maximumPoolSize = cfg.maxPoolSize
-                connectionTimeout = cfg.connectionTimeoutMillis
-                idleTimeout = cfg.idleTimeoutMillis
-                maxLifetime = cfg.maxLifetimeMillis
-                isReadOnly = cfg.readOnly
-                poolName = "postgres-worker-$id"
-            }
-        return HikariDataSource(hc)
+        return HikariDataSource(poolConfig(id, cfg))
     }
+
+    internal fun poolConfig(
+        id: String,
+        cfg: ConnectionConfig,
+    ): HikariConfig =
+        HikariConfig().apply {
+            jdbcUrl = cfg.jdbcUrl
+            username = cfg.username
+            password = cfg.password
+            maximumPoolSize = cfg.maxPoolSize
+            connectionTimeout = cfg.connectionTimeoutMillis
+            idleTimeout = cfg.idleTimeoutMillis
+            maxLifetime = cfg.maxLifetimeMillis
+            isReadOnly = cfg.readOnly
+            if (!cfg.readOnly) schema = cfg.defaultSchema
+            poolName = "postgres-worker-$id"
+        }
 
     class UnknownConnectionException(
         val connectionId: String,
