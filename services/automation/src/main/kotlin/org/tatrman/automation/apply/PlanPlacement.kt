@@ -8,6 +8,7 @@ import org.tatrman.automation.bundle.LoadedRecipe
 import org.tatrman.ttr.metadata.model.WorldSchema
 import org.tatrman.ttr.metadata.world.WorldResolution
 import org.tatrman.ttr.metadata.world.WorldResolver
+import org.tatrman.ttr.metadata.world.writable
 import org.tatrman.ttrp.resolve.LoadSourceResolver
 import org.tatrman.ttrp.resolve.RecipePlacement
 
@@ -85,7 +86,21 @@ internal object PlanPlacement {
             } else {
                 null
             }
-        return PlanSource(schema, storages, ledger, obligation)
+        // S2.2: a transition's `state_history` row has its own unbound placement, pinned here with the others.
+        // Absent (no storage declares it writable) is not a refusal: the apply records `history-failed` instead.
+        val history =
+            if (recipe.coverage.actions.values
+                    .any { it.transition != null }
+            ) {
+                runCatching {
+                    storage(LoadSourceResolver.unbound("er.entity.state_history", "state_history", emptyList()))
+                }.getOrNull()
+            } else {
+                null
+            }
+        // ⚑AU-P2-4: the writer's own `not-writable` check reads the world's `writable:` per storage (the door cannot).
+        val writable = world.storages.associate { it.qname.name to it.writable }
+        return PlanSource(schema, storages, ledger, obligation, history, writable)
     }
 
     private fun unsupported(detail: String): Nothing =

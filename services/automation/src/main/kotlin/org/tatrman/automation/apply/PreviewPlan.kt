@@ -62,7 +62,9 @@ data class ApplyRow(
             data: JsonElement?,
             group: JsonElement?,
         ): ApplyRow {
-            val fields = if (op == "insert") mapOf("row" to requireNotNull(data)) else requireNotNull(data).jsonObject
+            // S2.2 keeps the answered `prior` beside an update/transition payload; it is apply evidence, not §4.
+            val fields =
+                if (op == "insert") mapOf("row" to requireNotNull(data)) else requireNotNull(data).jsonObject - "prior"
             return Json.decodeFromJsonElement(
                 JsonObject(
                     fields +
@@ -93,7 +95,8 @@ data class DryRunAction(
     @EncodeDefault val dryRun: Boolean = true,
 ) {
     init {
-        require(event == "preview" && dryRun)
+        // S2.2: a wet run journals the same evidence at evaluate (dryRun false); its rows apply at close.
+        require(event == "preview")
     }
 
     /** Build without re-encoding nested JSON numeric literals through floating point. */
@@ -139,6 +142,15 @@ data class PreviewWrites(
     @EncodeDefault val state: String = "preview",
 )
 
+/** S2.2: a row's apply status (`staged · applied · failed · skipped`), its error and the `prior` it read. */
+@Serializable
+data class BatchRowStatus(
+    val seq: Int,
+    val status: String,
+    val error: String? = null,
+    val prior: JsonObject? = null,
+)
+
 /** Public apply envelope; action descriptions are read through run status and protocol. */
 @Serializable
 data class RunBatchPlan(
@@ -146,6 +158,19 @@ data class RunBatchPlan(
     val run: String,
     val rows: List<ApplyRow>,
     val mode: String,
+    val statuses: List<BatchRowStatus> = emptyList(),
+)
+
+/** S2.2: the durable state a close reads before it applies an `auto` batch. */
+data class ApplyState(
+    val batch: java.util.UUID,
+    val runAs: String,
+    val status: org.tatrman.automation.ledger.RunStatus,
+    val dryRun: Boolean,
+    val plan: RunBatchPlan,
+    val actions: List<DryRunAction>,
+    /** Rows an earlier close attempt already marked (in flight or answered). */
+    val recorded: Map<Int, org.tatrman.automation.writer.RowOutcome>,
 )
 
 /** Pinned planning inputs; never part of the public apply JSON. */
@@ -154,6 +179,10 @@ data class PlanSource(
     val storages: Map<String, String>,
     val ledgerStorage: String,
     val obligationStorage: String? = null,
+    /** S2.2: where a transition's `state_history` row goes (unbound placement, D-118); null = no storage takes it. */
+    val historyStorage: String? = null,
+    /** The world's `writable:` entries per storage name, as resolved at Open (⚑AU-P2-4). */
+    val writable: Map<String, List<String>> = emptyMap(),
 )
 
 /** Detail/current rows share their verdict entity's transaction, preserving global seq within it. */
