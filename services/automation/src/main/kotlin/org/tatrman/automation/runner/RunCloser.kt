@@ -30,7 +30,9 @@ data class CloseResult(
  * through the door ([Apply]) → commit + seal. The apply needs the context pinned at Open (the run identity's
  * credential, the pinned entities and placement): once the executor is gone, an `auto` close refuses rather than
  * re-resolving a newer bundle. Closes of one run serialize; a retry never resends a request that may have
- * committed (the in-flight marker, [RowOutcome.UNKNOWN]).
+ * committed (the in-flight marker, [RowOutcome.UNKNOWN]). The run's original deadline holds through the apply and
+ * the committed close (review-244 B2): past it the close answers `close-deadline-exceeded`, the batch stays `preview`
+ * and every outcome already recorded stays.
  */
 class RunCloser(
     private val ledger: Ledger,
@@ -89,7 +91,8 @@ class RunCloser(
                     context.world,
                     context.identity,
                     context.modelFp,
-                    context.timeout,
+                    // One absolute deadline: the run's original one, as pinned at Open and as the ledger holds it.
+                    minOf(context.startedAt.plus(context.timeout), state.deadline),
                     state.plan.rows,
                     state.actions,
                     requireNotNull(metadata.planSource) { "apply placement was not pinned at open" },

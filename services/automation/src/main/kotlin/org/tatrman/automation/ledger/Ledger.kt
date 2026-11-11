@@ -32,6 +32,7 @@ import org.tatrman.automation.runner.RunFingerprints
 import org.tatrman.automation.runner.RunBatch
 import org.tatrman.automation.runner.CloseResult
 import org.tatrman.automation.apply.*
+import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_OUTCOME
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
 import org.tatrman.automation.protocol.ProtocolEntry
@@ -495,6 +496,7 @@ class Ledger(
                     it[BatchRows.status],
                     it[BatchRows.error],
                     (it[BatchRows.row] as? JsonObject)?.get("prior") as? JsonObject,
+                    ((it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) as? JsonPrimitive)?.content,
                 )
             }
         return RunBatchPlan(id.toString(), runId.toString(), rows, mode, statuses)
@@ -504,6 +506,7 @@ class Ledger(
      * S2.2: what the close of an `auto` run applies — the journaled plan, its action evidence (an action's `set:` and
      * `transition` are one compare-and-set) and every outcome an earlier close attempt recorded. The run must still be
      * within its budget before any row leaves; a closed run answers its committed state for an idempotent retry.
+     * [ApplyState.deadline] is the original absolute deadline: every request of the apply is bounded by what remains.
      */
     fun applyState(
         runId: UUID,
@@ -524,7 +527,7 @@ class Ledger(
             val batchId = row[Runs.batchId] ?: throw NoRunBatch(runId)
             if (status == RunStatus.EVALUATED && !row[Runs.dryRun]) {
                 if (isSealed(runId)) throw ProtocolSealed(runId)
-                ensureRunBudget(runId, defaultBudget, clock)
+                ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             }
             val plan = batchPlan(runId, batchId)
             ApplyState(
@@ -539,8 +542,9 @@ class Ledger(
                     .associate {
                         it.seq to
                             org.tatrman.automation.writer
-                                .RowOutcome(it.seq, it.status, it.error, it.prior)
+                                .RowOutcome(it.seq, it.status, it.error, it.prior, it.history)
                     },
+                runDeadline(runId, defaultBudget),
             )
         }
     }
@@ -558,7 +562,10 @@ class Ledger(
         }
     }
 
-    /** Per-row outcomes as the door answered them; an `update`/`transition` keeps its `prior` in `batch_rows.row`. */
+    /**
+     * Per-row outcomes as the door answered them; an `update`/`transition` keeps its `prior`, and a transition its
+     * history sub-outcome (as `history_outcome`: the payload's own `history` is the §4 flag), in `batch_rows.row`.
+     */
     fun recordApply(
         batch: UUID,
         outcomes: List<org.tatrman.automation.writer.RowOutcome>,
@@ -574,10 +581,13 @@ class Ledger(
                 BatchRows.update({ (BatchRows.batch eq batch) and (BatchRows.seq eq outcome.seq) }) {
                     it[status] = outcome.status
                     it[error] = outcome.error
-                    if (outcome.prior != null &&
-                        stored is JsonObject
-                    ) {
-                        it[row] = JsonObject(stored + ("prior" to outcome.prior))
+                    if (stored is JsonObject && (outcome.prior != null || outcome.history != null)) {
+                        val evidence =
+                            listOfNotNull(
+                                outcome.prior?.let { p -> "prior" to p },
+                                outcome.history?.let { h -> HISTORY_OUTCOME to JsonPrimitive(h) },
+                            )
+                        it[row] = JsonObject(stored + evidence)
                     }
                 }
             }
@@ -704,8 +714,9 @@ class Ledger(
     /**
      * S2.2 close of an `auto` run, after its rows were applied: the batch becomes `committed` (by the run's `run_as`),
      * the final `writes` entry counts each entity's applied/failed/skipped/unknown rows and the `stale-state` ones, and
-     * the protocol is sealed with CLOSED in one locked transaction. A row still pristine `staged` refuses: the apply
-     * did not finish. A committed batch with failures is still `committed` (the verdict stands, D-67).
+     * the protocol is sealed with CLOSED in one locked transaction. A row still pristine `staged`, or a transition still
+     * `history: pending`, refuses: the apply did not finish. Like the preview close, it is fenced by the run's original
+     * deadline before and after the evidence is written (`close-deadline-exceeded`; the batch stays `preview`). A committed batch with failures is still `committed` (the verdict stands, D-67).
      */
     fun closeCommitted(
         runId: UUID,
@@ -739,10 +750,17 @@ class Ledger(
             }
             if (isSealed(runId)) throw ProtocolSealed(runId)
             check(batch[Batches.state] == "preview") { "the run's batch was already committed" }
+            ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             val rows = BatchRows.selectAll().where { BatchRows.batch eq batchId }.toList()
             check(rows.none { it[BatchRows.status] == "staged" && it[BatchRows.error] == null }) {
                 "the apply did not finish: a row was never sent"
             }
+            check(
+                rows.none {
+                    (it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) ==
+                        JsonPrimitive(org.tatrman.automation.writer.RowOutcome.HISTORY_PENDING)
+                },
+            ) { "the apply did not finish: a transition's history request is unanswered" }
             val now = clock.instant().utc()
             Batches.update({ Batches.id eq batchId }) {
                 it[state] = "committed"
@@ -792,6 +810,7 @@ class Ledger(
                 it[at] = now
             }
             seal(runId, batchId, dryRun = false, now)
+            ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             Runs.update({ Runs.id eq runId }) {
                 it[status] = RunStatus.CLOSED.wire
                 it[endedAt] = now

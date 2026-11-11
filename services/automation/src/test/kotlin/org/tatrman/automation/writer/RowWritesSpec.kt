@@ -150,7 +150,7 @@ class RowWritesSpec :
                     "demo",
                     RunIdentity(Caller("s", "svc", emptySet(), TokenKind.SERVICE, "t"), RunAsRef.Caller, "svc", null),
                     "fp",
-                    Duration.ofSeconds(5),
+                    Clock.systemUTC().instant().plusSeconds(5),
                     listOf(ApplyRow(1, "er.entity.release_order_verdict", "insert", key, row = key)),
                     emptyList(),
                     source,

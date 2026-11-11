@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.writer
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
 import org.tatrman.automation.LedgerTestDb
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.MutableClock
 import org.tatrman.automation.apply.*
 import org.tatrman.automation.bundle.*
@@ -16,10 +19,14 @@ import org.tatrman.automation.identity.RunIdentity
 import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.automation.identity.TokenKind
 import org.tatrman.automation.ledger.*
+import org.tatrman.automation.runner.Door
+import org.tatrman.automation.runner.DoorRead
+import org.tatrman.automation.runner.DoorWrite
 import org.tatrman.automation.runner.EvaluationResult
 import org.tatrman.automation.runner.QueryDoor
 import org.tatrman.automation.runner.RouteSummary
 import org.tatrman.automation.runner.VerdictSummary
+import org.tatrman.automation.runner.WriteResult
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -256,11 +263,8 @@ class ApplyComponentSpec :
             val close: org.tatrman.automation.runner.CloseResult,
         )
 
-        /** Claim a wet run, journal plan() at evaluate, apply through the door, then commit and seal. */
-        suspend fun commit(
-            build: (UUID) -> Planned,
-            door: QueryDoor = door(),
-        ): Committed {
+        /** Claim a wet run and journal plan() at evaluate; answers the run, ready for its close. */
+        fun prepare(build: (UUID) -> Planned): UUID {
             val id =
                 ledger
                     .claimRun(
@@ -302,6 +306,15 @@ class ApplyComponentSpec :
                 EvaluationResult(VerdictSummary(mapOf("hold_sales" to RouteSummary(1, "arrow:x")), 0), emptyList()),
                 preview,
             )
+            return id
+        }
+
+        /** One close attempt's apply, from what the ledger holds now; [after] runs once each outcome list is journaled. */
+        suspend fun applyOnce(
+            id: UUID,
+            door: Door = door(),
+            after: (List<RowOutcome>) -> Unit = {},
+        ) {
             val state = ledger.applyState(id, subject)
             Apply(door, clock).apply(
                 ApplyInput(
@@ -309,7 +322,7 @@ class ApplyComponentSpec :
                     "demo",
                     identity,
                     "model-fp",
-                    Duration.ofSeconds(30),
+                    state.deadline,
                     state.plan.rows,
                     state.actions,
                     source,
@@ -320,9 +333,21 @@ class ApplyComponentSpec :
                 object : ApplyJournal {
                     override fun begin(seqs: List<Int>) = ledger.beginApply(state.batch, seqs)
 
-                    override fun record(outcomes: List<RowOutcome>) = ledger.recordApply(state.batch, outcomes)
+                    override fun record(outcomes: List<RowOutcome>) {
+                        ledger.recordApply(state.batch, outcomes)
+                        after(outcomes)
+                    }
                 },
             )
+        }
+
+        /** Claim a wet run, journal plan() at evaluate, apply through the door, then commit and seal. */
+        suspend fun commit(
+            build: (UUID) -> Planned,
+            door: QueryDoor = door(),
+        ): Committed {
+            val id = prepare(build)
+            applyOnce(id, door)
             val close = ledger.closeCommitted(id, subject)
             return Committed(id, ledger.readRunBatch(id, subject), close)
         }
@@ -789,7 +814,7 @@ class ApplyComponentSpec :
                     "demo",
                     identity,
                     "model-fp",
-                    Duration.ofSeconds(30),
+                    state.deadline,
                     state.plan.rows,
                     state.actions,
                     source,
@@ -807,6 +832,149 @@ class ApplyComponentSpec :
             val batch = ledger.readRunBatch(id, subject)
             batch.of("er.entity.order").map { it.error } shouldBe listOf(RowOutcome.UNKNOWN, RowOutcome.UNKNOWN)
             fake.writes.map { it.world } shouldBe listOf("w-auto")
+        }
+
+        // ---- review-244 (Amendment 2026-11-11: history sub-outcome; close-deadline-exceeded) ----
+
+        "B1: a close that died once the transition was journaled sends only its history request on retry" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            shouldThrow<IllegalStateException> {
+                applyOnce(id) { outcomes ->
+                    // The ledger committed the transition's outcome; its acknowledgement is lost.
+                    check(outcomes.none { it.history == RowOutcome.HISTORY_PENDING }) { "acknowledgement lost" }
+                }
+            }
+            fake.writes.map { it.world } shouldBe listOf("w-erp")
+            val pending = ledger.readRunBatch(id, subject).of("er.entity.order", "transition").single()
+            Triple(pending.status, pending.error, pending.history) shouldBe Triple("applied", null, "pending")
+            // Not a clean close while the history outcome is unanswered.
+            shouldThrow<IllegalStateException> { ledger.closeCommitted(id, subject) }
+            applyOnce(id)
+            fake.writes.map { it.world } shouldBe listOf("w-erp", "w-auto")
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("held", "Sales"))
+            rows("SELECT from_state, to_state FROM wet_fixture.state_history") shouldBe
+                listOf(listOf("placed", "held"))
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            ledger
+                .readRunBatch(
+                    id,
+                    subject,
+                ).of("er.entity.order")
+                .map { Triple(it.status, it.error, it.history) } shouldBe
+                listOf(Triple("applied", null, null), Triple("applied", null, "applied"))
+        }
+
+        "B1: a history row that landed unacknowledged is found by the retry's re-read, not inserted again" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            val inner = door()
+            val dies =
+                object : Door {
+                    override suspend fun read(read: DoorRead) = inner.read(read)
+
+                    override suspend fun write(write: DoorWrite): WriteResult {
+                        val answer = inner.write(write)
+                        check(!write.label.startsWith("history/")) { "process died after the history commit" }
+                        return answer
+                    }
+                }
+            shouldThrow<IllegalStateException> { applyOnce(id, dies) }
+            rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("1"))
+            ledger
+                .readRunBatch(id, subject)
+                .of("er.entity.order", "transition")
+                .single()
+                .history shouldBe "pending"
+            applyOnce(id)
+            fake.writes.map { it.world } shouldBe listOf("w-erp", "w-auto", "w-auto")
+            rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("1"))
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("held"))
+            ledger.closeCommitted(id, subject)
+            ledger
+                .readRunBatch(id, subject)
+                .of("er.entity.order", "transition")
+                .single()
+                .history shouldBe "applied"
+        }
+
+        "B1: a history request whose commit was lost is history: unknown and never resent" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            fake.loseCommit = { it.world == "w-auto" }
+            applyOnce(id)
+            fake.loseCommit = { false }
+            applyOnce(id)
+            fake.writes.map { it.world } shouldBe listOf("w-erp", "w-auto")
+            ledger.closeCommitted(id, subject)
+            val transition = ledger.readRunBatch(id, subject).of("er.entity.order", "transition").single()
+            Triple(transition.status, transition.error?.substringBefore(":"), transition.history) shouldBe
+                Triple("applied", "history-unknown-outcome", "unknown")
+        }
+
+        "B2: the original deadline holds through a multi-group apply; nothing leaves after it" {
+            val id =
+                prepare(
+                    { run -> planned(listOf(verdict(run, "4711", "hold_sales")) + hold("4711"), listOf(listOf(1, 2))) },
+                )
+            val deadline = ledger.applyState(id, subject).deadline
+            deadline shouldBe clock.now.plus(Duration.ofMinutes(30))
+            clock.now = deadline.minusSeconds(10)
+            val timeouts = mutableListOf<Duration>()
+            val inner = door()
+            val late =
+                object : Door {
+                    override suspend fun read(read: DoorRead) = inner.read(read)
+
+                    override suspend fun write(write: DoorWrite): WriteResult {
+                        timeouts += write.timeout
+                        return inner.write(write).also { clock.now = clock.now.plusSeconds(11) }
+                    }
+                }
+            shouldThrow<AutomationException> { applyOnce(id, late) }.code shouldBe ErrorCode.CLOSE_DEADLINE_EXCEEDED
+            // One request, bounded by the 10 s left — not a fresh full budget; the next group never left.
+            timeouts shouldBe listOf(Duration.ofSeconds(10))
+            fake.writes.size shouldBe 1
+            val batch = ledger.readRunBatch(id, subject)
+            batch.mode shouldBe "preview"
+            val sent = batch.statuses.filter { it.status != "staged" }
+            sent.isNotEmpty() shouldBe true
+            sent.all { it.status == "applied" } shouldBe true
+            batch.of("er.entity.order").map { it.status to it.error } shouldBe
+                listOf("staged" to null, "staged" to null)
+            shouldThrow<AutomationException> { ledger.closeCommitted(id, subject) }.code shouldBe
+                ErrorCode.CLOSE_DEADLINE_EXCEEDED
+            ledger.findRun(id)?.status shouldBe RunStatus.EVALUATED
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("placed"))
+        }
+
+        "B2: a history request owed at the deadline is not sent and stays history: pending" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            clock.now = ledger.applyState(id, subject).deadline.minusSeconds(5)
+            val inner = door()
+            val late =
+                object : Door {
+                    override suspend fun read(read: DoorRead) = inner.read(read)
+
+                    override suspend fun write(write: DoorWrite): WriteResult =
+                        inner.write(write).also { clock.now = clock.now.plusSeconds(6) }
+                }
+            shouldThrow<AutomationException> { applyOnce(id, late) }.code shouldBe ErrorCode.CLOSE_DEADLINE_EXCEEDED
+            fake.writes.map { it.world } shouldBe listOf("w-erp")
+            ledger
+                .readRunBatch(id, subject)
+                .of("er.entity.order", "transition")
+                .single()
+                .history shouldBe "pending"
+        }
+
+        "B2: an apply that finished just inside the deadline still cannot commit after it" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            applyOnce(id)
+            clock.now = ledger.applyState(id, subject).deadline
+            shouldThrow<AutomationException> { ledger.closeCommitted(id, subject) }.code shouldBe
+                ErrorCode.CLOSE_DEADLINE_EXCEEDED
+            ledger.readRunBatch(id, subject).mode shouldBe "preview"
         }
     })
 

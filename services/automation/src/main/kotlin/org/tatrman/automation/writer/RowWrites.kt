@@ -198,9 +198,12 @@ class RowWrites(
         )
     }
 
-    /** One `state_history` insert (stdlib shape); [values] are already the row's columns. */
+    /**
+     * One `state_history` insert (stdlib shape); [values] are already the row's columns. `if_absent` on the row's
+     * deterministic id: a resend finds a row that already landed instead of inserting it (review-244 B1).
+     */
     fun history(values: JsonObject): RowWrite =
-        insert(ApplyRow(1, "er.entity.state_history", "insert", row = values), false).row
+        insert(ApplyRow(1, "er.entity.state_history", "insert", row = values), true).row
 
     /**
      * The states a transition may leave: the action's `from:` (or every state that declares `to`), intersected with the

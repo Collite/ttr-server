@@ -54,6 +54,9 @@ data class ApplyRow(
         }
 
     companion object {
+        /** `batch_rows.row` key of an applied transition's history sub-outcome (the payload's `history` is §4's flag). */
+        const val HISTORY_OUTCOME = "history_outcome"
+
         fun restore(
             seq: Int,
             entity: String,
@@ -62,9 +65,14 @@ data class ApplyRow(
             data: JsonElement?,
             group: JsonElement?,
         ): ApplyRow {
-            // S2.2 keeps the answered `prior` beside an update/transition payload; it is apply evidence, not §4.
+            // S2.2 keeps the answered `prior` and a transition's history sub-outcome beside the payload: apply
+            // evidence, not §4.
             val fields =
-                if (op == "insert") mapOf("row" to requireNotNull(data)) else requireNotNull(data).jsonObject - "prior"
+                if (op == "insert") {
+                    mapOf("row" to requireNotNull(data))
+                } else {
+                    requireNotNull(data).jsonObject - setOf("prior", HISTORY_OUTCOME)
+                }
             return Json.decodeFromJsonElement(
                 JsonObject(
                     fields +
@@ -142,13 +150,17 @@ data class PreviewWrites(
     @EncodeDefault val state: String = "preview",
 )
 
-/** S2.2: a row's apply status (`staged · applied · failed · skipped`), its error and the `prior` it read. */
+/**
+ * S2.2: a row's apply status (`staged · applied · failed · skipped`), its error, the `prior` it read and, on an applied
+ * transition, its `state_history` sub-outcome (`pending · applied · failed · unknown`, Amendment 2026-11-11).
+ */
 @Serializable
 data class BatchRowStatus(
     val seq: Int,
     val status: String,
     val error: String? = null,
     val prior: JsonObject? = null,
+    val history: String? = null,
 )
 
 /** Public apply envelope; action descriptions are read through run status and protocol. */
@@ -171,6 +183,8 @@ data class ApplyState(
     val actions: List<DryRunAction>,
     /** Rows an earlier close attempt already marked (in flight or answered). */
     val recorded: Map<Int, org.tatrman.automation.writer.RowOutcome>,
+    /** The run's original absolute deadline (`started_at` + budget): the apply and the close never pass it. */
+    val deadline: java.time.Instant,
 )
 
 /** Pinned planning inputs; never part of the public apply JSON. */

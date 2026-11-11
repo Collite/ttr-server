@@ -146,6 +146,7 @@ class ErrorEnvelopeSpec :
     companion object {
         val LANDED_CODES =
             setOf(
+                ErrorCode.CLOSE_DEADLINE_EXCEEDED,
                 ErrorCode.DOOR_REFUSED,
                 ErrorCode.PORT,
                 ErrorCode.AS_OF,

@@ -7,6 +7,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.api.scalar
 import org.tatrman.automation.apply.ApplyPlanner
 import org.tatrman.automation.apply.ApplyRow
@@ -21,6 +23,7 @@ import org.tatrman.plan.v1.RowWrites as RowWritesProto
 import org.tatrman.ttr.metadata.model.Entity
 import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -30,9 +33,12 @@ data class RowOutcome(
     val status: String,
     val error: String? = null,
     val prior: JsonObject? = null,
+    /** An applied transition's `state_history` sub-outcome (Amendment 2026-11-11, review-244 B1); null otherwise. */
+    val history: String? = null,
 ) {
     init {
         require(status in setOf("staged", "applied", "failed", "skipped"))
+        require(history == null || history in HISTORY_STATES)
     }
 
     companion object {
@@ -41,6 +47,17 @@ data class RowOutcome(
 
         /** The durable marker set before a request leaves; found again on a retried close, it means [UNKNOWN]. */
         const val IN_FLIGHT = "in-flight"
+
+        /**
+         * `history: pending` — journaled in the same write as the transition's `applied`; the `state_history` request
+         * has not been answered. A retried close sends that request alone (an `if_absent` insert of the row's
+         * deterministic id: a row that landed unacknowledged is found, not inserted again); the ERP transition is
+         * never resent, and a committed close refuses while one remains.
+         */
+        const val HISTORY_PENDING = "pending"
+
+        /** The `state_history` sub-outcomes: `pending` → `applied` | `failed` | `unknown` (a lost commit; not resent). */
+        val HISTORY_STATES = setOf(HISTORY_PENDING, "applied", "failed", "unknown")
     }
 }
 
@@ -57,7 +74,8 @@ data class ApplyInput(
     val world: String,
     val identity: RunIdentity,
     val modelFp: String,
-    val timeout: Duration,
+    /** The run's original absolute deadline: each request is bounded by what remains, none leaves after it. */
+    val deadline: Instant,
     val rows: List<ApplyRow>,
     val actions: List<DryRunAction>,
     val source: PlanSource,
@@ -76,6 +94,14 @@ data class ApplyInput(
  * A transition's `state_history` row goes as the next request, to the history storage (`automation_db`). **The
  * pair is not atomic**: the ERP and `automation_db` are two databases (D-118/D-136), so the transition can commit
  * while its history request fails; the transition row then stays `applied` and its error names the history outcome.
+ * Both outcomes are durable (Amendment 2026-11-11, review-244 B1): the transition is journaled `applied` with
+ * `history: pending` in one write, and the sub-outcome is updated after the history request — `applied`, `failed`
+ * (`history-failed: …`) or `unknown` (`history-unknown-outcome: …`). A retried close resends only a pending history
+ * request, as an `if_absent` insert of the deterministic id (the re-read of `state_history`); never the transition.
+ *
+ * The run's original absolute deadline holds through the apply (§5.2, B2): every request's timeout is the time left
+ * before [ApplyInput.deadline], and none leaves once it has passed (`close-deadline-exceeded`; the outcomes already
+ * recorded stay, the batch stays `preview`).
  *
  * Divergence from `ttrp-frontend/entry` (`RowBatch`, `EntryApplyResolver`): the §4 subset is multi-entity and ordered,
  * and the Platform's entry substrate is not a dependency (§4).
@@ -100,6 +126,20 @@ class Apply(
         }
         val partners = partners(input.rows, input.actions)
         for (group in ApplyPlanner.groups(input.rows, input.source)) {
+            // A transition an earlier attempt applied whose history is unanswered: send that request alone.
+            val owed =
+                group.rows.filter {
+                    outcomes[it.seq]?.status == "applied" && outcomes[it.seq]?.history == RowOutcome.HISTORY_PENDING
+                }
+            if (owed.isNotEmpty()) {
+                outcomes +=
+                    history(
+                        input,
+                        owed.map { it to (outcomes.getValue(it.seq).prior ?: JsonObject(emptyMap())) },
+                        outcomes,
+                        journal,
+                    )
+            }
             val pending =
                 group.rows.filter {
                     outcomes[it.seq]?.status in setOf(null, "staged") &&
@@ -178,6 +218,7 @@ class Apply(
         if (failed.isNotEmpty()) done(failed)
         if (units.isEmpty()) return out
         val seqs = units.flatMap { it.seqs }.distinct()
+        val timeout = remaining(input)
         journal.begin(seqs)
         val answer =
             try {
@@ -191,7 +232,7 @@ class Apply(
                         lowering.parameters,
                         input.identity,
                         input.modelFp,
-                        input.timeout,
+                        timeout,
                     ),
                 )
             } catch (e: DoorWriteFailure.Refused) {
@@ -262,32 +303,44 @@ class Apply(
                     if (affected == 0L) {
                         unit.seqs.forEach { results[it] = RowOutcome(it, "failed", "stale-state", prior) }
                     } else {
-                        unit.seqs.forEach { results[it] = RowOutcome(it, "applied", prior = prior) }
                         val from = prior?.get(requireNotNull(transition.attribute))
-                        if (transition.history == true &&
-                            from != transition.to
-                        ) {
-                            histories += transition to (prior ?: JsonObject(emptyMap()))
+                        val owed = transition.history == true && from != transition.to
+                        if (owed) histories += transition to (prior ?: JsonObject(emptyMap()))
+                        unit.seqs.forEach {
+                            val history = if (owed && it == transition.seq) RowOutcome.HISTORY_PENDING else null
+                            results[it] = RowOutcome(it, "applied", prior = prior, history = history)
                         }
                     }
                 }
             }
         }
         done(results.values.toList())
-        if (histories.isNotEmpty()) {
-            history(input, histories)?.let { error ->
-                done(histories.map { (t, _) -> out.getValue(t.seq).copy(error = error) })
-            }
-        }
+        if (histories.isNotEmpty()) out += history(input, histories, out, journal)
         return out
     }
 
-    /** The next request, to the history storage: one `state_history` row per transition that moved. Null = written. */
+    /**
+     * The next request, to the history storage: one `state_history` row per transition that moved, each an `if_absent`
+     * insert of its deterministic id. [applied] holds each transition's `applied` outcome; the answer sets its history
+     * sub-outcome and is journaled. Past the deadline nothing is sent and the transitions stay `history: pending`.
+     */
     private suspend fun history(
         input: ApplyInput,
         histories: List<Pair<ApplyRow, JsonObject>>,
-    ): String? {
-        val storage = input.source.historyStorage ?: return "history-failed: storage-unmapped"
+        applied: Map<Int, RowOutcome>,
+        journal: ApplyJournal,
+    ): Map<Int, RowOutcome> {
+        fun settle(
+            history: String,
+            error: String? = null,
+        ): Map<Int, RowOutcome> {
+            val list = histories.map { (t, _) -> applied.getValue(t.seq).copy(error = error, history = history) }
+            journal.record(list)
+            return list.associateBy { it.seq }
+        }
+
+        fun failed(code: String) = settle("failed", "history-failed: $code")
+        val storage = input.source.historyStorage ?: return failed("storage-unmapped")
         val lowering = RowWrites(input.entities, input.routes)
         val at = clock.instant().atOffset(ZoneOffset.UTC).toLocalDateTime()
         val rows =
@@ -330,12 +383,13 @@ class Apply(
                             input.source.writable[storage].orEmpty(),
                         ).isNotEmpty()
                 ) {
-                    return "history-failed: not-writable"
+                    return failed("not-writable")
                 }
                 values.map { lowering.history(it) }
             } catch (e: RowRefusal) {
-                return "history-failed: ${e.code}"
+                return failed(e.code)
             }
+        val timeout = remaining(input)
         return try {
             door.write(
                 DoorWrite(
@@ -347,15 +401,28 @@ class Apply(
                     lowering.parameters,
                     input.identity,
                     input.modelFp,
-                    input.timeout,
+                    timeout,
                 ),
             )
-            null
+            // 1 = written now; 0 = an earlier attempt's row landed unacknowledged (the re-read found it).
+            settle("applied")
         } catch (e: DoorWriteFailure.Unknown) {
-            "history-${RowOutcome.UNKNOWN}: ${e.code}"
+            settle("unknown", "history-${RowOutcome.UNKNOWN}: ${e.code}")
         } catch (e: DoorWriteFailure) {
-            "history-failed: ${e.code}"
+            failed(e.code)
         }
+    }
+
+    /** The time left before the run's original deadline; none left → `close-deadline-exceeded`, nothing is sent. */
+    private fun remaining(input: ApplyInput): Duration {
+        val left = Duration.between(clock.instant(), input.deadline)
+        if (left.isNegative || left.isZero) {
+            throw AutomationException(
+                ErrorCode.CLOSE_DEADLINE_EXCEEDED,
+                "the run's original deadline passed during its apply; no further request is sent",
+            )
+        }
+        return left
     }
 
     /** seq → the index of the action whose `batchRows` hold it: an action's `set:` and `transition` are one CAS. */
