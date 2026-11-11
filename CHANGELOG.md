@@ -16,122 +16,6 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-- **chrono / grounding-mcp — S0.3 review-230 repairs.** Dates such as `15/3/2025` and `Mar-2025` keep their original
-  readings. Month ranges and months bounding fiscal years are left unread. One contextual month helper serves
-  recognition, conversation anchors and scanner blanking, including joined tokens and possessives. Month pairs
-  join across any punctuation (including abbreviation dots, `&` and `+`) or one joining word. Scan returns
-  only time words and phrase glue, leaves a different grain noun outside, and suppresses a phrase only when it is
-  linked to the conflicting phrase. It reads at most 128 tokens and returns WARNING `text_too_long` with prefix
-  spans; window checks visit their own sub-windows. Czech calendar weeks read again;
-  conversation slots are preserved. A short number after a yearless period keeps it unread: `Q2 25` and
-  `Q2 10 stores` both fail closed. `scan_time` preserves warnings, reports chrono ERRORs as tool errors and
-  rejects blank text; invalid scans count as `spans="error"`. An ordinal day beside a month stays in its date
-  span ("March 15th 2025").
-
-- **chrono — `Scan`: the time phrases of a question, by chrono's own rules (TS-P0 S0.3).** The new RPC returns one
-  `TimeSpan` per time phrase — UTF-16 offsets into the text as sent, the text, `DATE_TIME`, a confidence and the trigger
-  (the slice term, else the kind of period read). Every window of up to seven tokens is read as `Ground` reads a span;
-  a span keeps none of its idle words („za minulý měsíc“ → „minulý měsíc“), the longest wins, and a phrase that names
-  no one period gives no part of it ("next Q2", "excluding Q4" give no "Q2" / "Q4"; „leden až březen 2025“ gives
-  neither month), while periods side by side that are each whole give each ("Q2 2025 vs Q2 2024"). A six-digit
-  document number, an amount ("more than 2000 units") and words that only look like months (*zařízení*, "Jan Novák",
-  "may we see") are no spans; a bare four-digit year is. No reference date: no spans and an `ERROR` message
-  `reference_required`. Never the LLM fallback. Metrics `chrono_scan_total{spans}`, `chrono_scan_latency_ms`.
-  grounding-mcp exposes it as `scan_time` (capability `grounding.time.scan:v1`): `{spans: [{start, end, text, kind,
-  confidence, trigger}], messages}`, every field printed. Nothing consumes it yet (TS-P1).
-
-- **proto — `GroundingService.Scan` finds the time phrases in a text (TS-P0 S0.3).** Additive: `rpc Scan(ScanRequest)
-  returns (ScanResponse)`; `ScanRequest { text = 1; context = 2; package = 3 }`, `ScanResponse { repeated TimeSpan
-  spans = 1; repeated ResponseMessage messages = 2 }`, `TimeSpan { start = 1; end = 2; text = 3; kind = 4; confidence
-  = 5; trigger = 6 }` — offsets are UTF-16 code units into the text as sent, end exclusive. chrono implements it; geo
-  and money answer `UNIMPLEMENTED`. `Ground` and `GetStatus` are unchanged.
-
-- **chrono — „posledních N dní“ / "last N days" is exactly N days (A-TS-1).** The window ends with the reference
-  day: `[reference − N + 1 day, reference + 1 day)`. It used to start one day earlier, N + 1 days in all ("last 7
-  days" on a Sunday counted that Sunday twice); "the last N months" likewise starts the day after the same date N
-  months back. The trailing option of „poslední měsíc / týden / rok“ is the same 30 / 7 / 365 days, and its label
-  names that count.
-
-- **chrono — a period code meets a period table only in the table's own grain.** A quarter (`yyyyQn`) or a
-  half-year against a monthly period table — the usual one, and the default `code_format` — was joined or
-  code-filtered as `ap.period = '2026Q2'` and matched no row; "last quarter" did since Q-18. It now takes datetime
-  bounds when the fact has a date column, and `values` (`p` = the canonical code) when it has none. A month against a
-  quarterly table takes the `period_start`/`period_end` functions instead of the join. A table whose `code_format`
-  names no grain chrono reads (`yyyy`, `yyyyMMdd`, `yyyy-ww`) fits no code: a month against a `yyyy` table used to
-  join as `ap.period = '2026'`, the whole year's rows. The functions always get the canonical `yyyyMM` code.
-
-- **chrono — the time phrases the regexes outside it missed are read by its own rules (TS-6).** New: half-years
-  („1. pololetí 2026“, „druhé pololetí“, "H1 2026", "the first half of 2026"; `PERIOD`, code `yyyyHn`, datetime
-  bounds or `values`); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
-  "the second quarter of 2025"; `yyyyQn`), the last quarter of a year as its fourth ("the last quarter of the year",
-  "… of the previous year", „poslední čtvrtletí loňského roku“; it used to be the quarter before the reference's), and
-  the word *kvartál*; *uplynulý* / "past" (the period before the reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
-  day; „… do dneška“ / „… do současnosti“ / "… as of today" / "… so far" the same, „… do března“ / "… through September"
-  / "… by end of March" to the end of that month, any other ending that names a time not read; a breakdown — "year to
-  date by region", "YTD by month" — is no ending, nor is „do“ / "to" before a place: „vývoz od začátku roku do
-  Německa“, "exports year to date to Germany"; in a year other than the reference's — „od začátku roku 2025“, "YTD
-  last year", „loni od začátku roku“ — it is that year, read by the year rules as before, and "YTD last year through
-  March" runs to the end of March 2025). A quarter, half or last month in a year chrono cannot read is not read: a year it reads nowhere —
-  "Q2 next year", "the last quarter of next year", "Q2 a year ago", "Q1 every year", „2. čtvrtletí příštího roku“,
-  „každé 2. čtvrtletí“ —, a year named by a word chrono does not read ("the second quarter of the contract year",
-  "Q2 of the same year"), or a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025"; so "Q2 for 2000
-  customers" is not read either), where it would land in the reference's year; nor is year to date in one ("YTD next
-  year"), nor a quarter an earlier question names in one. Nor is a yearless one in a span that says anything else
-  about a year — a year noun or adverb ("Q2 in previous years", "Q2 annually", "Q2 by year", „2. čtvrtletí o rok
-  dříve“), a two-digit year ("Q2 FY25", "Q2 '25", "YTD FY25") or a relative word before it ("next Q2", "last Q4",
-  „minulé 2. čtvrtletí“) — nor one with a plural noun („ve 2. čtvrtletích“): only a neutral frame ("of the fiscal
-  year", „kalendářního roku“, "year over year") lets it take the conversation's or the reference's year. A year that
-  stands only after a bound word is a range's start or end, not the period's year: "Q2 since 2020", „2. čtvrtletí od
-  roku 2020“, "Q2 until 2025", "Q2 since last year" are not read (they used to be that year's Q2); "since 2020" alone
-  is still 2020. Nor is a quarter or half that a range or exclusion word governs — a bound or the part left out, not
-  the period: "excluding Q4", "in 2025 excluding Q4", „v roce 2025 do 3. čtvrtletí“, "sales since Q2", „kromě 4.
-  čtvrtletí“, "Q2 onwards", "fiscal year 2025 excluding Q4" (it used to be that quarter, or for the fiscal year the
-  whole year); "sales from Q2" is still Q2. The rules older than TS — month names, dates, relative words, a bare
-  or fiscal year — likewise read only a span that names one period: „leden až březen 2025“ (it used to be January),
-  „březen a duben 2025“, "March 2024 vs March 2025", "March vs last year", „minulý a tento měsíc“, "this quarter and
-  last month", "today and yesterday", "fiscal year 2025 vs 2024" are not read, nor is a month in a year chrono reads
-  nowhere ("March next year", „v březnu příštího roku“ — it used to be this year's March); "December of fiscal year
-  2025" is December 2025, where it used to be the whole fiscal year. A week is read only with its own scope word
-  before it: "last month by week", „minulý měsíc po týdnech“ and "this year by week" are last month and this year
-  (they used to be a week), and "the week before last" is not read (it used to be last week). Year to date with today
-  before it („dodnes od začátku roku“) is year to date; from the start of another year („od začátku loňského roku“,
-  "since the start of last year") is not read, where it used to be that whole year. A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
-  second half of fiscal year 2025") is that quarter or half, as "Q4 FY2025" is; it used to be the whole fiscal year. A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
-  asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
-  now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
-  before; the singular only, so not „poslední měsíce“), where they used to be unread (or, with a slice trigger, the current
-  month). The last month of a year is its December and the last half its second ("the last month of last year" →
-  202512, „poslední pololetí loňského roku“ → 2025H2, "the second half of last year" → 2025H2, where it used to be the
-  whole year); a yearless one reads as "December" or "H2" does, and asks the same way. Any other last week or month
-  of a larger period ("the last week of the year", "the last week in October", "the last month of Q3 2025",
-  „poslední týden v měsíci“, „poslední měsíc čtvrtletí“), and the last month, quarter or half of a year chrono cannot
-  name ("the last month of next year"), is not read at all: it used to be read as last month or last week, or as the
-  month it names; "last year in March" is still March of last year. „letos dosud“ used to be the whole year. After a trailing ask the next anaphoric period of its unit („A předchozí měsíc?“) is `no_anchor`: the
-  conversation does not say which reading was taken. A quarter or half-year named by its number with a year ("the second quarter of 2025") is that period
-  now, no longer left ungrounded (#213); a week, month or day of a stated year still is. Clarification labels name
-  half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30
-  dní“). A quarter or half-year by number whose span names any other period („1. a 2. čtvrtletí“, "last quarter and Q1",
-  "Q2 2025 vs 2024", "Q3 and H1 2025", „Q1 a březen 2025“, a year joined by "vs" or „a“ — "Q2 this year vs last
-  year", „2. čtvrtletí letos a loni“ —, a comparison with a time on its other side — "Q2 vs the same quarter last year",
-  „2. čtvrtletí oproti stejnému období loni“, "Q2 vs a year ago" —, a count window — "Q1 and the last 3 months" — or year to date — "Q2 vs YTD")
-  is not read as one, and neither is year to date beside another period ("year to date vs last year", "YTD vs the same
-  period last year"); a year word
-  with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
-  "last 6 weeks" used to be last week. Nor is a count of a larger period ("the last 2 months of the year", "the last 3
-  months of the quarter", „poslední 2 měsíce roku“): it used to be the trailing count. The quarter table is shared with the conversation reader. Corpus 36 → 115 cases
-  (eval bulk corpus 126 → 205).
-  No wire change.
-
-- **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no
-  date role and no period-code route used to get `UNGROUNDABLE` "no anchor date column in package", discarding an
-  interval chrono had already computed. It now gets `OK` with `normalized.interval` and the `values` arm
-  (`ValueBinding`, unused until now): `start`, `end` (datetime, half-open, the request's zone), and `p` (the period
-  code, `yyyyMM` or `yyyyQn`) when the phrase names a period; `sql_preview` is empty and `explanation` names the
-  package. The caller places the values. `UNGROUNDABLE` is left for a span nothing was read in, a missing reference
-  date, and #214's `no_anchor`. The llm-gateway fallback may answer `values` as well: its prompt says so, and a
-  `values` reply with no `sql_preview` is accepted. `chrono_ground_total` gains the label `application` (`filter` | `join` | `values` |
-  `none`). No wire change: `GroundingResult.values = 2` existed. The eval corpus gains the `no-date-role` model.
-
 - **metadata — ops review corrections.** Accepted non-fallback filesystem content can confirm CN promotions;
   Git confirmation remains restricted to the configured default branch. Successful no-change refreshes avoid
   repeated CN database observations, and failed observations retry. HTTP `read-timeout-ms` now sets a deadline for the
@@ -2118,3 +2002,132 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
+
+## server-libs 0.11.36 · chrono 0.11.31 · grounding-mcp 0.11.31 — 2026-11-08
+
+- `server-libs/v0.11.36` publishes `org.tatrman:server-proto:0.11.36` with the additive
+  `GroundingService.Scan` RPC and its messages. `chrono/v0.11.31` and
+  `grounding-mcp/v0.11.31` ship the time-span scanner, reviewed recognition repairs,
+  and the `scan_time` tool from ttr-server#380. Consumers can resolve the library
+  from GitHub Packages and both images from GHCR. Source, digests and clean bp-dsk
+  resolution checks are recorded in [PUBLISHING.md](./PUBLISHING.md#ts-p0-internal-release--2026-11-08).
+  Consumer adoption and cluster rolls follow in later TS stages.
+
+- `server-proto` 0.11.36 brings `ttr-plan-proto` 0.14.1; `server-proto` 0.12.4 brought 0.13.0.
+- `Ground` keeps its wire shape, but its answers change in this release as the entries below describe.
+
+- **chrono / grounding-mcp — S0.3 review-230 repairs.** Dates such as `15/3/2025` and `Mar-2025` keep their original
+  readings. Month ranges and months bounding fiscal years are left unread. One contextual month helper serves
+  recognition, conversation anchors and scanner blanking, including joined tokens and possessives. Month pairs
+  join across any punctuation (including abbreviation dots, `&` and `+`) or one joining word. Scan returns
+  only time words and phrase glue, leaves a different grain noun outside, and suppresses a phrase only when it is
+  linked to the conflicting phrase. It reads at most 128 tokens and returns WARNING `text_too_long` with prefix
+  spans; window checks visit their own sub-windows. Czech calendar weeks read again;
+  conversation slots are preserved. A short number after a yearless period keeps it unread: `Q2 25` and
+  `Q2 10 stores` both fail closed. `scan_time` preserves warnings, reports chrono ERRORs as tool errors and
+  rejects blank text; invalid scans count as `spans="error"`. An ordinal day beside a month stays in its date
+  span ("March 15th 2025").
+
+- **chrono — `Scan`: the time phrases of a question, by chrono's own rules (TS-P0 S0.3).** The new RPC returns one
+  `TimeSpan` per time phrase — UTF-16 offsets into the text as sent, the text, `DATE_TIME`, a confidence and the trigger
+  (the slice term, else the kind of period read). Every window of up to seven tokens is read as `Ground` reads a span;
+  a span keeps none of its idle words („za minulý měsíc“ → „minulý měsíc“), the longest wins, and a phrase that names
+  no one period gives no part of it ("next Q2", "excluding Q4" give no "Q2" / "Q4"; „leden až březen 2025“ gives
+  neither month), while periods side by side that are each whole give each ("Q2 2025 vs Q2 2024"). A six-digit
+  document number, an amount ("more than 2000 units") and words that only look like months (*zařízení*, "Jan Novák",
+  "may we see") are no spans; a bare four-digit year is. No reference date: no spans and an `ERROR` message
+  `reference_required`. Never the LLM fallback. Metrics `chrono_scan_total{spans}`, `chrono_scan_latency_ms`.
+  grounding-mcp exposes it as `scan_time` (capability `grounding.time.scan:v1`): `{spans: [{start, end, text, kind,
+  confidence, trigger}], messages}`, every field printed. Nothing consumes it yet (TS-P1).
+
+- **proto — `GroundingService.Scan` finds the time phrases in a text (TS-P0 S0.3).** Additive: `rpc Scan(ScanRequest)
+  returns (ScanResponse)`; `ScanRequest { text = 1; context = 2; package = 3 }`, `ScanResponse { repeated TimeSpan
+  spans = 1; repeated ResponseMessage messages = 2 }`, `TimeSpan { start = 1; end = 2; text = 3; kind = 4; confidence
+  = 5; trigger = 6 }` — offsets are UTF-16 code units into the text as sent, end exclusive. chrono implements it; geo
+  and money answer `UNIMPLEMENTED`. `Ground` and `GetStatus` are unchanged.
+
+- **chrono — „posledních N dní“ / "last N days" is exactly N days (A-TS-1).** The window ends with the reference
+  day: `[reference − N + 1 day, reference + 1 day)`. It used to start one day earlier, N + 1 days in all ("last 7
+  days" on a Sunday counted that Sunday twice); "the last N months" likewise starts the day after the same date N
+  months back. The trailing option of „poslední měsíc / týden / rok“ is the same 30 / 7 / 365 days, and its label
+  names that count.
+
+- **chrono — a period code meets a period table only in the table's own grain.** A quarter (`yyyyQn`) or a
+  half-year against a monthly period table — the usual one, and the default `code_format` — was joined or
+  code-filtered as `ap.period = '2026Q2'` and matched no row; "last quarter" did since Q-18. It now takes datetime
+  bounds when the fact has a date column, and `values` (`p` = the canonical code) when it has none. A month against a
+  quarterly table takes the `period_start`/`period_end` functions instead of the join. A table whose `code_format`
+  names no grain chrono reads (`yyyy`, `yyyyMMdd`, `yyyy-ww`) fits no code: a month against a `yyyy` table used to
+  join as `ap.period = '2026'`, the whole year's rows. The functions always get the canonical `yyyyMM` code.
+
+- **chrono — the time phrases the regexes outside it missed are read by its own rules (TS-6).** New: half-years
+  („1. pololetí 2026“, „druhé pololetí“, "H1 2026", "the first half of 2026"; `PERIOD`, code `yyyyHn`, datetime
+  bounds or `values`); quarters by number („2. čtvrtletí 2026“, „třetí kvartál“, "Q2",
+  "the second quarter of 2025"; `yyyyQn`), the last quarter of a year as its fourth ("the last quarter of the year",
+  "… of the previous year", „poslední čtvrtletí loňského roku“; it used to be the quarter before the reference's), and
+  the word *kvartál*; *uplynulý* / "past" (the period before the reference's); year to date („od začátku roku“, „letos dosud“, "year to date", "YTD": 1 January through the reference
+  day; „… do dneška“ / „… do současnosti“ / "… as of today" / "… so far" the same, „… do března“ / "… through September"
+  / "… by end of March" to the end of that month, any other ending that names a time not read; a breakdown — "year to
+  date by region", "YTD by month" — is no ending, nor is „do“ / "to" before a place: „vývoz od začátku roku do
+  Německa“, "exports year to date to Germany"; in a year other than the reference's — „od začátku roku 2025“, "YTD
+  last year", „loni od začátku roku“ — it is that year, read by the year rules as before, and "YTD last year through
+  March" runs to the end of March 2025). A quarter, half or last month in a year chrono cannot read is not read: a year it reads nowhere —
+  "Q2 next year", "the last quarter of next year", "Q2 a year ago", "Q1 every year", „2. čtvrtletí příštího roku“,
+  „každé 2. čtvrtletí“ —, a year named by a word chrono does not read ("the second quarter of the contract year",
+  "Q2 of the same year"), or a year in digits no pattern places ("Q2 for 2025", "Q2 sales 2025"; so "Q2 for 2000
+  customers" is not read either), where it would land in the reference's year; nor is year to date in one ("YTD next
+  year"), nor a quarter an earlier question names in one. Nor is a yearless one in a span that says anything else
+  about a year — a year noun or adverb ("Q2 in previous years", "Q2 annually", "Q2 by year", „2. čtvrtletí o rok
+  dříve“), a two-digit year ("Q2 FY25", "Q2 '25", "YTD FY25") or a relative word before it ("next Q2", "last Q4",
+  „minulé 2. čtvrtletí“) — nor one with a plural noun („ve 2. čtvrtletích“): only a neutral frame ("of the fiscal
+  year", „kalendářního roku“, "year over year") lets it take the conversation's or the reference's year. A year that
+  stands only after a bound word is a range's start or end, not the period's year: "Q2 since 2020", „2. čtvrtletí od
+  roku 2020“, "Q2 until 2025", "Q2 since last year" are not read (they used to be that year's Q2); "since 2020" alone
+  is still 2020. Nor is a quarter or half that a range or exclusion word governs — a bound or the part left out, not
+  the period: "excluding Q4", "in 2025 excluding Q4", „v roce 2025 do 3. čtvrtletí“, "sales since Q2", „kromě 4.
+  čtvrtletí“, "Q2 onwards", "fiscal year 2025 excluding Q4" (it used to be that quarter, or for the fiscal year the
+  whole year); "sales from Q2" is still Q2. The rules older than TS — month names, dates, relative words, a bare
+  or fiscal year — likewise read only a span that names one period: „leden až březen 2025“ (it used to be January),
+  „březen a duben 2025“, "March 2024 vs March 2025", "March vs last year", „minulý a tento měsíc“, "this quarter and
+  last month", "today and yesterday", "fiscal year 2025 vs 2024" are not read, nor is a month in a year chrono reads
+  nowhere ("March next year", „v březnu příštího roku“ — it used to be this year's March); "December of fiscal year
+  2025" is December 2025, where it used to be the whole fiscal year. A week is read only with its own scope word
+  before it: "last month by week", „minulý měsíc po týdnech“ and "this year by week" are last month and this year
+  (they used to be a week), and "the week before last" is not read (it used to be last week). Year to date with today
+  before it („dodnes od začátku roku“) is year to date; from the start of another year („od začátku loňského roku“,
+  "since the start of last year") is not read, where it used to be that whole year. A quarter or half of a fiscal year ("Q4 of fiscal year 2025", "the
+  second half of fiscal year 2025") is that quarter or half, as "Q4 FY2025" is; it used to be the whole fiscal year. A yearless quarter or half reads as a yearless month: the conversation's year, else the reference's, and it
+  asks this year vs last when it is later than the reference's. **„poslední měsíc / týden / rok“ and "the last month"
+  now ask** (`AWAITING_CLARIFICATION`, option ids `trailing` — the last 30 / 7 / 365 days — and `calendar` — the period
+  before; the singular only, so not „poslední měsíce“), where they used to be unread (or, with a slice trigger, the current
+  month). The last month of a year is its December and the last half its second ("the last month of last year" →
+  202512, „poslední pololetí loňského roku“ → 2025H2, "the second half of last year" → 2025H2, where it used to be the
+  whole year); a yearless one reads as "December" or "H2" does, and asks the same way. Any other last week or month
+  of a larger period ("the last week of the year", "the last week in October", "the last month of Q3 2025",
+  „poslední týden v měsíci“, „poslední měsíc čtvrtletí“), and the last month, quarter or half of a year chrono cannot
+  name ("the last month of next year"), is not read at all: it used to be read as last month or last week, or as the
+  month it names; "last year in March" is still March of last year. „letos dosud“ used to be the whole year. After a trailing ask the next anaphoric period of its unit („A předchozí měsíc?“) is `no_anchor`: the
+  conversation does not say which reading was taken. A quarter or half-year named by its number with a year ("the second quarter of 2025") is that period
+  now, no longer left ungrounded (#213); a week, month or day of a stated year still is. Clarification labels name
+  half-years („2. pololetí 2025“ / "H2 2025"), a week („týden od 19. 10. 2026“) and the trailing window („posledních 30
+  dní“). A quarter or half-year by number whose span names any other period („1. a 2. čtvrtletí“, "last quarter and Q1",
+  "Q2 2025 vs 2024", "Q3 and H1 2025", „Q1 a březen 2025“, a year joined by "vs" or „a“ — "Q2 this year vs last
+  year", „2. čtvrtletí letos a loni“ —, a comparison with a time on its other side — "Q2 vs the same quarter last year",
+  „2. čtvrtletí oproti stejnému období loni“, "Q2 vs a year ago" —, a count window — "Q1 and the last 3 months" — or year to date — "Q2 vs YTD")
+  is not read as one, and neither is year to date beside another period ("year to date vs last year", "YTD vs the same
+  period last year"); a year word
+  with no joiner still says its year. A count of weeks or years ("last 6 weeks", „posledních 6 týdnů“) is not read:
+  "last 6 weeks" used to be last week. Nor is a count of a larger period ("the last 2 months of the year", "the last 3
+  months of the quarter", „poslední 2 měsíce roku“): it used to be the trailing count. The quarter table is shared with the conversation reader. Corpus 36 → 115 cases
+  (eval bulk corpus 126 → 205).
+  No wire change.
+
+- **chrono — a recognised time phrase is always answered with its interval (TS-1).** A package that declares no
+  date role and no period-code route used to get `UNGROUNDABLE` "no anchor date column in package", discarding an
+  interval chrono had already computed. It now gets `OK` with `normalized.interval` and the `values` arm
+  (`ValueBinding`, unused until now): `start`, `end` (datetime, half-open, the request's zone), and `p` (the period
+  code, `yyyyMM` or `yyyyQn`) when the phrase names a period; `sql_preview` is empty and `explanation` names the
+  package. The caller places the values. `UNGROUNDABLE` is left for a span nothing was read in, a missing reference
+  date, and #214's `no_anchor`. The llm-gateway fallback may answer `values` as well: its prompt says so, and a
+  `values` reply with no `sql_preview` is accepted. `chrono_ground_total` gains the label `application` (`filter` | `join` | `values` |
+  `none`). No wire change: `GroundingResult.values = 2` existed. The eval corpus gains the `no-date-role` model.
