@@ -1464,7 +1464,9 @@ private class DurableRuntimeFixture(
     val stagingRoot = Files.createTempDirectory("au-runtime-pg")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val caller = Caller("sub-maya", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "not-stored")
-    val request = OpenRequest("release_native_event", buildJsonObject { put("key", "4711") })
+
+    // The P1/S2.1 runtime specs are previews: S2.2 makes an unflagged open of a wet deployment an auto run (§1.2).
+    val request = OpenRequest("release_native_event", buildJsonObject { put("key", "4711") }, dryRun = true)
     val reads = AtomicInteger()
     private val columns = listOf(ManifestColumn("order_number", "text"), ManifestColumn("verdict_reason", "text"))
     private val source =
