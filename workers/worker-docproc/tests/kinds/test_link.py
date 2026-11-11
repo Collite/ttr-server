@@ -15,11 +15,17 @@ from tests.fakes_lexmatcher import RecordedLexMatcher, recorded_lexmatcher
 from tests.fakes_nlp import recorded_nlp
 from tests.pack import assert_golden, context, new_context
 
+#: findSimilar.json's page hit, printed by docwh-store: a sentence-to-concept-page cosine as the route answers it
+#: (≥ 0.11.13: the raw cosine, never normalized to the best hit's — review-244 F1). Below `abstain_below`.
+REALISTIC = page_hit(9001)["score"]
+#: A cosine at or above `abstain_below` (0.6): a page close enough to link on the kNN alone.
+CLOSE = 0.72
 
-def with_page(units: list[Unit], qname: str, score: float, page_id: int = 9001) -> FakeWarehouse:
-    """A store whose mart holds one concept page about [qname] that `/findSimilar` finds at [score]."""
+
+def with_page(units: list[Unit], qname: str, cosine: float, page_id: int = 9001) -> FakeWarehouse:
+    """A store whose mart holds one concept page about [qname] that `/findSimilar` finds at [cosine]."""
     store = FakeWarehouse(units)
-    store.similar = [page_hit(page_id, score)]
+    store.similar = [page_hit(page_id, cosine)]
     store.pages = {page_id: concept_page(page_id, qname)}
     return store
 
@@ -87,7 +93,7 @@ def test_knn_union_mapping_and_refusal() -> None:
     unit = Unit(id=1, content_text="Aurora failed. Next sentence.")
     mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"}, [Span(unit_id=1, start=0, end=6)])
     ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
-    store = with_page([unit], "cn.Item", 0.9)
+    store = with_page([unit], "cn.Item", CLOSE)
     result = Link(Lex(), store).run(ctx)
     # the store's FindSimilarRequestDto, in the mention's source mart (✅W5-2)
     assert store.similar_calls == [
@@ -122,7 +128,7 @@ def test_page_never_boosts_member(score: float, chosen: bool) -> None:
     unit = Unit(id=1, content_text="Aurora")
     mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"})
     ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
-    result = Link(Lex(), with_page([unit], "cn.Item", 0.9)).run(ctx)
+    result = Link(Lex(), with_page([unit], "cn.Item", CLOSE)).run(ctx)
     decision = next(a.payload() for a in result.annotations if a.type == "Decision")
     assert ("chosen" in decision) == chosen and decision["score"] == pytest.approx(score)
     assert any(a.type == "Mention" for a in result.annotations) == chosen
@@ -132,6 +138,8 @@ def test_page_never_boosts_member(score: float, chosen: bool) -> None:
 
 @pytest.mark.parametrize("concept,chosen", [("cn.Customer", False), ("cn.Item", True)])
 def test_knn_respects_family_targets(concept: str, chosen: bool) -> None:
+    """A page at a cosine ≥ `abstain_below` links the empty-lexicon mention by kNN alone, but only to a family target."""
+
     class EmptyLex:
         def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
             return pb.BatchMatchResponse(results=[pb.FuzzyMatchResponse()])
@@ -139,14 +147,49 @@ def test_knn_respects_family_targets(concept: str, chosen: bool) -> None:
     unit = Unit(id=1, content_text="Aurora")
     mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"})
     ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
-    result = Link(EmptyLex(), with_page([unit], concept, 0.8)).run(ctx)
+    result = Link(EmptyLex(), with_page([unit], concept, CLOSE)).run(ctx)
     assert any(a.type == "Mention" for a in result.annotations) == chosen
+    if chosen:
+        assert result.annotations[0].payload()["linkMethod"] == "knn"
 
 
-def test_every_real_hartland_replay_abstains() -> None:
+def test_a_page_never_lifts_its_concept_over_that_concepts_member() -> None:
+    """review-244 F2: a member at 0.9 and a VOCABULARY hit on the same concept at 0.5; a concept page at a higher cosine
+    corroborates the member and leaves the concept-only candidate where the lexicon put it, so the member still wins."""
+
+    class Lex:
+        def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
+            member = pb.FuzzyMatch(
+                candidate_id="HL-1001", candidate="Aurora", score=0.9, source=pb.MEMBER, category="er.entity.item.name"
+            )
+            word = pb.FuzzyMatch(
+                candidate_id="lamp",
+                candidate="lamp",
+                score=0.5,
+                source=pb.VOCABULARY,
+                category="er.entity.item",
+                target_ref="er.entity.item",
+            )
+            return pb.BatchMatchResponse(results=[pb.FuzzyMatchResponse(matches=[member, word])])
+
+    unit = Unit(id=1, content_text="Aurora lamp")
+    mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora lamp"})
+    ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
+    result = Link(Lex(), with_page([unit], "cn.Item", 0.95)).run(ctx)
+    linked = next(a.payload() for a in result.annotations if a.type == "Mention")
+    assert linked["member"]["id"] == "HL-1001" and linked["linkMethod"] == "both"
+    concept_only = next(c for c in linked["candidates"] if c["code"] == "cn.Item")
+    assert concept_only["score"] == 0.5 and concept_only["source"] == "lexicon"
+
+
+@pytest.mark.parametrize("cosine", [None, REALISTIC], ids=["no-concept-page", "concept-page-at-a-realistic-cosine"])
+def test_every_real_hartland_replay_abstains(cosine: float | None) -> None:
+    """The 11 real Hartland replays abstain, and still do beside a `cn.Item` concept page at a realistic cosine
+    (review-244 F1: at the store's old normalized 1.0, five of them linked by kNN)."""
     from google.protobuf.json_format import ParseDict
 
     replay = RecordedLexMatcher("hartland.json")
+    assert len(replay.rows) == 11
     for row in replay.rows:
 
         class Lex:
@@ -156,8 +199,10 @@ def test_every_real_hartland_replay_abstains() -> None:
         unit = Unit(id=1, content_text=row["query"])
         mention = annotation(unit, "Mention", {"kind": "item", "surface": row["query"]})
         ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
-        result = Link(Lex(), FakeWarehouse([unit])).run(ctx)
-        assert result.abstained and not any(a.type == "Mention" for a in result.annotations)
+        store = FakeWarehouse([unit]) if cosine is None else with_page([unit], "cn.Item", cosine)
+        result = Link(Lex(), store).run(ctx)
+        assert result.abstained and not any(a.type == "Mention" for a in result.annotations), row["query"]
+        assert len(store.page_reads) == (0 if cosine is None else 1)
 
 
 class _Lex:
@@ -176,7 +221,7 @@ def _two_mentions(source_id: int = 0) -> tuple[Unit, RunContext]:
 
 def test_knn_reads_the_mart_once_and_each_page_once_and_never_leaves_the_mart() -> None:
     unit, ctx = _two_mentions(source_id=7)
-    store = with_page([unit], "cn.Item", 0.9)
+    store = with_page([unit], "cn.Item", CLOSE)
     # another version of the document, in another mart: the mention's own source decides
     store.sources = [
         {"id": 3, "notebookId": "hartland-claims"},
@@ -199,7 +244,7 @@ def test_knn_reads_the_mart_once_and_each_page_once_and_never_leaves_the_mart() 
 )
 def test_a_source_without_a_single_mart_is_an_error_not_a_silent_no_knn(sources: list[dict[str, object]]) -> None:
     unit, ctx = _two_mentions(source_id=7)
-    store = with_page([unit], "cn.Item", 0.9)
+    store = with_page([unit], "cn.Item", CLOSE)
     store.sources = sources
     with pytest.raises(ValueError, match="link/no-mart: source 7 of reviews:HL-1001:2026-09"):
         Link(_Lex(), store).run(ctx)
@@ -228,7 +273,7 @@ def test_no_concept_page_yet_links_by_lexicon_alone_and_lexicon_only_reads_no_st
 def test_a_chunk_hit_proposes_no_concept_and_reads_no_page() -> None:
     """A hit without `pageId` is a chunk (the live bp-dsk answer for `nodeKinds: [chunk]`, 2026-11-11): never a page."""
     unit, ctx = _two_mentions()
-    store = with_page([unit], "cn.Item", 0.9)
+    store = with_page([unit], "cn.Item", CLOSE)
     chunk = page_hit(9001, 0.95)
     chunk["pageId"] = chunk["citation"]["pageId"] = None
     chunk.update(chunkId=319, unitId=208, partId=208, span={"unitId": 208, "start": 0, "end": 6})
@@ -236,4 +281,4 @@ def test_a_chunk_hit_proposes_no_concept_and_reads_no_page() -> None:
     result = Link(_Lex(), store).run(ctx)
     assert store.page_reads == [(9001, "hartland-public")]
     candidates = [c for item in result.sections["candidates"]["items"] for c in item["items"]]
-    assert {c["score"] for c in candidates} == {0.9}
+    assert {c["score"] for c in candidates} == {CLOSE}

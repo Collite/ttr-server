@@ -36,12 +36,14 @@ def _response(name: str) -> dict[str, Any]:
     return value
 
 
-def page_hit(page_id: int, score: float, mart: str = "hartland-public") -> dict[str, Any]:
+def page_hit(page_id: int, score: float | None = None, mart: str = "hartland-public") -> dict[str, Any]:
     """A `/findSimilar` page hit as docwh-store prints it: findSimilar.json's (the store's RetrievalRoutesSpec holds
-    the route to that file), with this page id, score and mart."""
+    the route to that file), with this page id, mart and score — the page's cosine to the query (the fixture's when
+    None)."""
     hit: dict[str, Any] = json.loads(json.dumps(_response("findSimilar.json")["chunks"][0]))
     hit["pageId"] = hit["citation"]["pageId"] = page_id
-    hit["score"] = score
+    if score is not None:
+        hit["score"] = score
     hit["citation"]["sourceRef"] = f"docwh://{mart}/page/{page_id}"
     return hit
 

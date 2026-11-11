@@ -50,7 +50,8 @@ class Link:
         """The concept pages similar to the mention's sentence, inside the mart of the mention's source (✅W5-2: the
         kNN never leaves it — a page of another mart is not this document's to propose). No concept page yet answers
         nothing (S3.3: absent pages = no kNN candidates, never an error); a source with no single mart is an error,
-        never a silent "no candidates"."""
+        never a silent "no candidates". Each hit's score is its cosine to the sentence (docwh-store ≥ 0.11.13,
+        contracts §1.4), never normalized to the best hit's, so `abstain_below` and `margin` gate it absolutely."""
         if reads.marts is None:
             reads.marts = {}
             for raw in self.warehouse.sources_of_document(ctx.item.document_id):
@@ -146,9 +147,12 @@ class Link:
                         continue
                     if not math.isfinite(score):
                         continue
-                    # Concept pages can support an existing member candidate; they do not manufacture a member.
-                    keys = [key for key in options if key[0] == concept] or [(concept, "")]
-                    for key in keys:
+                    # A concept page corroborates its concept's member candidates (`both`, scores untouched: "concept-page
+                    # scores never increase member identity scores") and then leaves the concept-only candidate alone, so
+                    # it never lifts that one over a member of its own concept (review-244 F2). With no member candidate
+                    # it lifts, or proposes, the concept itself. It never manufactures a member.
+                    members = [key for key in options if key[0] == concept and key[1]]
+                    for key in members or [(concept, "")]:
                         if key in options:
                             options[key]["source"] = "both"
                             if not key[1]:

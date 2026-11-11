@@ -388,7 +388,9 @@ class Citation(DxModel):
 
 class ContextChunk(DxModel):
     """proto `ContextChunk` as docwh-store's v1 retrieval routes print it (ktor JSON: every field written, `null`s
-    included). A page hit has `pageId` and no unit, chunk or span; `lead` is the `RetrievalLead` name."""
+    included). A page hit has `pageId` and no unit, chunk or span; `lead` is the `RetrievalLead` name. `score` is, on
+    `/findSimilar`, the hit's cosine to the query (`1 − distance`, not normalized; docwh-store ≥ 0.11.13), and on
+    `/getContext` the fused rank score, its planes max-normalized (contracts §1.4)."""
 
     part_id: int = 0
     source_id: int = 0
