@@ -28,9 +28,11 @@ object ApprovalFixture {
             }
 
         copyFixtureTree(Path.of("src/test/resources/bundles/hartland"), root)
+        // Writer cases deliberately use their small target schema, not every required column of the hero model.
+        root.resolve("model/er").toFile().deleteRecursively()
+        Files.createDirectories(root.resolve("model/er"))
+        Files.copy(base.resolve("model.ttrm"), root.resolve("model/er/orders.ttrm"))
         if (generatedIds) {
-            // This case supplies its own generated-id shape in place of the shared H3 entity.
-            Files.delete(root.resolve("model/er/proposals.ttrm"))
             Files.copy(
                 resource.resolve("proposal.ttrm"),
                 root.resolve("model/er/proposal.ttrm"),

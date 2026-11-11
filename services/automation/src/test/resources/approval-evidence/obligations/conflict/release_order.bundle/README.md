@@ -6,7 +6,7 @@
 
 ## What it reads
 
-- Order (`er.entity.order`)
+- `er.entity.order`
 
 ## What it does
 

@@ -25,9 +25,9 @@ import org.tatrman.metadata.grpc.servedIndex
 import java.nio.file.Path
 
 /**
- * Grammar 0.16 (ttr-core#207) — a model carrying the automation half: `states:`/`transitions:` on attributes, a
- * world with `writable:` storages and its `def identity` / `def grant` / `def deployment` / `def process` members,
- * and `model automation` files (the hartland demo world of AU, design `17` §1–§2). Metadata must load it clean and
+ * Grammar 0.22 (AU D3) — a model carrying the automation half: `states:`/`transitions:` on attributes, a
+ * world with `writable:` storages and its `def identity` / `def grant` / `def deployment` members,
+ * and `model automation` files (the hartland demo world of AU, design `20`). Metadata must load it clean and
  * serve it: the world members go out as world objects (kind `deployment`, …), the automation tier — which the
  * frozen proto `SchemaCode` has no member for — as `SCHEMA_CODE_UNSPECIFIED`, never a failed RPC.
  */
@@ -47,7 +47,7 @@ class AutomationModelLoadSpec :
         "the automation model loads without an error" {
             (snapshot.errors + result.errors).map { "${it.file}:${it.line} ${it.message}" }.shouldBeEmpty()
             val world = (result.model.schemas["world"] as WorldSchema).worlds.values.single()
-            world.deployments.size shouldBe 12
+            world.deployments.size shouldBe 11
             world.grants.size shouldBe 4
             world.identities.single().credential shouldBe "TTR_CONN_AUTOMATION_DECIDER"
             (result.model.schemas["automation"] as AutomationSchema).programs.size shouldBe 8
@@ -80,7 +80,7 @@ class AutomationModelLoadSpec :
                 all += page.itemsList
                 token = page.pageInfo.nextPageToken
             } while (token.isNotEmpty())
-            all.count { it.kind == "deployment" } shouldBe 12
+            all.count { it.kind == "deployment" } shouldBe 11
             all.filter { it.kind == "program" }.size shouldBe 8
             all.filter { it.kind == "program" }.all { it.schemaCode == SchemaCode.SCHEMA_CODE_UNSPECIFIED } shouldBe
                 true

@@ -34,10 +34,12 @@ for variant in base generated-ids obligations conflict fulfilment unqualified; d
     input="$scratch/$variant"
     mkdir -p "$input/models/hartland/automation"
     cp -R "$fixture/model/." "$input/models/hartland/"
+    rm -rf "$input/models/hartland/er"
+    mkdir -p "$input/models/hartland/er"
+    cp "$evidence/model.ttrm" "$input/models/hartland/er/orders.ttrm"
     cp "$fixture/automation/"*.ttrm "$input/models/hartland/automation/"
     cp "$resource/automation.ttrm" "$input/models/hartland/automation/automation.ttrm"
     if [ "$variant" = generated-ids ]; then
-        rm "$input/models/hartland/er/proposals.ttrm"
         cp "$resource/proposal.ttrm" "$input/models/hartland/er/proposal.ttrm"
     fi
     source="$resource/release_order.ttrp"
@@ -50,3 +52,19 @@ for variant in base generated-ids obligations conflict fulfilment unqualified; d
     rm -rf "$resource/release_order.bundle"
     cp -R "$input/out/release_order.bundle" "$resource/"
 done
+
+# The durable approval fixture must approve this exact compiler output; retain its superseded negative case.
+manifest="$evidence/fulfilment/release_order.bundle/manifest.json"
+approvals="$evidence/fulfilment/approvals.json"
+text_fp="$(awk -F '"' '/"text": "sha256:/ { print $4; exit }' "$manifest")"
+values_fp="$(awk -F '"' '/"values": "sha256:/ { print $4; exit }' "$manifest")"
+superseded="$(awk -F '"' '/"supersededText"/ { print $4 }' "$approvals")"
+test -n "$text_fp" && test -n "$values_fp" && test "$text_fp" != "$superseded"
+cat > "$approvals" <<EOF
+{
+  "recipe": "release_order",
+  "text": "$text_fp",
+  "values": "$values_fp",
+  "supersededText": "$superseded"
+}
+EOF

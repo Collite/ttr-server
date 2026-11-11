@@ -224,7 +224,7 @@
       "er.entity.order"
     ],
     "fingerprints": {
-      "text": "sha256:c60e561d272264f49a4e6326dcbe174a46a35690c0d977234d1c7d6c248bd555",
+      "text": "sha256:09235d60735dc10bb5c9ccf6ce01ff1c5dddb70b4be521e800cd10c0b6bea80b",
       "values": "sha256:d58020f8c2d17d4ff8952f58ad306b7633b941150ec69a0d0c4e585782aa5fb8",
       "labels": "sha256:bcf48e2c164b2a0175b5c310c4d8b77541a13ffcd1e6aee76b495b316a9f454b"
     },
@@ -237,15 +237,15 @@
       ],
       "textBase": "sha256:f0f26d03690a1e49ddf1002a38217b8001a04e70a8b8900fa158be60efbe7143",
       "actions": {
-        "fulfil": "sha256:68bd3663d03e16b88575729bdbd24aeaecbca7bcb0f8ff0f9ef9f7a30a762169",
-        "hold": "sha256:1a8d804eb0e122e877db1a0f262f7a2bbfdfb4859580e5317fbafc44fe357983",
-        "release": "sha256:eb43af9b85eaf008f054b6843ee0f2a2a3473fb1ae592c57f8879bd24c24062f"
+        "fulfil": "sha256:ef80b1d85c1717f9c7037d8d8fae5f3a43ff7f9a8530b9c62c4f1aaab51d9440",
+        "hold": "sha256:609a9e29ea8652f35e7ee6de8d664336be186d326a9b5d5191299008cb67acb5",
+        "release": "sha256:d3ec475aa4de523f17414f89a47e9c22adcddd28013a40a1142397d9a953cb40"
       }
     }
   },
   "files": {
-    "README.md": "sha256:e785f8d486d73efa6d8020d3d2480aef074cca22899d4be3dda266775ea59a43",
-    "catalog/release_order.ttrm": "sha256:f24f83fd9ac277f3eaa593dc1e121cb828972adfd48abc7acc74113371a36244",
+    "README.md": "sha256:9d36f1d99e18d76f156d8bf09ea91ec7efa0f1f6675ad6a578e093e83a4a4096",
+    "catalog/release_order.ttrm": "sha256:d0ce9cdb77c10eb19ce00d657bb399b2c6f540e0cd87532199b7901956a16ea3",
     "catalog/release_order_verdict.ttrm": "sha256:5897c3941df62fe1bf094f92d514e4635d28b0eb9870f10699cf7c51923c0069",
     "islands/placed_orders.orders.sql": "sha256:2c227bfe21185a8959c3ee2da3fa3891cb928d6a28268374365d7b08079fec7a",
     "islands/verdict.release.sql": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b"
