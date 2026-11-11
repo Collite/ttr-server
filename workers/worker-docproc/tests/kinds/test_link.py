@@ -219,8 +219,11 @@ def _two_mentions(source_id: int = 0) -> tuple[Unit, RunContext]:
     return unit, replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=mentions)
 
 
-def test_knn_reads_the_mart_once_and_each_page_once_and_never_leaves_the_mart() -> None:
+def test_knn_reads_the_mart_once_each_sentence_once_each_page_once_and_never_leaves_the_mart() -> None:
     unit, ctx = _two_mentions(source_id=7)
+    # a third mention in an already-asked sentence ("The Aurora lamp."): no second /findSimilar (review-244 F7)
+    lamp = annotation(unit, "Mention", {"kind": "item", "surface": "lamp"}, [Span(unit_id=1, start=25, end=29)])
+    ctx = replace(ctx, annotations=[*ctx.annotations, lamp])
     store = with_page([unit], "cn.Item", CLOSE)
     # another version of the document, in another mart: the mention's own source decides
     store.sources = [
@@ -231,7 +234,8 @@ def test_knn_reads_the_mart_once_and_each_page_once_and_never_leaves_the_mart() 
     assert store.source_reads == 1 and store.page_reads == [(9001, "hartland-public")]
     assert [c["notebookId"] for c in store.similar_calls] == ["hartland-public", "hartland-public"]
     assert [c["query"] for c in store.similar_calls] == ["Aurora broke.", "The Aurora lamp."]
-    assert {a.payload()["linkMethod"] for a in result.annotations if a.type == "Mention"} == {"knn"}
+    linked = [a for a in result.annotations if a.type == "Mention"]
+    assert len(linked) == 3 and {a.payload()["linkMethod"] for a in linked} == {"knn"}
 
 
 @pytest.mark.parametrize(

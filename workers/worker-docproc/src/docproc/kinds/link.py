@@ -12,7 +12,7 @@ from docproc._generated.org.tatrman.fuzzy.v1 import fuzzy_pb2 as pb
 from docproc.kinds.common import annotation
 from docproc.runtime.registry import KindResult, RunContext
 from docproc.sdk.lexmatcher import LexMatcher
-from docproc.sdk.models import Annotation, Page, Source
+from docproc.sdk.models import Annotation, ContextChunk, Page, Source
 from docproc.sdk.store import Warehouse
 
 
@@ -35,10 +35,12 @@ def sentence(ctx: RunContext, mention: Annotation) -> str:
 
 @dataclass
 class _Reads:
-    """One run's store reads, made once: the document's source marts (`GET /sources`) and each page (`GET /pages/{id}`,
-    k is small)."""
+    """One run's store reads, made once: the document's source marts (`GET /sources`), each distinct sentence's kNN in
+    its mart (`POST /findSimilar`: two mentions in one sentence ask once, review-244 F7) and each page
+    (`GET /pages/{id}`, k is small)."""
 
     marts: dict[int, str] | None = None
+    similar: dict[tuple[str, str], list[ContextChunk]] = field(default_factory=dict)
     pages: dict[int, Page] = field(default_factory=dict)
 
 
@@ -61,8 +63,11 @@ class Link:
         mart = reads.marts.get(source_id, "")
         if not mart:
             raise ValueError(f"link/no-mart: source {source_id} of {ctx.item.document_id} has no single mart")
+        query = sentence(ctx, mention)
+        if (mart, query) not in reads.similar:
+            reads.similar[(mart, query)] = self.warehouse.find_similar(mart, query, ["page"], k).chunks
         out = []
-        for hit in self.warehouse.find_similar(mart, sentence(ctx, mention), ["page"], k).chunks:
+        for hit in reads.similar[(mart, query)]:
             if hit.page_id is None:  # asked for pages only: a chunk proposes no concept
                 continue
             if hit.page_id not in reads.pages:
@@ -83,6 +88,7 @@ class Link:
         if k < 1:
             raise ValueError("link/invalid-k")
         sources = engine.get("candidates", ["lexicon", "knn"])
+        target_concepts = set(engine.get("targets", {}).values())
         if set(sources) - {"lexicon", "knn"}:
             raise ValueError("link/unknown-candidate-source")
         queries = [
@@ -141,9 +147,7 @@ class Link:
             if "knn" in sources:
                 for page, score in self._knn(ctx, mention, k, reads):
                     concept = page.concept_ref.metadata_qname if page.concept_ref else ""
-                    if concept not in set(engine.get("targets", {}).values()) or mention.payload().get(
-                        "concept"
-                    ) not in (None, "", concept):
+                    if concept not in target_concepts or mention.payload().get("concept") not in (None, "", concept):
                         continue
                     if not math.isfinite(score):
                         continue

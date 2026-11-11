@@ -1,13 +1,35 @@
 # SPDX-License-Identifier: Apache-2.0
+from dataclasses import replace
+
+import pytest
+
+from docproc.kinds import common
 from docproc.kinds.diff import Diff
+from docproc.sdk.models import Unit, UnitKind
 from tests.fakes import FakeWarehouse
 from tests.pack import assert_golden, context, new_context, units_of
 
 
-def test_first_version_all_new() -> None:
+def test_first_version_all_new(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The store lists no source for the document (`{}` on the wire, read as `[]`): the documented fallback reads the
+    root unit's `recordedAt`, finds no older version, and every section is new (review-244 F6)."""
     doc = "claim-002.en.md"
     ctx = new_context(context(doc, "classify-sections"), kind="diff", engine={})
-    result = Diff(FakeWarehouse(units_of(doc))).run(ctx)
+    units = units_of(doc)
+    root = next(u for u in units if u.kind == UnitKind.DOCUMENT)
+    ctx = replace(ctx, units={root.id: root, **ctx.units})  # the runner reads a diff's whole source, root included
+    warehouse = FakeWarehouse(units)
+    warehouse.sources = []
+    read: list[tuple[int, str]] = []
+
+    def meta(unit: Unit, name: str) -> str:
+        read.append((unit.id, name))
+        return common.meta(unit, name)
+
+    monkeypatch.setattr("docproc.kinds.diff.meta", meta)
+    result = Diff(warehouse).run(ctx)
+    assert (root.id, "recordedAt") in read and warehouse.source_reads == 1
+    assert result.sections["decisions"] == {"previousSourceId": None, "removedUnitIds": []}
     assert all(a.payload()["status"] == "new" for a in result.annotations)
     assert_golden("diff", doc, result.annotations, ctx.units)
 
