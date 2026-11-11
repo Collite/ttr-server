@@ -45,10 +45,10 @@ class PreviewWiringValuesSpec :
             call.getValue("arguments").jsonObject["label"] shouldBe JsonPrimitive("purchasing-batch")
         }
 
-        "nested on-due refuses a bare symbol at every call depth" {
+        "nested due refuses a bare symbol at every call depth" {
             for (source in listOf(
-                "start { on_due: weekly }",
-                "start { action: hold { on_due: weekly } }",
+                "start { due: weekly }",
+                "start { action: hold { due: weekly } }",
             )) {
                 for (selected in listOf(table, table.copy(rows = emptyList()))) {
                     val error =
@@ -71,13 +71,13 @@ class PreviewWiringValuesSpec :
             val route = Table(listOf(ManifestColumn("amount", "int")), listOf(listOf(2)))
             for (source in listOf(
                 "hold { due: amount }",
-                "hold { on_due: release { due: amount } }",
+                "hold { action: release { due: amount } }",
             )) {
                 for (selected in listOf(route, route.copy(rows = emptyList()))) {
                     val error =
                         shouldThrow<AutomationException> {
                             PreviewWiringValues.project(
-                                mapOf("on_due" to source),
+                                mapOf("action" to source),
                                 ask,
                                 selected,
                                 emptyMap(),
@@ -90,17 +90,17 @@ class PreviewWiringValuesSpec :
             }
         }
 
-        "nested duration and on-due call retain deferred values" {
+        "nested duration and action call retain deferred values" {
             val result =
                 PreviewWiringValues
                     .project(
-                        mapOf("on_due" to "hold { due: 2 working_days, on_due: release {} }"),
+                        mapOf("action" to "hold { due: 2 working_days, action: release {} }"),
                         ask,
                         table,
                         emptyMap(),
                         roleNames = emptySet(),
                     ).single()
-                    .getValue("on_due")
+                    .getValue("action")
             result shouldBe
                 buildJsonObject {
                     put("action", "hold")
@@ -115,7 +115,7 @@ class PreviewWiringValuesSpec :
                                 },
                             )
                             put(
-                                "on_due",
+                                "action",
                                 buildJsonObject {
                                     put("action", "release")
                                     put("arguments", JsonObject(emptyMap()))
@@ -128,21 +128,21 @@ class PreviewWiringValuesSpec :
                 }
         }
 
-        "nested null due and on-due remain explicit nulls" {
+        "nested null due and action remain explicit nulls" {
             val args =
                 PreviewWiringValues
                     .project(
-                        mapOf("on_due" to "hold { due: null, on_due: null }"),
+                        mapOf("action" to "hold { due: null, action: null }"),
                         ask,
                         table,
                         emptyMap(),
                         roleNames = emptySet(),
                     ).single()
-                    .getValue("on_due")
+                    .getValue("action")
                     .jsonObject
                     .getValue("arguments")
                     .jsonObject
-            args shouldBe JsonObject(mapOf("due" to JsonNull, "on_due" to JsonNull))
+            args shouldBe JsonObject(mapOf("due" to JsonNull, "action" to JsonNull))
         }
 
         "relative durations retain every published unit and exact pinned parameter counts" {
@@ -170,17 +170,17 @@ class PreviewWiringValuesSpec :
             }
         }
 
-        "on-due intent supports nested calls but never dispatches them" {
+        "partial action intent supports nested calls but never dispatches them" {
             val result =
                 PreviewWiringValues
                     .project(
-                        mapOf("on_due" to "later { action: start { process: label }, due: 2 working_days }"),
+                        mapOf("action" to "later { action: start { process: label }, due: 2 working_days }"),
                         ask,
                         table,
                         emptyMap(),
                         roleNames = emptySet(),
                     ).single()
-                    .getValue("on_due")
+                    .getValue("action")
             PreviewWiringValues.display(result) shouldBe
                 "later { action: start { process: \"purchasing\" }, due: 2 working_days }"
         }
@@ -269,7 +269,7 @@ class PreviewWiringValuesSpec :
             for ((name, source) in listOf(
                 "action" to "escalate { lines: on_hand }",
                 "action" to "escalate { items: candidates }",
-                "on_due" to "hold { next: escalate { items: weekly_demand } }",
+                "action" to "hold { next: escalate { items: weekly_demand } }",
                 "action" to "start { next: escalate { items: on_hand } }",
             )) {
                 for (rows in listOf(route, route.copy(rows = emptyList()))) {
@@ -467,7 +467,7 @@ class PreviewWiringValuesSpec :
             PreviewWiringValues.display(value) shouldBe "start {}"
         }
 
-        "explicit wiring properties refuse wrong AST kinds even with defaults and empty selections" {
+        "the explicit due property refuses wrong AST kinds even with defaults and empty selections" {
             val action = ask.copy(due = AutomationDuration(2.0, "working_days"))
             val route = Table(listOf(ManifestColumn("on_hand", "int")), listOf(listOf(2)))
             for ((name, source) in listOf(
@@ -476,9 +476,6 @@ class PreviewWiringValuesSpec :
                 "due" to "2",
                 "due" to "true",
                 "due" to "hold {}",
-                "on_due" to "hold",
-                "on_due" to "weekly_demand",
-                "on_due" to "2 days",
             )) {
                 for (selected in listOf(route, route.copy(rows = emptyList()))) {
                     val error =

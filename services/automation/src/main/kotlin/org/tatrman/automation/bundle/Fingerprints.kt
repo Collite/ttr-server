@@ -3,7 +3,6 @@ package org.tatrman.automation.bundle
 
 import kotlinx.serialization.json.JsonPrimitive
 import org.tatrman.ttr.metadata.model.AutomationProgram
-import org.tatrman.ttr.metadata.model.DeploymentTrigger
 import org.tatrman.ttr.metadata.model.RunAsRef
 import org.tatrman.ttr.metadata.model.WorldDeployment
 import org.tatrman.ttr.parser.model.AutoValue
@@ -30,10 +29,10 @@ object Fingerprints {
             listOf(
                 "deployment ${d.qname.name}",
                 "program=${d.program}",
-                "process=${d.process}",
+                "process=null",
                 "target=${d.target}",
                 "run_as=${runAsWire(d.runAs)}",
-                "trigger=${triggerWire(d.trigger)}",
+                "trigger=null",
                 "dry_run=${d.dryRun}",
                 "enabled=${d.enabled}",
                 "debug=${d.debug}",
@@ -52,12 +51,6 @@ object Fingerprints {
             RunAsRef.Caller -> "caller"
             RunAsRef.Author -> "author"
             is RunAsRef.Identity -> "identity.${r.name}"
-        }
-
-    fun triggerWire(t: DeploymentTrigger?): String? =
-        when (t) {
-            is DeploymentTrigger.Schedule -> "schedule \"${t.spec}\""
-            DeploymentTrigger.None, null -> null
         }
 
     private fun entries(e: List<Pair<String, AutoValue>>): String =

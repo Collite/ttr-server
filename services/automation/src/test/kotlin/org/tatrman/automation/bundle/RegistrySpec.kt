@@ -17,40 +17,55 @@ class RegistrySpec :
         val grid = Registry(builtin).grid(bundle).associateBy { it.deployment }
 
         "native deployments: ok" {
+            val nativeOnly =
+                bundle.copy(
+                    recipes =
+                        bundle.recipes.mapValues { (_, recipe) ->
+                            recipe.copy(
+                                recipe =
+                                    recipe.recipe.copy(
+                                        wiring =
+                                            recipe.recipe.wiring.filter {
+                                                recipe.coverage.actions[it.action]
+                                                    ?.sinks
+                                                    ?.get("native") != null
+                                            },
+                                    ),
+                            )
+                        },
+                )
             for (d in listOf(
                 "release_native_morning",
                 "release_native_event",
                 "decide_native_event",
                 "settle_native_batch",
             )) {
-                grid.getValue(d).status shouldBe Registry.OK
+                Registry(builtin).cell(nativeOnly, nativeOnly.deployments.getValue(d)).status shouldBe Registry.OK
                 grid.getValue(d).targetType shouldBe "native"
             }
             grid.getValue("release_native_morning").mode shouldBe "batch"
         }
 
-        "n8n runs release_order with notes: the transitions and the ask go back through the Server" {
+        "n8n runs release_order with notes for the writer and typed approval action" {
             grid.getValue("release_n8n").let {
                 it.status shouldBe Registry.NOTES
                 it.targetType shouldBe "n8n_l1"
                 it.mode shouldBe "on_event"
                 it.notes shouldBe
-                    listOf("ask through the Server", "hold through the Server", "release through the Server")
+                    listOf(
+                        "hold through the Server",
+                        "release through the Server",
+                        "release_confirmed through the Server",
+                    )
             }
         }
 
-        "a process deployment is judged over every step's program; a sink falls back to the native kind" {
-            grid.getValue("returns_n8n").let {
-                it.status shouldBe Registry.NOTES
-                it.notes shouldBe
-                    listOf(
-                        "ask through the Server",
-                        "expect through the Server",
-                        "fulfil through the Server",
-                        "set_state through the Server",
-                        "task through the Server",
-                    )
-            }
+        "a 20-shape engine action remains refused by the native registry until its own adoption stage" {
+            val cell = grid.getValue("release_native_event")
+            cell.status shouldBe Registry.REFUSED
+            cell.reason shouldBe "TTRP-TGT-003: native cannot perform action notify (sink none; recipe release_order)"
+            bundle.programsOf(bundle.deployments.getValue("release_native_event")) shouldBe
+                listOf("release_on_placement")
         }
 
         "an executor type this Server does not know is refused, named" {
@@ -77,7 +92,7 @@ class RegistrySpec :
 
         "TTRP-TGT-003: an action whose sink the type cannot perform" {
             withType { copy(family = "zapier") }.reason shouldBe
-                "TTRP-TGT-003: n8n_l1 cannot perform action notify (sink deliver; recipe release_order)"
+                "TTRP-TGT-003: n8n_l1 cannot perform action notify (sink none; recipe release_order)"
         }
 
         "TTRP-TGT-004: a granularity the type does not offer" {

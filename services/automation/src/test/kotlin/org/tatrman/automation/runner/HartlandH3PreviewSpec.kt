@@ -2,6 +2,10 @@
 package org.tatrman.automation.runner
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.string.shouldContain
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.supervisorScope
@@ -24,7 +28,7 @@ import java.time.ZoneOffset
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Frozen accepted Hartland H3 source/bundle, real verifier/planner; only Query result tables are faked. */
+/** P3E H3 @ e54fab20, grammar 0.22.3; real verifier/planner, only Query result tables are faked. */
 class HartlandH3PreviewSpec :
     StringSpec({
         val root = Path.of(requireNotNull(HartlandH3PreviewSpec::class.java.getResource("/hartland-h3")).toURI())
@@ -111,52 +115,15 @@ class HartlandH3PreviewSpec :
             }
         }
 
-        "complete governed H3 evaluates both the proposal and the deferred buyer ask" {
+        "20-shape H3 records the native engine-handoff refusal" {
             supervisorScope {
-                val plan = preview(this, false)
-                val proposal = plan.rows.single { it.entity == "er.entity.reorder_proposal" }
-                proposal.key!!
-                    .getValue("proposal_id")
-                    .jsonPrimitive.long
-                    .let { it < 0 } shouldBe true
-                proposal.row!!.keys shouldBe
-                    setOf(
-                        "proposal_id",
-                        "run",
-                        "state",
-                        "item",
-                        "warehouse",
-                        "on_hand",
-                        "weekly_demand",
-                        "proposed_qty",
-                    )
-                proposal.row!!["proposal_id"] shouldBe proposal.key!!["proposal_id"]
-                proposal.row!!["run"] shouldBe JsonPrimitive(run.toString())
-                proposal.row!!["weekly_demand"]!!
-                    .jsonPrimitive.content
-                    .toBigDecimal() shouldBe BigDecimal("3.13")
-                proposal.row!!["proposed_qty"]!!.jsonPrimitive.int shouldBe 17
-                plan.actions.map { it.action } shouldBe listOf("propose", "ask")
-                val ask = plan.actions.single { it.action == "ask" }
-                ask.arguments["action"] shouldBe
-                    buildJsonObject {
-                        put("action", "start")
-                        put("arguments", buildJsonObject { put("process", "purchasing") })
-                        put("deferred", true)
-                    }
-                ask.arguments["due"] shouldBe
-                    buildJsonObject {
-                        put("amount", 2)
-                        put("unit", "working_days")
-                    }
-                ask.arguments["group_by"] shouldBe JsonPrimitive(3)
-                ask.would shouldBe "would ask role.buyer to approve start { process: \"purchasing\" } for 3"
-                ask.batchRows shouldBe emptyList()
-                plan.rows.none { it.entity == "automation.task" || it.entity == "automation.obligation" } shouldBe true
+                val error = shouldThrow<AutomationException> { preview(this, false) }
+                error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                error.message!! shouldContain "handoff"
             }
         }
 
-        "empty complete H3 has no proposal or ask and does not allocate a deadline" {
+        "empty 20-shape H3 has no proposal or handoff and does not allocate a deadline" {
             supervisorScope {
                 val plan = preview(this, true)
                 plan.actions shouldBe emptyList()

@@ -8,7 +8,6 @@ import org.tatrman.automation.bundle.Bundle
 import org.tatrman.automation.bundle.LoadedRecipe
 import org.tatrman.ttr.metadata.model.AutomationProgram
 import org.tatrman.ttr.metadata.model.Entity
-import org.tatrman.ttr.metadata.model.RowSchemaRecord
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
@@ -47,7 +46,7 @@ data class OpenPort(
         }
 
     companion object {
-        /** D-104: the event schema is resolved in the program's package, never by an ambiguous bare-name match. */
+        /** Grammar 0.22: the engine supplies a none/key/keys port and optional event clock. */
         fun resolve(
             bundle: Bundle,
             recipe: LoadedRecipe,
@@ -67,7 +66,6 @@ data class OpenPort(
                         attributeType(bundle, key)
                 }
             if (keyTypes.size != recipe.recipe.key.size) portRefused("recipe key column names are ambiguous")
-            val eventValues = mutableMapOf<String, Any?>()
 
             fun key(value: JsonElement): Map<String, Any?> {
                 if (keyTypes.isEmpty()) portRefused("recipe has no key")
@@ -96,35 +94,6 @@ data class OpenPort(
                     }
                     "key" -> listOf(key(port.getValue(kind)))
                     "keys" -> (port[kind] as? JsonArray ?: portRefused("keys must be an array")).map(::key)
-                    "event" -> {
-                        val event = port[kind] as? JsonObject ?: portRefused("event must be an object")
-                        val schema = eventSchema(bundle, program)
-                        if ((event.keys - schema.columns.map { it.name }.toSet()).isNotEmpty()) {
-                            portRefused(
-                                "event contains undeclared columns",
-                            )
-                        }
-                        for (column in schema.columns) {
-                            val value = event[column.name]
-                            if (value == null || value == JsonNull) {
-                                if (!column.optional) portRefused("event requires ${column.name}")
-                            } else {
-                                eventValues[column.name] = scalar(resolveType(bundle, column.type), value)
-                            }
-                        }
-                        listOf(
-                            keyTypes.mapValues { (name, type) ->
-                                val keyRef = recipe.recipe.key.single { it.substringAfterLast('.') == name }
-                                val column =
-                                    schema.columns.singleOrNull {
-                                        it.type == keyRef ||
-                                            (it.name == name && resolveType(bundle, it.type) == type)
-                                    }
-                                        ?: portRefused("event schema must identify key $keyRef")
-                                scalar(type, event[column.name] ?: portRefused("event requires key ${column.name}"))
-                            },
-                        )
-                    }
                     else -> portRefused("unsupported port $kind")
                 }
             val at =
@@ -139,17 +108,7 @@ data class OpenPort(
                         portRefused("at must include a UTC offset")
                     }
                 }
-            return OpenPort(keys, at, eventValues.toMap())
-        }
-
-        private fun eventSchema(
-            bundle: Bundle,
-            program: AutomationProgram,
-        ): RowSchemaRecord {
-            val name = program.event ?: portRefused("event program has no schema")
-            return bundle.model.rowSchemas["${program.qname.`package`}.$name"]
-                ?: bundle.model.rowSchemas[name]
-                ?: portRefused("event schema $name is not available in the program package")
+            return OpenPort(keys, at)
         }
 
         internal fun attributeType(
@@ -166,18 +125,6 @@ data class OpenPort(
                     .filter { it.qname.name.substringAfterLast('.') == attribute }
             return matches.singleOrNull()?.type ?: portRefused("key attribute $reference is missing or ambiguous")
         }
-
-        private fun resolveType(
-            bundle: Bundle,
-            type: String,
-        ): String =
-            if ('.' in
-                type
-            ) {
-                attributeType(bundle, type)
-            } else {
-                type
-            }
 
         internal fun scalar(
             type: String,

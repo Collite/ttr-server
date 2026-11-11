@@ -1,0 +1,136 @@
+package hartland
+
+model db schema dbo
+
+// Cross-table foreign keys — every fact -> dim edge the er2db relation bindings
+// (Stage 2.2) reference via `binding: { fk: db.dbo.fk_… } }` (fixture 26-relation-fk-mapping),
+// plus the two demographics/address chains off `customer`. Every `from`/`to` column
+// already exists in facts.ttrm/dims.ttrm — a dangling ref is caught by resolution (T6).
+
+// -- store_sales --
+def fk fk_ss_item     { from: [db.dbo.store_sales.ss_item_sk],     to: [db.dbo.item.i_item_sk] }
+def fk fk_ss_customer { from: [db.dbo.store_sales.ss_customer_sk], to: [db.dbo.customer.c_customer_sk] }
+def fk fk_ss_addr     { from: [db.dbo.store_sales.ss_addr_sk],     to: [db.dbo.customer_address.ca_address_sk] }
+def fk fk_ss_store    { from: [db.dbo.store_sales.ss_store_sk],    to: [db.dbo.store.s_store_sk] }
+def fk fk_ss_promo    { from: [db.dbo.store_sales.ss_promo_sk],    to: [db.dbo.promotion.p_promo_sk] }
+def fk fk_ss_date     { from: [db.dbo.store_sales.ss_sold_date_sk],to: [db.dbo.date_dim.d_date_sk] }
+
+// -- web_sales --
+def fk fk_ws_item     { from: [db.dbo.web_sales.ws_item_sk],          to: [db.dbo.item.i_item_sk] }
+def fk fk_ws_customer { from: [db.dbo.web_sales.ws_bill_customer_sk], to: [db.dbo.customer.c_customer_sk] }
+def fk fk_ws_addr     { from: [db.dbo.web_sales.ws_bill_addr_sk],     to: [db.dbo.customer_address.ca_address_sk] }
+def fk fk_ws_promo    { from: [db.dbo.web_sales.ws_promo_sk],         to: [db.dbo.promotion.p_promo_sk] }
+def fk fk_ws_date     { from: [db.dbo.web_sales.ws_sold_date_sk],     to: [db.dbo.date_dim.d_date_sk] }
+def fk fk_ws_warehouse { from: [db.dbo.web_sales.ws_warehouse_sk],    to: [db.dbo.warehouse.w_warehouse_sk] }
+
+// -- catalog_sales (Marketplace) --
+def fk fk_cs_item       { from: [db.dbo.catalog_sales.cs_item_sk],          to: [db.dbo.item.i_item_sk] }
+def fk fk_cs_customer   { from: [db.dbo.catalog_sales.cs_bill_customer_sk], to: [db.dbo.customer.c_customer_sk] }
+def fk fk_cs_addr       { from: [db.dbo.catalog_sales.cs_bill_addr_sk],     to: [db.dbo.customer_address.ca_address_sk] }
+def fk fk_cs_callcenter { from: [db.dbo.catalog_sales.cs_call_center_sk],   to: [db.dbo.call_center.cc_call_center_sk] }
+def fk fk_cs_warehouse  { from: [db.dbo.catalog_sales.cs_warehouse_sk],     to: [db.dbo.warehouse.w_warehouse_sk] }
+def fk fk_cs_promo      { from: [db.dbo.catalog_sales.cs_promo_sk],         to: [db.dbo.promotion.p_promo_sk] }
+def fk fk_cs_date       { from: [db.dbo.catalog_sales.cs_sold_date_sk],     to: [db.dbo.date_dim.d_date_sk] }
+
+// -- store_returns --
+def fk fk_sr_item     { from: [db.dbo.store_returns.sr_item_sk],          to: [db.dbo.item.i_item_sk] }
+def fk fk_sr_customer { from: [db.dbo.store_returns.sr_customer_sk],      to: [db.dbo.customer.c_customer_sk] }
+def fk fk_sr_store    { from: [db.dbo.store_returns.sr_store_sk],         to: [db.dbo.store.s_store_sk] }
+def fk fk_sr_reason   { from: [db.dbo.store_returns.sr_reason_sk],        to: [db.dbo.reason.r_reason_sk] }
+def fk fk_sr_date     { from: [db.dbo.store_returns.sr_returned_date_sk], to: [db.dbo.date_dim.d_date_sk] }
+
+// -- web_returns --
+def fk fk_wr_item     { from: [db.dbo.web_returns.wr_item_sk],               to: [db.dbo.item.i_item_sk] }
+def fk fk_wr_customer { from: [db.dbo.web_returns.wr_returning_customer_sk], to: [db.dbo.customer.c_customer_sk] }
+def fk fk_wr_reason   { from: [db.dbo.web_returns.wr_reason_sk],             to: [db.dbo.reason.r_reason_sk] }
+def fk fk_wr_date     { from: [db.dbo.web_returns.wr_returned_date_sk],      to: [db.dbo.date_dim.d_date_sk] }
+
+// -- catalog_returns --
+def fk fk_cr_item      { from: [db.dbo.catalog_returns.cr_item_sk],               to: [db.dbo.item.i_item_sk] }
+def fk fk_cr_customer  { from: [db.dbo.catalog_returns.cr_returning_customer_sk], to: [db.dbo.customer.c_customer_sk] }
+def fk fk_cr_reason    { from: [db.dbo.catalog_returns.cr_reason_sk],             to: [db.dbo.reason.r_reason_sk] }
+def fk fk_cr_warehouse { from: [db.dbo.catalog_returns.cr_warehouse_sk],          to: [db.dbo.warehouse.w_warehouse_sk] }
+def fk fk_cr_date      { from: [db.dbo.catalog_returns.cr_returned_date_sk],      to: [db.dbo.date_dim.d_date_sk] }
+
+// -- inventory --
+def fk fk_inv_item      { from: [db.dbo.inventory.inv_item_sk],      to: [db.dbo.item.i_item_sk] }
+def fk fk_inv_warehouse { from: [db.dbo.inventory.inv_warehouse_sk], to: [db.dbo.warehouse.w_warehouse_sk] }
+def fk fk_inv_date      { from: [db.dbo.inventory.inv_date_sk],      to: [db.dbo.date_dim.d_date_sk] }
+
+// -- customer's own dimension chains --
+def fk fk_c_addr  { from: [db.dbo.customer.c_current_addr_sk],  to: [db.dbo.customer_address.ca_address_sk] }
+def fk fk_c_cdemo { from: [db.dbo.customer.c_current_cdemo_sk], to: [db.dbo.customer_demographics.cd_demo_sk] }
+def fk fk_c_hdemo { from: [db.dbo.customer.c_current_hdemo_sk], to: [db.dbo.household_demographics.hd_demo_sk] }
+
+// -- household_demographics -> income_band --
+def fk fk_hd_income { from: [db.dbo.household_demographics.hd_income_band_sk], to: [db.dbo.income_band.ib_income_band_sk] }
+
+// -- channel_sales (a VIEW — data/views/channel_sales.sql) --
+// Logical keys: a view carries no constraints in the database, but the join the model declares
+// is the same one each underlying fact's own FK declares, column for column.
+def fk fk_chs_date     { from: [db.dbo.channel_sales.sold_date_sk], to: [db.dbo.date_dim.d_date_sk] }
+def fk fk_chs_item     { from: [db.dbo.channel_sales.item_sk],      to: [db.dbo.item.i_item_sk] }
+def fk fk_chs_customer { from: [db.dbo.channel_sales.customer_sk],  to: [db.dbo.customer.c_customer_sk] }
+// LR ⚑LR-9 — web and marketplace lines only: a store line's `warehouse_sk` is NULL.
+def fk fk_chs_warehouse { from: [db.dbo.channel_sales.warehouse_sk], to: [db.dbo.warehouse.w_warehouse_sk] }
+
+// ===== AU (automation agents) — the H-1/H-2 extension (orders.ttrm, returns-flow.ttrm) =====
+// contracts.md §1's 22 keys (the DDL's, name for name), the four its §2 relations need beside them,
+// and three LOGICAL keys on the return_request VIEW (below).
+
+// -- sales_order / sales_line --
+def fk fk_so_customer  { from: [db.dbo.sales_order.so_customer_sk],  to: [db.dbo.customer.c_customer_sk] }
+def fk fk_so_warehouse { from: [db.dbo.sales_order.so_warehouse_sk], to: [db.dbo.warehouse.w_warehouse_sk] }
+def fk fk_sl_order     { from: [db.dbo.sales_line.sl_order_number],  to: [db.dbo.sales_order.so_order_number] }
+def fk fk_sl_item      { from: [db.dbo.sales_line.sl_item_sk],       to: [db.dbo.item.i_item_sk] }
+def fk fk_sl_warehouse { from: [db.dbo.sales_line.sl_warehouse_sk],  to: [db.dbo.warehouse.w_warehouse_sk] }
+def fk fk_sl_customer  { from: [db.dbo.sales_line.sl_customer_sk],   to: [db.dbo.customer.c_customer_sk] }
+
+// -- prices, invoices, outages --
+def fk fk_pl_item      { from: [db.dbo.price_list.pl_item_sk],          to: [db.dbo.item.i_item_sk] }
+def fk fk_cp_item      { from: [db.dbo.customer_price.cp_item_sk],      to: [db.dbo.item.i_item_sk] }
+def fk fk_cp_customer  { from: [db.dbo.customer_price.cp_customer_sk],  to: [db.dbo.customer.c_customer_sk] }
+def fk fk_inv_customer { from: [db.dbo.invoice.inv_customer_sk],        to: [db.dbo.customer.c_customer_sk] }
+def fk fk_inv_order    { from: [db.dbo.invoice.inv_order_number],       to: [db.dbo.sales_order.so_order_number] }
+def fk fk_wo_warehouse { from: [db.dbo.warehouse_outage.wo_warehouse_sk], to: [db.dbo.warehouse.w_warehouse_sk] }
+
+// -- the return-request flow --
+def fk fk_rr_customer    { from: [db.dbo.return_request_hdr.rr_customer_sk],           to: [db.dbo.customer.c_customer_sk] }
+def fk fk_rr_order       { from: [db.dbo.return_request_hdr.rr_order_number],          to: [db.dbo.sales_order.so_order_number] }
+def fk fk_rl_request     { from: [db.dbo.return_request_line.rl_request_number],       to: [db.dbo.return_request_hdr.rr_request_number] }
+def fk fk_rl_item        { from: [db.dbo.return_request_line.rl_item_sk],              to: [db.dbo.item.i_item_sk] }
+def fk fk_rl_variant     { from: [db.dbo.return_request_line.rl_requested_variant_sk], to: [db.dbo.item.i_item_sk] }
+// D-127 — the denormalized customer of the line (rel_line_customer binds it).
+def fk fk_rl_customer    { from: [db.dbo.return_request_line.rl_customer_sk],          to: [db.dbo.customer.c_customer_sk] }
+def fk fk_rc_line        { from: [db.dbo.return_receipt.rc_line_id],                   to: [db.dbo.return_request_line.rl_line_id] }
+def fk fk_cn_line        { from: [db.dbo.credit_note.cn_line_id],                      to: [db.dbo.return_request_line.rl_line_id] }
+def fk fk_rp_credit_note { from: [db.dbo.refund_payment.rp_credit_note_id],            to: [db.dbo.credit_note.cn_credit_note_id] }
+def fk fk_rs_line        { from: [db.dbo.replacement_shipment.rs_line_id],             to: [db.dbo.return_request_line.rl_line_id] }
+
+// -- the H-3/H-5 write-back tables (the relations rel_proposal_item / _warehouse, rel_winback_customer) --
+def fk fk_rp_item      { from: [db.dbo.reorder_proposal.rp_item_sk],      to: [db.dbo.item.i_item_sk] }
+def fk fk_rp_warehouse { from: [db.dbo.reorder_proposal.rp_warehouse_sk], to: [db.dbo.warehouse.w_warehouse_sk] }
+def fk fk_wm_customer  { from: [db.dbo.winback_mail.wm_customer_sk],      to: [db.dbo.customer.c_customer_sk] }
+
+// -- customer's distribution center (D-83) --
+def fk fk_c_center { from: [db.dbo.customer.c_center_sk], to: [db.dbo.warehouse.w_warehouse_sk] }
+
+// -- return_request (a VIEW — returns-flow.ttrm) --
+// The entity reads the view, so its relations bind keys on the VIEW's columns — the same joins the
+// header table's own keys above declare, column for column (the channel_sales precedent). `rrv`/`rlv`
+// keep them apart from the DDL's names: those are real constraints on return_request_hdr.
+def fk fk_rrv_customer { from: [db.dbo.return_request.rr_customer_sk],         to: [db.dbo.customer.c_customer_sk] }
+def fk fk_rrv_order    { from: [db.dbo.return_request.rr_order_number],        to: [db.dbo.sales_order.so_order_number] }
+def fk fk_rlv_request  { from: [db.dbo.return_request_line.rl_request_number], to: [db.dbo.return_request.rr_request_number] }
+
+// -- each dated document's own day → the calendar (the relations rel_order_date … rel_shipment_date) --
+// LOGICAL keys, not constraints: a document dates itself by a DATE, the facts by a surrogate key, so the
+// target is the calendar's date column (one row per day), not its sk. `fk_invoice_date`, not `fk_inv_date`:
+// that name is inventory's.
+def fk fk_so_date      { from: [db.dbo.sales_order.so_placed_date],          to: [db.dbo.date_dim.d_date] }
+def fk fk_invoice_date { from: [db.dbo.invoice.inv_issued],                  to: [db.dbo.date_dim.d_date] }
+def fk fk_rrv_date     { from: [db.dbo.return_request.rr_requested_date],    to: [db.dbo.date_dim.d_date] }
+def fk fk_rc_date      { from: [db.dbo.return_receipt.rc_received_date],     to: [db.dbo.date_dim.d_date] }
+def fk fk_cn_date      { from: [db.dbo.credit_note.cn_issued_date],          to: [db.dbo.date_dim.d_date] }
+def fk fk_rp_paid_date { from: [db.dbo.refund_payment.rp_paid_date],         to: [db.dbo.date_dim.d_date] }
+def fk fk_rs_date      { from: [db.dbo.replacement_shipment.rs_shipped_date], to: [db.dbo.date_dim.d_date] }

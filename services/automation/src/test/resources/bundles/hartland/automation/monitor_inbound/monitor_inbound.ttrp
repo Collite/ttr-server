@@ -1,5 +1,6 @@
 // monitor_inbound.ttrp — derived from handling-a-return-request.md §Inbound
 // AU-core-P0 shared fixture: AU design `17` §4.2, verbatim but for the TTR-P comment marker (`#` → `//`).
+// AU-core-P1: the two conditional `expect`s carry 17 §5's `when:` (the hartland recipe's, S2.2 T3), not a comment.
 uses world "hartland.worlds.demo"
 import hartland.*
 import hartland.automation.*
@@ -11,9 +12,11 @@ recipe {
     document:   "handling-a-return-request.md"
 
     candidates awaiting(out lines) target erp """sql
-        SELECT l.line_id, l.request_number, l.item, l.quantity, l.way, r.customer, ob.id AS obligation_id, ob.due, ob.state AS obligation_state
+        SELECT l.line_id, l.request_number, l.item, l.quantity, l.way, r.customer, c.email AS customer_email,
+               ob.id AS obligation_id, ob.due, ob.state AS obligation_state
         FROM   er.entity.return_request_line l
         JOIN   er.entity.return_request r ON r.request_number = l.request_number
+        LEFT JOIN er.entity.customer c    ON c.sk = r.customer
         JOIN   er.entity.obligation ob    ON ob.entity = 'return_request_line' AND ob.key = l.line_id AND ob.kind = 'inbound'
                                           AND ob.state IN ('open', 'overdue', 'reopened')
         WHERE  l.state = 'awaiting_goods'
@@ -59,11 +62,11 @@ recipe {
     }
 
     actions {
-        inbound.complete  -> fulfil          { line: line_id, kind: inbound, to: fulfilled }       // ⇒ signal(fulfilled) to the waiting engine
+        inbound.complete  -> fulfil          { line: line_id, kind: inbound, to: fulfilled }       // the loop in returns.bpmn notices (D-147)
         inbound.complete  -> set_state       { line: line_id, to: goods_received }
-        inbound.complete  -> expect          { line: line_id, kind: credit_note,  due: working_days(:settlement) }   // way = refund_after_return
-        inbound.complete  -> expect          { line: line_id, kind: replacement,  due: working_days(:settlement) }   // way = exchange
-        inbound.damaged   -> task            { who: role.customer_care, about: line_id, detail: receipts }
+        inbound.complete  -> expect          { line: line_id, kind: credit_note,  due: working_days(:settlement) }  when: way = "refund_after_return"
+        inbound.complete  -> expect          { line: line_id, kind: replacement,  due: working_days(:settlement) }  when: way = "exchange"
+        inbound.damaged   -> review          { who: role.customer_care, about: line_id, detail: receipts }           // was: task
         inbound.expired   -> fulfil          { line: line_id, kind: inbound, to: cancelled }
         inbound.expired   -> set_state       { line: line_id, to: not_returned }
         inbound.remind    -> notify_customer { customer: customer, template: "return-reminder" }

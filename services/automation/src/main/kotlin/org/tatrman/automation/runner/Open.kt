@@ -154,14 +154,7 @@ class Open(
                 }
             stale(current, missing, objects.mapValues { (_, pair) -> snapshot.latestApproved(pair.first, pair.second) })
         }
-        val step =
-            d.process?.let {
-                world.processes
-                    .getValue(it)
-                    .steps
-                    .single { s -> s.program == programName }
-            }
-        val port = OpenPort.resolve(bundle, recipe, program.copy(port = step?.port ?: program.port), request.port)
+        val port = OpenPort.resolve(bundle, recipe, program, request.port)
         val asOf = resolveAsOf(program, request.asOf, port.eventAt)
         val bindings = RecipeBindings.resolve(recipe.recipe, asOf, overrides(recipe, program))
         require(bindings.keys.none { it.startsWith("_au_port_") }) { "reserved port binding prefix in recipe" }

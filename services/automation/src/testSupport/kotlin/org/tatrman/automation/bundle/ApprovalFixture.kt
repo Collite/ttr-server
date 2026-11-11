@@ -29,6 +29,8 @@ object ApprovalFixture {
 
         copyFixtureTree(Path.of("src/test/resources/bundles/hartland"), root)
         if (generatedIds) {
+            // This case supplies its own generated-id shape in place of the shared H3 entity.
+            Files.delete(root.resolve("model/er/proposals.ttrm"))
             Files.copy(
                 resource.resolve("proposal.ttrm"),
                 root.resolve("model/er/proposal.ttrm"),

@@ -23,7 +23,9 @@ def entity customer {
         def attribute hdemo       { type: int, description: "Household demographics — FK to the 'sk' attribute of the Household Demographics entity." },
         def attribute birth_year  { type: int, description: "Customer's year of birth — buyer-age analyses derive age from this." },
         // AU D-83 — derived by the data build from the modal warehouse of the customer's lines.
-        def attribute center      { type: int, description: "The customer's distribution center — the one that ships most of their orders; FK to the 'sk' attribute of the Distribution Center (warehouse) entity. Empty for a customer with no web or marketplace order." }
+        def attribute center      { type: int, description: "The customer's distribution center — the one that ships most of their orders; FK to the 'sk' attribute of the Distribution Center (warehouse) entity. Empty for a customer with no web or marketplace order." },
+        // AU — the address the customer mail actions (notify_customer, emit) send to.
+        def attribute email       { type: text, description: "The customer's mail address, where customer mail is sent. A demo address under the reserved hartland.example domain; it never reaches a real inbox." }
     ]
 }
 

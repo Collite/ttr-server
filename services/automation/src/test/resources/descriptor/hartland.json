@@ -2,7 +2,7 @@
     "served": {
         "bundle": "served:master@0123456789ab",
         "commit": "0123456789abcdef0123456789abcdef01234567",
-        "modelFp": "sha256:38861df2c9fc5b4db221d74540fc359ed38d64d2b534ce4f76f1b42d97f27411",
+        "modelFp": "sha256:75fffcfb55a74f740d975772a98bf2dbeef6dfb45d5f575614f849a4ee5a22f1",
         "refreshedAt": "2026-10-19T06:00:00Z"
     },
     "latest": {
@@ -17,9 +17,9 @@
                 "sql"
             ],
             "fingerprints": {
-                "text": "sha256:342e7f3ddc46a16fdd0d5fead95fac64b8f9b90a19ffbba3cbfbfe06fa1a2413",
-                "values": "sha256:9a4bb6b7dee7c6452bae47c1c16d13b8b40de10fc929b57dbfc23bd520553720",
-                "labels": ""
+                "text": "sha256:75859c128c73de5c06e6b422ab3d5cf2bedd823dd286e3781530f8bf5ea60c49",
+                "values": "sha256:6c5da116527944c0c189fdfbd0c8bbdef9f549dd03079764e3f9c1c80bb1ec41",
+                "labels": "sha256:6c185bdc1cf02b6b5794516a646992039739cef8e462a97c3791c1517604f667"
             },
             "verdictEntity": "decide_return_verdict",
             "approved": null
@@ -31,9 +31,9 @@
                 "sql"
             ],
             "fingerprints": {
-                "text": "sha256:e0e126d8ba3a235512c5a8a1208733789c588a09cd45fa8fd9b67145b4e87ee7",
-                "values": "sha256:41cf7487d63de15f907da445487966310dfe208aec6cc4bb8106760e6a489dcd",
-                "labels": ""
+                "text": "sha256:391de6d1006bcea1aa76ff5211473ac47b6021ceee8da11e87a4de61fd075a1a",
+                "values": "sha256:dba014c020bb1d09dabb29c7914b17cb6715a5be874a1f51bcd8e1e98d018c05",
+                "labels": "sha256:35cfb2cc67ba77cf10398228751713f31e2a5dbfa9c2994f1df672d6a4c11af8"
             },
             "verdictEntity": "monitor_inbound_verdict",
             "approved": null
@@ -45,9 +45,9 @@
                 "sql"
             ],
             "fingerprints": {
-                "text": "sha256:76049a8677a1a57d5264ddbff9ba57037c74eabef4963e0d2ed7d89111da959f",
-                "values": "sha256:6c63016f02df4d40daf1b4cdb247c36d5ec8dad2633083a0608265710d03e126",
-                "labels": ""
+                "text": "sha256:71b8844953389b79bc5782fa7b7506cc413ccb5d9bc195bf44443d452cd13f4a",
+                "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
+                "labels": "sha256:de56d2e3195bd50fe40bfa34acd0e782a61aa8ec6c8b6ba67d868d218ac256f9"
             },
             "verdictEntity": "release_order_verdict",
             "approved": null
@@ -59,9 +59,9 @@
                 "sql"
             ],
             "fingerprints": {
-                "text": "sha256:ebf5e9a9789bbff3c2b34f4101c48a1a69e2ffae254b4d6535b987df5dbb6f7c",
-                "values": "sha256:74cdef7d5307c826f30d8f0516f855d6867c0b5667b35a91d6afb4a9a7981337",
-                "labels": ""
+                "text": "sha256:a9ab9c3d1112d6ed0e722c4f9f24a6d588e33f764fcfd75a2a0f1ad0d841ce0b",
+                "values": "sha256:26cd4bbbdef5ad8c69ea41324530ab1e48a37ff0a1a73819a49ce3c729d82016",
+                "labels": "sha256:b4128a3567da1d03132ac82ba05f664d8b0fadc4fcdec0891a4ed824a4fec6a7"
             },
             "verdictEntity": "settle_verdict",
             "approved": null
@@ -74,14 +74,9 @@
             "port": "none",
             "mode": "batch",
             "asOf": "run",
-            "schedule": "06:00 Europe/Prague",
-            "deliver": {
-                "digest": {
-                    "by": "who",
-                    "per": "day"
-                }
-            },
-            "fingerprint": "sha256:a011f34727e5a39d3d6bfbe85fc2007eef5da25b009c9bfd03dab60f732d75b7"
+            "schedule": null,
+            "deliver": null,
+            "fingerprint": "sha256:a7b3bef17c9586e0b28bba7f1ed7f9383aa999fc04beec82dbc0f680daeffa02"
         },
         {
             "name": "release_on_placement",
@@ -90,18 +85,18 @@
             "mode": "on_event",
             "asOf": "event",
             "schedule": null,
-            "deliver": "immediate",
-            "fingerprint": "sha256:c47e78b56316cdb6d1ec28ba5020998b08877e160c229a6998de3426ba44c357"
+            "deliver": null,
+            "fingerprint": "sha256:75ea334ae26ece109421dba8f6c1cebf146987d5e5fdeac270e39ac2b9055f33"
         },
         {
             "name": "decide_on_request",
             "recipe": "decide_return",
-            "port": "event",
+            "port": "key",
             "mode": "on_event",
             "asOf": "event",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:c8bfaa98bd9aec692f260435c52f98cd626dc502d4dc2c7041821f4d3235d76d"
+            "fingerprint": "sha256:1d6841c950a09c46223b855906316ba50d81bc1e8701bea39ab7dd2a7dfc3387"
         },
         {
             "name": "decide_catch_up",
@@ -109,19 +104,19 @@
             "port": "none",
             "mode": "batch",
             "asOf": "run",
-            "schedule": "06:30 Europe/Prague",
+            "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:00b1bfd3a14bd4eafe2248baf2132ff9decc08b0c79e7dea04358777cb22c070"
+            "fingerprint": "sha256:f5ec9e13de2faa7c5f31578c4b369dc0007cabbb14c173176d541a610c3b2e34"
         },
         {
             "name": "inbound_on_receipt",
             "recipe": "monitor_inbound",
-            "port": "event",
+            "port": "key",
             "mode": "on_event",
             "asOf": "event",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:f629750067b99f45716aff8414483fe0bec54b713249dc1db066eee4d9d790ff"
+            "fingerprint": "sha256:8f0cdfb27056eea519f503f197f32e4a69b77df530083ec042d965f8345c4c47"
         },
         {
             "name": "inbound_daily",
@@ -129,19 +124,19 @@
             "port": "none",
             "mode": "batch",
             "asOf": "run",
-            "schedule": "07:00 Europe/Prague",
+            "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:da66d0948748bdd0b44dad154f644870ce306d0d979fef3fde1a2803e143a344"
+            "fingerprint": "sha256:c33492039d014362591a7c9c82b4abced548e5da6e49faee9bece9f53529c145"
         },
         {
             "name": "settle_on_document",
             "recipe": "settle",
-            "port": "event",
+            "port": "key",
             "mode": "on_event",
             "asOf": "event",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:7745ece7d103ffc3620ae810052e358e137a002c3c65e4a60b308f9b331e2557"
+            "fingerprint": "sha256:4f8bce753560b48393e0cb9697613bed66570e058a5fc8e8fb49d6d5902c2083"
         },
         {
             "name": "settle_daily",
@@ -149,9 +144,9 @@
             "port": "none",
             "mode": "batch",
             "asOf": "run",
-            "schedule": "07:30 Europe/Prague",
+            "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:9fa17ae4c93b8aa28d770ba9b16787563a8f6dcad6bb21cdc0dd8a36e9f42746"
+            "fingerprint": "sha256:0d2710cc4574fdfc412ba5112e8fe44b185a6bf0e3cc6411780d7a9815d30a13"
         }
     ],
     "deployments": [
@@ -162,12 +157,12 @@
             "target": "native",
             "targetType": "native",
             "runAs": "identity.automation_decider",
-            "trigger": "schedule \"06:00 Europe/Prague\"",
+            "trigger": null,
             "dryRun": false,
             "enabled": true,
             "stale": true,
             "granted": false,
-            "fingerprint": "sha256:2f7b46d0dbd1bbe007ab0b7b6b4fbcdf887281c936fd29f16b87a0c9474c35b0"
+            "fingerprint": "sha256:34629e1529982686539339afaa3c56357e7bb697f8171f953550b30bb0dd5524"
         },
         {
             "name": "release_native_event",
@@ -246,12 +241,12 @@
             "target": "native",
             "targetType": "native",
             "runAs": "identity.automation_decider",
-            "trigger": "schedule \"06:30 Europe/Prague\"",
+            "trigger": null,
             "dryRun": false,
             "enabled": true,
             "stale": true,
             "granted": false,
-            "fingerprint": "sha256:a7041f671f4761fda4b0b978d4730d1341ff471e13e1f7cd43ca99fc1046b625"
+            "fingerprint": "sha256:f243c7c78e731d7067c7822b298cfee39bb1b09bb7d4417a06707faec8416fd0"
         },
         {
             "name": "inbound_native_event",
@@ -274,12 +269,12 @@
             "target": "native",
             "targetType": "native",
             "runAs": "identity.automation_decider",
-            "trigger": "schedule \"07:00 Europe/Prague\"",
+            "trigger": null,
             "dryRun": false,
             "enabled": true,
             "stale": true,
             "granted": false,
-            "fingerprint": "sha256:52431ab07a5704dbea5d9c7da18521f0e3c8ab597623b2a6ca6b3b19e8777672"
+            "fingerprint": "sha256:d37ebfc81bb1bc5b88ec5abb53a5b7b2a90e34ecbd523f243c72a407a0d47dfc"
         },
         {
             "name": "settle_native_event",
@@ -302,26 +297,12 @@
             "target": "native",
             "targetType": "native",
             "runAs": "identity.automation_decider",
-            "trigger": "schedule \"07:30 Europe/Prague\"",
-            "dryRun": false,
-            "enabled": true,
-            "stale": true,
-            "granted": false,
-            "fingerprint": "sha256:7b60cf44491cb4f0c3b015f67b435786b2454f27dec375666349f9a905c90f6d"
-        },
-        {
-            "name": "returns_n8n",
-            "program": null,
-            "process": "return_line_flow",
-            "target": "n8n",
-            "targetType": "n8n_l1",
-            "runAs": "identity.automation_decider",
             "trigger": null,
             "dryRun": false,
             "enabled": true,
             "stale": true,
             "granted": false,
-            "fingerprint": "sha256:98680174a2f96f31d4d1129ae19d69d37faae65f9592736203b9646a6b45e0b2"
+            "fingerprint": "sha256:9afc1b7ab60fba628d981890d7b52386f6e40a3cab4fb055037f4f3350725a7c"
         }
     ],
     "connectors": [],
@@ -331,8 +312,8 @@
             "target": "native",
             "targetType": "native",
             "mode": "batch",
-            "status": "ok",
-            "reason": null,
+            "status": "refused",
+            "reason": "TTRP-TGT-003: native cannot perform action notify (sink none; recipe release_order)",
             "notes": []
         },
         {
@@ -340,8 +321,8 @@
             "target": "native",
             "targetType": "native",
             "mode": "on_event",
-            "status": "ok",
-            "reason": null,
+            "status": "refused",
+            "reason": "TTRP-TGT-003: native cannot perform action notify (sink none; recipe release_order)",
             "notes": []
         },
         {
@@ -352,9 +333,9 @@
             "status": "notes",
             "reason": null,
             "notes": [
-                "ask through the Server",
                 "hold through the Server",
-                "release through the Server"
+                "release through the Server",
+                "release_confirmed through the Server"
             ]
         },
         {
@@ -380,8 +361,8 @@
             "target": "native",
             "targetType": "native",
             "mode": "on_event",
-            "status": "ok",
-            "reason": null,
+            "status": "refused",
+            "reason": "TTRP-TGT-003: native cannot perform action notify_customer (sink none; recipe decide_return)",
             "notes": []
         },
         {
@@ -389,8 +370,8 @@
             "target": "native",
             "targetType": "native",
             "mode": "batch",
-            "status": "ok",
-            "reason": null,
+            "status": "refused",
+            "reason": "TTRP-TGT-003: native cannot perform action notify_customer (sink none; recipe decide_return)",
             "notes": []
         },
         {
@@ -398,8 +379,8 @@
             "target": "native",
             "targetType": "native",
             "mode": "on_event",
-            "status": "ok",
-            "reason": null,
+            "status": "refused",
+            "reason": "TTRP-TGT-003: native cannot perform action review (sink none; recipe monitor_inbound)",
             "notes": []
         },
         {
@@ -407,8 +388,8 @@
             "target": "native",
             "targetType": "native",
             "mode": "batch",
-            "status": "ok",
-            "reason": null,
+            "status": "refused",
+            "reason": "TTRP-TGT-003: native cannot perform action review (sink none; recipe monitor_inbound)",
             "notes": []
         },
         {
@@ -416,8 +397,8 @@
             "target": "native",
             "targetType": "native",
             "mode": "on_event",
-            "status": "ok",
-            "reason": null,
+            "status": "refused",
+            "reason": "TTRP-TGT-003: native cannot perform action review (sink none; recipe settle)",
             "notes": []
         },
         {
@@ -425,28 +406,51 @@
             "target": "native",
             "targetType": "native",
             "mode": "batch",
-            "status": "ok",
-            "reason": null,
+            "status": "refused",
+            "reason": "TTRP-TGT-003: native cannot perform action review (sink none; recipe settle)",
             "notes": []
-        },
-        {
-            "deployment": "returns_n8n",
-            "target": "n8n",
-            "targetType": "n8n_l1",
-            "mode": "on_event",
-            "status": "notes",
-            "reason": null,
-            "notes": [
-                "ask through the Server",
-                "expect through the Server",
-                "fulfil through the Server",
-                "set_state through the Server",
-                "task through the Server"
-            ]
         }
     ],
     "modelDrift": null,
-    "warnings": [],
+    "warnings": [
+        "model/er/calendar.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/catalog.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/catalog.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/catalog.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/customer_revenue.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports",
+        "model/er/inventory.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports",
+        "model/er/inventory.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/orders.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/orders.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports",
+        "model/er/orders.ttrm: ttr/unimported-reference: 'master' is not reachable from this file's imports",
+        "model/er/orders.ttrm: ttr/unimported-reference: 'master' is not reachable from this file's imports",
+        "model/er/orders.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/orders.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/parties.ttrm: ttr/unimported-reference: 'master' is not reachable from this file's imports",
+        "model/er/parties.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/parties.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/parties.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/parties.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/parties.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/parties.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/proposals.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/proposals.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/returns-flow.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/returns-flow.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/returns-flow.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/returns-flow.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/returns-flow.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/returns-flow.ttrm: ttr/unimported-reference: 'transaction' is not reachable from this file's imports",
+        "model/er/returns-flow.ttrm: ttr/unimported-reference: 'bridge' is not reachable from this file's imports",
+        "model/er/returns.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports",
+        "model/er/returns.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports",
+        "model/er/returns.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports",
+        "model/er/returns.ttrm: ttr/unimported-reference: 'dimension' is not reachable from this file's imports",
+        "model/er/sales.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports",
+        "model/er/sales.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports",
+        "model/er/sales.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports",
+        "model/er/sales.ttrm: ttr/unimported-reference: 'fact' is not reachable from this file's imports"
+    ],
     "paused": false,
     "version": "v1"
 }

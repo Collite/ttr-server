@@ -1,156 +1,764 @@
 {
   "schemaVersion": 3,
   "ttrpVersion": 2,
-  "toolchain": "fixture-prebuilt",
-  "program": "monitor_inbound",
+  "toolchain": "org.tatrman:ttrp:0.22.3",
+  "program": "monitor_inbound.ttrp",
   "world": {
     "qname": "hartland.worlds.demo",
-    "fingerprint": "sha256:835a2d5eda9a64795b00aa308a222a7412a5ed40e4ff5137d000b66ddb9d1499"
+    "fingerprint": "sha256:238762e0406d5b4f05fd3f5fe1496ca0049ee6fc29e12de4916f6e6186900ff8"
   },
   "islands": [
     {
       "name": "awaiting",
-      "engine": "erp",
+      "engine": "duckdb",
       "executor": "native",
-      "invocation": "psql",
-      "file": "islands/awaiting.lines.sql",
-      "sha256": "sha256:248b91d65cce963d0cf4aec5f297c069a73d1ece12d8b2bbd047f69b1688553a",
+      "invocation": "duckdb",
+      "file": "islands/awaiting.lines.duckdb.sql",
+      "sha256": "sha256:0ccedc3583fb5fa55f1a37e0e72af2f28a129d24f6bf4c6ebde7f70761a11f60",
       "connections": [
-        "ERP"
+        "TTR_CONN_AUTOMATION",
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "lines",
-          "file": "islands/awaiting.lines.sql",
-          "sha256": "sha256:248b91d65cce963d0cf4aec5f297c069a73d1ece12d8b2bbd047f69b1688553a"
+          "file": "islands/awaiting.lines.duckdb.sql",
+          "sha256": "sha256:0ccedc3583fb5fa55f1a37e0e72af2f28a129d24f6bf4c6ebde7f70761a11f60",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "obligation_id",
+              "type": "text"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            },
+            {
+              "name": "obligation_state",
+              "type": "varchar"
+            }
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/awaiting.lines.duckdb.sql",
+            "sha256": "sha256:0ccedc3583fb5fa55f1a37e0e72af2f28a129d24f6bf4c6ebde7f70761a11f60",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5"
+            ],
+            "params": [],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
         }
-      ]
+      ],
+      "schema": "db"
     },
     {
       "name": "receipts",
-      "engine": "erp",
+      "engine": "duckdb",
       "executor": "native",
-      "invocation": "psql",
-      "file": "islands/receipts.rows.sql",
-      "sha256": "sha256:7b6e0515dfd56011b1635a5351d4762cf10cdd66aea46bbf6548ba5ef5fbdd10",
+      "invocation": "duckdb",
+      "file": "islands/receipts.rows.duckdb.sql",
+      "sha256": "sha256:d55def1f5868d8d2c1b830150b12679f5d7d0bc5e18d32b2d3efc37fc12153ee",
       "connections": [
-        "ERP"
+        "TTR_CONN_AUTOMATION",
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "rows",
-          "file": "islands/receipts.rows.sql",
-          "sha256": "sha256:7b6e0515dfd56011b1635a5351d4762cf10cdd66aea46bbf6548ba5ef5fbdd10"
+          "file": "islands/receipts.rows.duckdb.sql",
+          "sha256": "sha256:d55def1f5868d8d2c1b830150b12679f5d7d0bc5e18d32b2d3efc37fc12153ee",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "qty_ok",
+              "type": "float"
+            },
+            {
+              "name": "qty_bad",
+              "type": "float"
+            },
+            {
+              "name": "last_received",
+              "type": "date"
+            }
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/receipts.rows.duckdb.sql",
+            "sha256": "sha256:d55def1f5868d8d2c1b830150b12679f5d7d0bc5e18d32b2d3efc37fc12153ee",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5",
+              "p_3fc03684"
+            ],
+            "params": [],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
         }
-      ]
+      ],
+      "schema": "db"
     },
     {
       "name": "age",
-      "engine": "erp",
+      "engine": "duckdb",
       "executor": "native",
-      "invocation": "psql",
-      "file": "islands/age.rows.sql",
-      "sha256": "sha256:5c17e9d3fa00834fae5b2711b49a92373ca05a2806f1821185d478a1f316fdba",
+      "invocation": "duckdb",
+      "file": "islands/age.rows.duckdb.sql",
+      "sha256": "sha256:8c3d2a1ba46e4480a9e5de71d540fe8e89eded3d7aa206e815bbe41439c0d81a",
       "connections": [
-        "ERP"
+        "TTR_CONN_AUTOMATION",
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of"
       ],
       "outputs": [
         {
           "port": "rows",
-          "file": "islands/age.rows.sql",
-          "sha256": "sha256:5c17e9d3fa00834fae5b2711b49a92373ca05a2806f1821185d478a1f316fdba"
+          "file": "islands/age.rows.duckdb.sql",
+          "sha256": "sha256:8c3d2a1ba46e4480a9e5de71d540fe8e89eded3d7aa206e815bbe41439c0d81a",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "days_open",
+              "type": "int"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/age.rows.duckdb.sql",
+            "sha256": "sha256:8c3d2a1ba46e4480a9e5de71d540fe8e89eded3d7aa206e815bbe41439c0d81a",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5",
+              "p_f7cce9af",
+              "p_23e6f28a"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
         }
-      ]
+      ],
+      "schema": "db"
     },
     {
       "name": "reminded",
-      "engine": "erp",
+      "engine": "duckdb",
       "executor": "native",
-      "invocation": "psql",
-      "file": "islands/reminded.rows.sql",
-      "sha256": "sha256:527aca1abd4a6d5a270e91d5de3feee6961fcef5b506ef094e380fce972ca173",
+      "invocation": "duckdb",
+      "file": "islands/reminded.rows.duckdb.sql",
+      "sha256": "sha256:1e080368b3bbd4340448e71ec5615645e92581a5f7e625dc0569272ac408f738",
       "connections": [
-        "ERP"
+        "TTR_CONN_AUTOMATION",
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "rows",
-          "file": "islands/reminded.rows.sql",
-          "sha256": "sha256:527aca1abd4a6d5a270e91d5de3feee6961fcef5b506ef094e380fce972ca173"
+          "file": "islands/reminded.rows.duckdb.sql",
+          "sha256": "sha256:1e080368b3bbd4340448e71ec5615645e92581a5f7e625dc0569272ac408f738",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "reminders",
+              "type": "int"
+            }
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/reminded.rows.duckdb.sql",
+            "sha256": "sha256:1e080368b3bbd4340448e71ec5615645e92581a5f7e625dc0569272ac408f738",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5",
+              "p_4fd248ed"
+            ],
+            "params": [],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
         }
-      ]
+      ],
+      "schema": "db"
     },
     {
-      "name": "inbound.complete",
-      "engine": "erp",
+      "name": "inbound",
+      "engine": "duckdb",
       "executor": "native",
-      "invocation": "psql",
-      "file": "islands/inbound.complete.sql",
-      "sha256": "sha256:a6c3cfb98eb10cc7d3bd58156ed943c8cc231a19fab86d553ed5f37bb37ffef1",
+      "invocation": "duckdb",
+      "file": "islands/inbound.complete.duckdb.sql",
+      "sha256": "sha256:b8d9d14e5176bf3376405633cadd58d3e0ce07a0d6674409cc533e2d70d210fd",
       "connections": [
-        "ERP"
+        "TTR_CONN_AUTOMATION",
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "inbound_close",
+        "inbound_reminder",
+        "as_of"
       ],
       "outputs": [
         {
           "port": "complete",
-          "file": "islands/inbound.complete.sql",
-          "sha256": "sha256:a6c3cfb98eb10cc7d3bd58156ed943c8cc231a19fab86d553ed5f37bb37ffef1"
-        }
-      ]
-    },
-    {
-      "name": "inbound.damaged",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/inbound.damaged.sql",
-      "sha256": "sha256:2abcd5d780f764a4b1b60a4cbfcfc7c01fb55eb072d7ff0ffa453eae864e9eff",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "file": "islands/inbound.complete.duckdb.sql",
+          "sha256": "sha256:b8d9d14e5176bf3376405633cadd58d3e0ce07a0d6674409cc533e2d70d210fd",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "obligation_id",
+              "type": "text"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            },
+            {
+              "name": "obligation_state",
+              "type": "varchar"
+            },
+            {
+              "name": "qty_ok",
+              "type": "float"
+            },
+            {
+              "name": "qty_bad",
+              "type": "float"
+            },
+            {
+              "name": "last_received",
+              "type": "date"
+            },
+            {
+              "name": "days_open",
+              "type": "int"
+            },
+            {
+              "name": "reminders",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "inbound_close",
+            "inbound_reminder",
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/inbound.complete.duckdb.sql",
+            "sha256": "sha256:b8d9d14e5176bf3376405633cadd58d3e0ce07a0d6674409cc533e2d70d210fd",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5",
+              "p_3fc03684",
+              "p_f7cce9af",
+              "p_23e6f28a",
+              "p_4fd248ed"
+            ],
+            "params": [
+              "inbound_close",
+              "inbound_reminder",
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
         {
           "port": "damaged",
-          "file": "islands/inbound.damaged.sql",
-          "sha256": "sha256:2abcd5d780f764a4b1b60a4cbfcfc7c01fb55eb072d7ff0ffa453eae864e9eff"
-        }
-      ]
-    },
-    {
-      "name": "inbound.expired",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/inbound.expired.sql",
-      "sha256": "sha256:942fd0bbee9a4378958424e6c718a81c26929a03e5331681c6927d5c4b79ebbf",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "file": "islands/inbound.damaged.duckdb.sql",
+          "sha256": "sha256:e57cd762bbadc347b5c446e279d78875923e79e8a606d5ab7c4e8d11689bbeea",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "obligation_id",
+              "type": "text"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            },
+            {
+              "name": "obligation_state",
+              "type": "varchar"
+            },
+            {
+              "name": "qty_ok",
+              "type": "float"
+            },
+            {
+              "name": "qty_bad",
+              "type": "float"
+            },
+            {
+              "name": "last_received",
+              "type": "date"
+            },
+            {
+              "name": "days_open",
+              "type": "int"
+            },
+            {
+              "name": "reminders",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "inbound_close",
+            "inbound_reminder",
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/inbound.damaged.duckdb.sql",
+            "sha256": "sha256:e57cd762bbadc347b5c446e279d78875923e79e8a606d5ab7c4e8d11689bbeea",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5",
+              "p_3fc03684",
+              "p_f7cce9af",
+              "p_23e6f28a",
+              "p_4fd248ed"
+            ],
+            "params": [
+              "inbound_close",
+              "inbound_reminder",
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
         {
           "port": "expired",
-          "file": "islands/inbound.expired.sql",
-          "sha256": "sha256:942fd0bbee9a4378958424e6c718a81c26929a03e5331681c6927d5c4b79ebbf"
-        }
-      ]
-    },
-    {
-      "name": "inbound.remind",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/inbound.remind.sql",
-      "sha256": "sha256:dda314a179e46d80180e2116f39e7e1ead4ccc09e902d1c4a0c208251e200328",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "file": "islands/inbound.expired.duckdb.sql",
+          "sha256": "sha256:56694596267b8f38f908b697b8e8ea60dd4ff16a2dd37338255c90dac36e05f6",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "obligation_id",
+              "type": "text"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            },
+            {
+              "name": "obligation_state",
+              "type": "varchar"
+            },
+            {
+              "name": "qty_ok",
+              "type": "float"
+            },
+            {
+              "name": "qty_bad",
+              "type": "float"
+            },
+            {
+              "name": "last_received",
+              "type": "date"
+            },
+            {
+              "name": "days_open",
+              "type": "int"
+            },
+            {
+              "name": "reminders",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "inbound_close",
+            "inbound_reminder",
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/inbound.expired.duckdb.sql",
+            "sha256": "sha256:56694596267b8f38f908b697b8e8ea60dd4ff16a2dd37338255c90dac36e05f6",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5",
+              "p_3fc03684",
+              "p_f7cce9af",
+              "p_23e6f28a",
+              "p_4fd248ed"
+            ],
+            "params": [
+              "inbound_close",
+              "inbound_reminder",
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
         {
           "port": "remind",
-          "file": "islands/inbound.remind.sql",
-          "sha256": "sha256:dda314a179e46d80180e2116f39e7e1ead4ccc09e902d1c4a0c208251e200328"
+          "file": "islands/inbound.remind.duckdb.sql",
+          "sha256": "sha256:0e899bd8274cc663c138d18beea7a30d9076e21bdfc6e922ac3e2f9e9a3aba08",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "obligation_id",
+              "type": "text"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            },
+            {
+              "name": "obligation_state",
+              "type": "varchar"
+            },
+            {
+              "name": "qty_ok",
+              "type": "float"
+            },
+            {
+              "name": "qty_bad",
+              "type": "float"
+            },
+            {
+              "name": "last_received",
+              "type": "date"
+            },
+            {
+              "name": "days_open",
+              "type": "int"
+            },
+            {
+              "name": "reminders",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "inbound_reminder",
+            "inbound_close",
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/inbound.remind.duckdb.sql",
+            "sha256": "sha256:0e899bd8274cc663c138d18beea7a30d9076e21bdfc6e922ac3e2f9e9a3aba08",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5",
+              "p_3fc03684",
+              "p_f7cce9af",
+              "p_23e6f28a",
+              "p_4fd248ed"
+            ],
+            "params": [
+              "inbound_reminder",
+              "inbound_close",
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
+        {
+          "port": "complete.receipts",
+          "file": "islands/inbound.complete.receipts.duckdb.sql",
+          "sha256": "sha256:63ccf5be19786f20d85d57f6dcbcbad24c21fb388c25bc54dda6aed296fb30d1",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "qty_ok",
+              "type": "float"
+            },
+            {
+              "name": "qty_bad",
+              "type": "float"
+            },
+            {
+              "name": "last_received",
+              "type": "date"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "context",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "inbound_close",
+            "inbound_reminder",
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/inbound.complete.receipts.duckdb.sql",
+            "sha256": "sha256:63ccf5be19786f20d85d57f6dcbcbad24c21fb388c25bc54dda6aed296fb30d1",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5",
+              "p_3fc03684",
+              "p_f7cce9af",
+              "p_23e6f28a",
+              "p_4fd248ed"
+            ],
+            "params": [
+              "inbound_close",
+              "inbound_reminder",
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
+        {
+          "port": "damaged.receipts",
+          "file": "islands/inbound.damaged.receipts.duckdb.sql",
+          "sha256": "sha256:7aaec07ba207bafa2285d087eefddc829ece9153964514486b161a5d806e3a3a",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "qty_ok",
+              "type": "float"
+            },
+            {
+              "name": "qty_bad",
+              "type": "float"
+            },
+            {
+              "name": "last_received",
+              "type": "date"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "context",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "inbound_close",
+            "inbound_reminder",
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/inbound.damaged.receipts.duckdb.sql",
+            "sha256": "sha256:7aaec07ba207bafa2285d087eefddc829ece9153964514486b161a5d806e3a3a",
+            "parts": [
+              "p_da15c438",
+              "p_7d39f2a5",
+              "p_3fc03684",
+              "p_f7cce9af",
+              "p_23e6f28a",
+              "p_4fd248ed"
+            ],
+            "params": [
+              "inbound_close",
+              "inbound_reminder",
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
         }
-      ]
+      ],
+      "schema": "db"
     }
   ],
   "transfers": [],
@@ -168,9 +776,11 @@
     ]
   ],
   "connections": [
-    "ERP"
+    "TTR_CONN_AUTOMATION",
+    "TTR_CONN_ERP"
   ],
   "displays": [],
+  "rejectSites": [],
   "recipe": {
     "name": "monitor_inbound",
     "key": [
@@ -195,6 +805,13 @@
         "value": "5"
       }
     ],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
+      }
+    ],
     "roles": {
       "candidates": "awaiting",
       "contexts": [
@@ -206,7 +823,7 @@
         {
           "name": "age",
           "class": "per-candidate",
-          "kind": "sql"
+          "kind": "canonical"
         },
         {
           "name": "reminded",
@@ -258,8 +875,7 @@
           "line": "line_id",
           "kind": "inbound",
           "to": "fulfilled"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -269,8 +885,7 @@
         "columns": {
           "line": "line_id",
           "to": "goods_received"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -282,7 +897,7 @@
           "kind": "credit_note",
           "due": "working_days(:settlement)"
         },
-        "when": null
+        "when": "way = \"refund_after_return\""
       },
       {
         "routes": [
@@ -294,19 +909,18 @@
           "kind": "replacement",
           "due": "working_days(:settlement)"
         },
-        "when": null
+        "when": "way = \"exchange\""
       },
       {
         "routes": [
           "inbound.damaged"
         ],
-        "action": "task",
+        "action": "review",
         "columns": {
           "who": "role.customer_care",
           "about": "line_id",
           "detail": "receipts"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -317,8 +931,7 @@
           "line": "line_id",
           "kind": "inbound",
           "to": "cancelled"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -328,8 +941,7 @@
         "columns": {
           "line": "line_id",
           "to": "not_returned"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -339,8 +951,7 @@
         "columns": {
           "customer": "customer",
           "template": "\"return-reminder\""
-        },
-        "when": null
+        }
       }
     ],
     "kinds": [
@@ -388,25 +999,354 @@
       "current": "monitor_inbound_verdict_current"
     },
     "objectsRead": [
-      "er.entity.return_request_line",
+      "er.entity.customer",
+      "er.entity.date_dim",
+      "er.entity.monitor_inbound_verdict",
+      "er.entity.obligation",
       "er.entity.return_receipt",
-      "er.entity.obligation"
+      "er.entity.return_request",
+      "er.entity.return_request_line"
     ],
     "fingerprints": {
-      "text": "sha256:e0e126d8ba3a235512c5a8a1208733789c588a09cd45fa8fd9b67145b4e87ee7",
-      "values": "sha256:41cf7487d63de15f907da445487966310dfe208aec6cc4bb8106760e6a489dcd"
+      "text": "sha256:391de6d1006bcea1aa76ff5211473ac47b6021ceee8da11e87a4de61fd075a1a",
+      "values": "sha256:dba014c020bb1d09dabb29c7914b17cb6715a5be874a1f51bcd8e1e98d018c05",
+      "labels": "sha256:35cfb2cc67ba77cf10398228751713f31e2a5dbfa9c2994f1df672d6a4c11af8"
     },
-    "protocol": "always"
+    "protocol": "always",
+    "parts": [
+      {
+        "name": "p_23e6f28a",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_23e6f28a.sql",
+        "sha256": "sha256:ed24d355a9296f50eb587a9e9d63fa41a6cd78fe8891d52925792d84bb9f3521",
+        "columns": [
+          {
+            "name": "_ttrp_d_n17_0",
+            "type": "date"
+          }
+        ],
+        "params": [
+          "as_of"
+        ],
+        "keyed": false
+      },
+      {
+        "name": "p_3fc03684",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_3fc03684.sql",
+        "sha256": "sha256:c5781dab1783b1c5f068efdb8dc8b8815c3c99f84719a99f6f87da2973d11e30",
+        "columns": [
+          {
+            "name": "receipt_id",
+            "type": "int"
+          },
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "received_date",
+            "type": "date"
+          },
+          {
+            "name": "item",
+            "type": "int"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "name": "condition",
+            "type": "varchar"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      },
+      {
+        "name": "p_4fd248ed",
+        "storage": "automation_db",
+        "engine": "automation",
+        "file": "parts/p_4fd248ed.sql",
+        "sha256": "sha256:372da810891ba7006449b3153f32026b3efa22adaf936fe74a2265af45062b78",
+        "columns": [
+          {
+            "name": "run",
+            "type": "text"
+          },
+          {
+            "name": "as_of",
+            "type": "timestamp"
+          },
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "route",
+            "type": "text"
+          },
+          {
+            "name": "verdict_reason",
+            "type": "text"
+          },
+          {
+            "name": "parameters_fp",
+            "type": "text"
+          },
+          {
+            "name": "run_as",
+            "type": "text"
+          },
+          {
+            "name": "written_at",
+            "type": "timestamp"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      },
+      {
+        "name": "p_7d39f2a5",
+        "storage": "automation_db",
+        "engine": "automation",
+        "file": "parts/p_7d39f2a5.sql",
+        "sha256": "sha256:294b5e9a92cfa1ce6317d22497e1396f6b12afb25ee88e2473ad195f908c6835",
+        "columns": [
+          {
+            "name": "id",
+            "type": "text"
+          },
+          {
+            "name": "recipe",
+            "type": "text"
+          },
+          {
+            "name": "run",
+            "type": "text"
+          },
+          {
+            "name": "entity",
+            "type": "text"
+          },
+          {
+            "name": "key",
+            "type": "text"
+          },
+          {
+            "name": "kind",
+            "type": "text"
+          },
+          {
+            "name": "due",
+            "type": "date"
+          },
+          {
+            "name": "state",
+            "type": "text"
+          },
+          {
+            "name": "fulfilled_by",
+            "type": "text"
+          },
+          {
+            "name": "fulfilled_at",
+            "type": "timestamp"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp"
+          }
+        ],
+        "params": [],
+        "keyed": false
+      },
+      {
+        "name": "p_da15c438",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_da15c438.sql",
+        "sha256": "sha256:c732bce75e5b4a497d266f4f0c742e8fe9957a363539f47e400555c555cd264c",
+        "columns": [
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "request_number",
+            "type": "text"
+          },
+          {
+            "name": "line_no",
+            "type": "int"
+          },
+          {
+            "name": "item",
+            "type": "int"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "name": "unit_price",
+            "type": "decimal"
+          },
+          {
+            "name": "reason",
+            "type": "varchar"
+          },
+          {
+            "name": "requested_resolution",
+            "type": "varchar"
+          },
+          {
+            "name": "requested_variant",
+            "type": "int"
+          },
+          {
+            "name": "state",
+            "type": "varchar"
+          },
+          {
+            "name": "way",
+            "type": "varchar"
+          },
+          {
+            "name": "customer",
+            "type": "int"
+          },
+          {
+            "name": "customer0",
+            "type": "int"
+          },
+          {
+            "name": "order_number",
+            "type": "text"
+          },
+          {
+            "name": "channel",
+            "type": "text"
+          },
+          {
+            "name": "requested_date",
+            "type": "date"
+          },
+          {
+            "name": "state0",
+            "type": "text"
+          },
+          {
+            "name": "customer_id",
+            "type": "char"
+          },
+          {
+            "name": "addr",
+            "type": "int"
+          },
+          {
+            "name": "cdemo",
+            "type": "int"
+          },
+          {
+            "name": "hdemo",
+            "type": "int"
+          },
+          {
+            "name": "birth_year",
+            "type": "int"
+          },
+          {
+            "name": "center",
+            "type": "int"
+          },
+          {
+            "name": "email",
+            "type": "varchar"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      },
+      {
+        "name": "p_f7cce9af",
+        "storage": "automation_db",
+        "engine": "automation",
+        "file": "parts/p_f7cce9af.sql",
+        "sha256": "sha256:92217027d15781ea77ce9063c4588fd225545d189197ff181a53f575d07ceab7",
+        "columns": [
+          {
+            "name": "id",
+            "type": "text"
+          },
+          {
+            "name": "recipe",
+            "type": "text"
+          },
+          {
+            "name": "run",
+            "type": "text"
+          },
+          {
+            "name": "entity",
+            "type": "text"
+          },
+          {
+            "name": "key",
+            "type": "text"
+          },
+          {
+            "name": "kind",
+            "type": "text"
+          },
+          {
+            "name": "due",
+            "type": "date"
+          },
+          {
+            "name": "state",
+            "type": "text"
+          },
+          {
+            "name": "fulfilled_by",
+            "type": "text"
+          },
+          {
+            "name": "fulfilled_at",
+            "type": "timestamp"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp"
+          }
+        ],
+        "params": [],
+        "keyed": false
+      }
+    ]
   },
   "files": {
-    "catalog/monitor_inbound.ttrm": "sha256:99d4b2d3e42ed8d36d1d488bfb67ec63fd9d9a6e61a84942fa70471f305f2d82",
-    "islands/age.rows.sql": "sha256:5c17e9d3fa00834fae5b2711b49a92373ca05a2806f1821185d478a1f316fdba",
-    "islands/awaiting.lines.sql": "sha256:248b91d65cce963d0cf4aec5f297c069a73d1ece12d8b2bbd047f69b1688553a",
-    "islands/inbound.complete.sql": "sha256:a6c3cfb98eb10cc7d3bd58156ed943c8cc231a19fab86d553ed5f37bb37ffef1",
-    "islands/inbound.damaged.sql": "sha256:2abcd5d780f764a4b1b60a4cbfcfc7c01fb55eb072d7ff0ffa453eae864e9eff",
-    "islands/inbound.expired.sql": "sha256:942fd0bbee9a4378958424e6c718a81c26929a03e5331681c6927d5c4b79ebbf",
-    "islands/inbound.remind.sql": "sha256:dda314a179e46d80180e2116f39e7e1ead4ccc09e902d1c4a0c208251e200328",
-    "islands/receipts.rows.sql": "sha256:7b6e0515dfd56011b1635a5351d4762cf10cdd66aea46bbf6548ba5ef5fbdd10",
-    "islands/reminded.rows.sql": "sha256:527aca1abd4a6d5a270e91d5de3feee6961fcef5b506ef094e380fce972ca173"
+    "README.md": "sha256:2f64c413a59f8a90fe515b7d10aa604117e8a0f663914338998ff1c86a6904db",
+    "catalog/monitor_inbound.ttrm": "sha256:bdfb0d0c0c9f9b129ac483968a18229759df49b0908e9e334f79658551e348fa",
+    "catalog/monitor_inbound_verdict.ttrm": "sha256:0dc5db33314bec90851b8687194dbefbcb3735b79f59d5e2f79f5625c4bf7bea",
+    "islands/age.rows.duckdb.sql": "sha256:8c3d2a1ba46e4480a9e5de71d540fe8e89eded3d7aa206e815bbe41439c0d81a",
+    "islands/awaiting.lines.duckdb.sql": "sha256:0ccedc3583fb5fa55f1a37e0e72af2f28a129d24f6bf4c6ebde7f70761a11f60",
+    "islands/inbound.complete.duckdb.sql": "sha256:b8d9d14e5176bf3376405633cadd58d3e0ce07a0d6674409cc533e2d70d210fd",
+    "islands/inbound.complete.receipts.duckdb.sql": "sha256:63ccf5be19786f20d85d57f6dcbcbad24c21fb388c25bc54dda6aed296fb30d1",
+    "islands/inbound.damaged.duckdb.sql": "sha256:e57cd762bbadc347b5c446e279d78875923e79e8a606d5ab7c4e8d11689bbeea",
+    "islands/inbound.damaged.receipts.duckdb.sql": "sha256:7aaec07ba207bafa2285d087eefddc829ece9153964514486b161a5d806e3a3a",
+    "islands/inbound.expired.duckdb.sql": "sha256:56694596267b8f38f908b697b8e8ea60dd4ff16a2dd37338255c90dac36e05f6",
+    "islands/inbound.remind.duckdb.sql": "sha256:0e899bd8274cc663c138d18beea7a30d9076e21bdfc6e922ac3e2f9e9a3aba08",
+    "islands/receipts.rows.duckdb.sql": "sha256:d55def1f5868d8d2c1b830150b12679f5d7d0bc5e18d32b2d3efc37fc12153ee",
+    "islands/reminded.rows.duckdb.sql": "sha256:1e080368b3bbd4340448e71ec5615645e92581a5f7e625dc0569272ac408f738",
+    "parts/p_23e6f28a.sql": "sha256:ed24d355a9296f50eb587a9e9d63fa41a6cd78fe8891d52925792d84bb9f3521",
+    "parts/p_3fc03684.sql": "sha256:c5781dab1783b1c5f068efdb8dc8b8815c3c99f84719a99f6f87da2973d11e30",
+    "parts/p_4fd248ed.sql": "sha256:372da810891ba7006449b3153f32026b3efa22adaf936fe74a2265af45062b78",
+    "parts/p_7d39f2a5.sql": "sha256:294b5e9a92cfa1ce6317d22497e1396f6b12afb25ee88e2473ad195f908c6835",
+    "parts/p_da15c438.sql": "sha256:c732bce75e5b4a497d266f4f0c742e8fe9957a363539f47e400555c555cd264c",
+    "parts/p_f7cce9af.sql": "sha256:92217027d15781ea77ce9063c4588fd225545d189197ff181a53f575d07ceab7"
   }
 }

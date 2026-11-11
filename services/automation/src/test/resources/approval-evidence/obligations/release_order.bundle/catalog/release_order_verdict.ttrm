@@ -9,7 +9,7 @@ def entity release_order_verdict {
         def attribute as_of { type: timestamp },
         def attribute order_number { type: text, isKey: true },
         def attribute route { type: text, isKey: true },
-        def attribute verdict_reason { type: text },
+        def attribute verdict_reason { type: text, optional: true },
         def attribute parameters_fp { type: text },
         def attribute run_as { type: text },
         def attribute written_at { type: timestamp }
@@ -23,7 +23,8 @@ def entity release_order_verdict_detail {
         def attribute order_number { type: text },
         def attribute route { type: text },
         def attribute context { type: text },
-        def attribute row_no { type: int }
+        def attribute row_no { type: int },
+        def attribute truncated { type: bool }
     ]
 }
 
@@ -34,7 +35,7 @@ def entity release_order_verdict_current {
         def attribute as_of { type: timestamp },
         def attribute order_number { type: text, isKey: true },
         def attribute route { type: text, isKey: true },
-        def attribute verdict_reason { type: text },
+        def attribute verdict_reason { type: text, optional: true },
         def attribute parameters_fp { type: text },
         def attribute run_as { type: text },
         def attribute written_at { type: timestamp }

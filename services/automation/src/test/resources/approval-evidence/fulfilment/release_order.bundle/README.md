@@ -7,7 +7,7 @@
 ## What it reads
 
 - `er.entity.obligation`
-- `er.entity.order`
+- Order (`er.entity.order`)
 
 ## What it does
 

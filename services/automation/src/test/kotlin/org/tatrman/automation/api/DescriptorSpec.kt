@@ -6,6 +6,7 @@ import io.kotest.engine.spec.tempdir
 import org.tatrman.automation.bundle.ApprovalFixture
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -158,7 +159,7 @@ class DescriptorSpec :
                 r.status shouldBe HttpStatusCode.OK
                 val body = Json.parseToJsonElement(r.bodyAsText()).jsonObject
                 body["served"]!!.jsonObject["bundle"] shouldBe JsonPrimitive("served:master@0123456789ab")
-                body["deployments"]!!.jsonArray.size shouldBe 12
+                body["deployments"]!!.jsonArray.size shouldBe 11
             }
         }
 
@@ -297,6 +298,38 @@ class DescriptorSpec :
                 val ci = realm.service("svc-hartland-ci", roles = listOf("ops"))
                 client.post("/automation/refresh") { header(HttpHeaders.Authorization, "Bearer $ci") }.status shouldBe
                     HttpStatusCode.OK
+            }
+        }
+
+        "POST /automation/refresh refuses a pre-cut bundle with the Core cut diagnostic and retains the served bundle" {
+            testApplication {
+                val root = BundleFixture.copy()
+                var commit = BundleFixture.COMMIT
+                val bundles =
+                    BundleFixture.bundles(
+                        BundleSource { BundleFixture.checkout(root, commit = commit, branch = it) },
+                    )
+                service(BundleFixture.sources(bundles))
+                val token = realm.service("svc-hartland-ci", roles = listOf("ops"))
+                client
+                    .post(
+                        "/automation/refresh",
+                    ) { header(HttpHeaders.Authorization, "Bearer $token") }
+                    .status shouldBe
+                    HttpStatusCode.OK
+                val served = bundles.served
+                Files.copy(
+                    Path.of("src/test/resources/pre-cut/world.ttrm"),
+                    root.resolve("model/worlds/demo.ttrm"),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                )
+                commit = "ffffffffffffffffffffffffffffffffffffffff"
+                val response = client.post("/automation/refresh") { header(HttpHeaders.Authorization, "Bearer $token") }
+                response.status shouldBe HttpStatusCode.UnprocessableEntity
+                response.errorCode(response.bodyAsText()) shouldBe "bundle-invalid"
+                response.bodyAsText() shouldContain "TTRP-CUT-001"
+                bundles.served shouldBe served
+                bundles.refreshFailed shouldBe true
             }
         }
     })

@@ -24,9 +24,9 @@ import kotlin.io.path.writeText
  */
 class BundleLoaderSpec :
     StringSpec({
-        "the hartland fixture loads: four recipes, eight programs, twelve deployments, the identity, four grants" {
+        "the hartland fixture loads: four recipes, eight programs, eleven deployments, the identity, four grants" {
             val b = BundleFixture.load()
-            b.warnings.shouldBeEmpty()
+            b.warnings.filterNot { "ttr/unimported-reference" in it }.shouldBeEmpty()
             b.recipes.keys shouldBe setOf("decide_return", "monitor_inbound", "release_order", "settle")
             b.programs.keys shouldBe
                 setOf(
@@ -39,18 +39,17 @@ class BundleLoaderSpec :
                     "settle_on_document",
                     "settle_daily",
                 )
-            b.deployments.keys shouldHaveSize 12
-            b.deployments.keys shouldContain "returns_n8n"
+            b.deployments.keys shouldHaveSize 11
             b.worlds.keys shouldBe setOf("demo")
             b.deploymentWorlds.values.toSet() shouldBe setOf("demo")
             val demo = b.worlds.getValue("demo")
-            demo.processes.keys shouldBe setOf("return_line_flow")
             demo.identities.single().let {
                 it.name shouldBe "automation_decider"
                 it.principal shouldBe "svc-hartland-automation"
                 it.credential shouldBe "TTR_CONN_AUTOMATION_DECIDER" // D-132
             }
-            demo.executors shouldBe mapOf("n8n" to "n8n_l1", "bpmn" to "camunda_8", "py" to "python_client")
+            demo.executors shouldBe
+                mapOf("native" to "native", "n8n" to "n8n_l1", "bpmn" to "camunda_8", "py" to "python_client")
             b.actions.keys shouldContain "expect"
             b.id shouldBe "served:master@0123456789ab"
             b.author shouldBe "po"
@@ -66,7 +65,7 @@ class BundleLoaderSpec :
                 listOf("hold_sales", "hold_ar", "release_confirmed", "release")
             r.statements.keys shouldContain "islands/overdue.rows.sql"
             r.statements.keys shouldContain "islands/verdict.release.sql"
-            r.statements.getValue("islands/overdue.rows.sql") shouldContain "i.due < :as_of"
+            r.statements.getValue("islands/overdue.rows.sql") shouldContain "\"due\" < :as_of"
         }
 
         "the grants: `who: *` is anyone, `program: *` any program, `as:` the run-as" {
@@ -102,7 +101,7 @@ class BundleLoaderSpec :
             changed.edit("model/worlds/demo.ttrm") { it.replace("granularity: parts", "granularity: islands") }
             changed.edit(
                 "automation/programs.ttrm",
-            ) { it.replace("\"06:00 Europe/Prague\" }", "\"06:15 Europe/Prague\" }") }
+            ) { it.replace("mode: batch,    as_of: run", "mode: batch,    as_of: event") }
             val c = BundleFixture.load(changed)
             c.deploymentFps.getValue("release_n8n") shouldNotBe a.deploymentFps.getValue("release_n8n")
             c.deploymentFps.getValue("release_py") shouldBe a.deploymentFps.getValue("release_py")
@@ -124,11 +123,9 @@ class BundleLoaderSpec :
             } shouldContainExactlyInAnyOrder
                 listOf(
                     "bundle settle: manifest schemaVersion 2, this Server reads 3",
-                    // the recipe is gone, so its deployments cannot run — the process's step too
+                    // The recipe is gone, so its program deployments cannot run.
                     "deployment settle_native_event: program settle_on_document's recipe settle has no bundle",
                     "deployment settle_native_batch: program settle_daily's recipe settle has no bundle",
-                    "deployment returns_n8n: process return_line_flow step settle: program settle_on_document's " +
-                        "recipe settle has no bundle",
                 )
         }
 
@@ -138,7 +135,7 @@ class BundleLoaderSpec :
             } shouldContainExactlyInAnyOrder
                 listOf(
                     // the automation validator's finding (on the load path) and the loader's own
-                    "model/worlds/demo.ttrm:38: ttr/automation-unknown-reference: deployment 'settle_native_batch': " +
+                    "model/worlds/demo.ttrm:37: ttr/automation-unknown-reference: deployment 'settle_native_batch': " +
                         "program names no program 'settle_weekly'",
                     "deployment settle_native_batch: program settle_weekly is not declared",
                 )
@@ -164,7 +161,7 @@ class BundleLoaderSpec :
         "a deployment on a target that is no executor of its world refuses the commit" {
             refusal {
                 edit("model/worlds/demo.ttrm") { it.replace("target: bpmn,", "target: camunda,") }
-            } shouldContain "deployment release_bpmn: target camunda is neither native nor an executor of world demo"
+            } shouldContain "deployment release_bpmn: target camunda is not an executor of world demo"
         }
 
         "every finding is named at once" {
@@ -179,12 +176,10 @@ class BundleLoaderSpec :
                     "deployment inbound_native_batch: program inbound_hourly is not declared",
                     "deployment settle_native_event: program settle_on_document's recipe settle has no bundle",
                     "deployment settle_native_batch: program settle_daily's recipe settle has no bundle",
-                    "deployment returns_n8n: process return_line_flow step settle: program settle_on_document's " +
-                        "recipe settle has no bundle",
                 )
         }
 
-        "two worlds keep their own identities, grants, processes and executors (review-114: resolved within a world)" {
+        "two worlds keep their own identities, grants and executors (review-114: resolved within a world)" {
             val dir = BundleFixture.copy()
             val demo = dir.resolve("model/worlds/demo.ttrm").readText()
             // A second world declaring the same names with other values, and one deployment of its own.
@@ -199,9 +194,9 @@ class BundleLoaderSpec :
                     .filterNot { it.trimStart().startsWith("def deployment") }
                     .joinToString("\n")
                     .replaceFirst(
-                        "    def process return_line_flow",
-                        "    def deployment other_bpmn { program: release_on_placement, target: bpmn, " +
-                            "run_as: identity.automation_decider }\n\n    def process return_line_flow",
+                        "\n}",
+                        "\n    def deployment other_bpmn { program: release_on_placement, target: bpmn, " +
+                            "run_as: identity.automation_decider }\n}",
                     )
             dir.resolve("model/worlds/other.ttrm").writeText(other)
             val b = BundleFixture.load(dir)

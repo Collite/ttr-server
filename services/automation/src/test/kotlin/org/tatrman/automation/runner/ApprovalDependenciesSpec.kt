@@ -188,7 +188,7 @@ class ApprovalDependenciesSpec :
                 if (change == "default") {
                     root.edit("automation/automation.ttrm") { it.replace("'released'", "'held'") }
                 } else {
-                    root.edit("model/er/automation-entities.ttrm") {
+                    root.edit("model/er/orders.ttrm") {
                         it.replace("type: text, isKey: true", "type: { type: text, length: 8 }, isKey: true")
                     }
                 }
@@ -289,8 +289,8 @@ class ApprovalDependenciesSpec :
                 loaded.copy(
                     deployments =
                         loaded.deployments + (
-                            "decide_native_batch" to
-                                loaded.deployments.getValue("decide_native_batch").copy(runAs = ModelRunAs.Caller)
+                            "inbound_native_batch" to
+                                loaded.deployments.getValue("inbound_native_batch").copy(runAs = ModelRunAs.Caller)
                         ),
                 )
             refuses(b, "unsupported approval evidence version 2", kind = CoverageKind.UNSUPPORTED)
@@ -307,9 +307,9 @@ class ApprovalDependenciesSpec :
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
                 ).open(
-                    "decide_return",
+                    "monitor_inbound",
                     OpenRequest(
-                        "decide_native_batch",
+                        "inbound_native_batch",
                         buildJsonObject {
                             put("none", true)
                         },
@@ -325,7 +325,7 @@ class ApprovalDependenciesSpec :
                 editRecipe(root) { JsonObject(it + ("approvalDependencies" to value)) }
                 val b = load(root)
                 refuses(b, "approval evidence is not an object", kind = CoverageKind.UNSUPPORTED)
-                val deploymentName = "decide_native_batch"
+                val deploymentName = "inbound_native_batch"
                 val neighbor =
                     b.copy(
                         deployments =
@@ -343,7 +343,7 @@ class ApprovalDependenciesSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
-                ).open("decide_return", OpenRequest(deploymentName, buildJsonObject { put("none", true) }), caller)
+                ).open("monitor_inbound", OpenRequest(deploymentName, buildJsonObject { put("none", true) }), caller)
                     .httpStatus shouldBe 201
             }
             val root = fixture()
@@ -403,7 +403,7 @@ class ApprovalDependenciesSpec :
 
         "project shadowing cannot silently rebind explicit stdlib evidence" {
             val root = fixture()
-            root.edit("model/er/automation-entities.ttrm") {
+            root.edit("model/er/orders.ttrm") {
                 it +
                     "\ndef entity obligation { attributes: [def attribute state { type: int }] }\n"
             }
@@ -445,7 +445,10 @@ def action release {
             val legacy = ApprovalDependencies.check(b, withoutScope)
             legacy.refusal!! shouldContain "declared in several packages; rename it or adopt evidence"
             legacy.coverage shouldBe CoverageKind.AMBIGUOUS
-            Registry(ExecutorType.builtin()).cell(b, b.deployments.getValue(deployment)).status shouldBe Registry.OK
+            Registry(ExecutorType.builtin()).cell(b, b.deployments.getValue(deployment)).let { cell ->
+                cell.status shouldBe Registry.REFUSED
+                cell.reason!! shouldContain "action audit_state (sink none"
+            }
         }
 
         "a correctly rebound evidence map must still name exactly the wired actions" {
@@ -520,8 +523,10 @@ def action release { columns: [def column order { type: text }] sinks: { native:
             val native = ExecutorType.builtin().getValue("native").copy(family = "external")
             Registry(
                 mapOf("native" to native),
-            ).cell(pinned, pinned.deployments.getValue(deployment)).status shouldBe
-                Registry.OK
+            ).cell(pinned, pinned.deployments.getValue(deployment)).let { cell ->
+                cell.status shouldBe Registry.REFUSED
+                cell.reason!! shouldContain "action audit_state (sink none"
+            }
         }
 
         "exported text must still match after dependency verification" {

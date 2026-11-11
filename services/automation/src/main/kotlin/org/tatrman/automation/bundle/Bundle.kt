@@ -7,7 +7,6 @@ import org.tatrman.automation.identity.RoleDecl
 import org.tatrman.ttr.metadata.model.AutomationProgram
 import org.tatrman.ttr.metadata.model.Model
 import org.tatrman.ttr.metadata.model.WorldDeployment
-import org.tatrman.ttr.metadata.model.WorldProcess
 import java.nio.file.Path
 import java.time.Instant
 
@@ -44,14 +43,13 @@ data class LoadedRecipe(
 )
 
 /**
- * What one world declares for its own deployments: the validator resolves a deployment's identity, process and
+ * What one world declares for its own deployments: the validator resolves a deployment's identity and
  * executor references within its world (review-114), so the Server never looks them up across worlds — two worlds
  * may each declare an `automation_decider` with its own credential. [executors]: executor name → its type id
- * (`n8n` → `n8n_l1`); `native` is implicit.
+ * (`n8n` → `n8n_l1`); the Server is an explicitly declared `native` executor.
  */
 data class WorldScope(
     val name: String,
-    val processes: Map<String, WorldProcess>,
     val identities: List<IdentityDecl>,
     val grants: List<GrantDecl>,
     val executors: Map<String, String>,
@@ -110,18 +108,10 @@ data class Bundle(
     fun worldOf(deployment: WorldDeployment): WorldScope? = deploymentWorlds[deployment.qname.name]?.let { worlds[it] }
 
     /** The executor type a deployment's `target:` runs on: `native`, or its world's executor's `extends:`. */
-    fun targetType(deployment: WorldDeployment): String? =
-        if (deployment.target == NATIVE) NATIVE else worldOf(deployment)?.executors?.get(deployment.target)
+    fun targetType(deployment: WorldDeployment): String? = worldOf(deployment)?.executors?.get(deployment.target)
 
-    /** The programs a deployment runs: its own, or every step's of its world's process. */
-    fun programsOf(deployment: WorldDeployment): List<String> =
-        deployment.program?.let { listOf(it) }
-            ?: worldOf(deployment)
-                ?.processes
-                ?.get(deployment.process)
-                ?.steps
-                ?.mapNotNull { it.program }
-                .orEmpty()
+    /** Grammar 0.22: a deployment runs one program; processes belong to the engine. */
+    fun programsOf(deployment: WorldDeployment): List<String> = listOf(deployment.program)
 
     companion object {
         const val NATIVE = "native"

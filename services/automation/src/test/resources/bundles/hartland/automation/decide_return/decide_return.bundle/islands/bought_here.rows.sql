@@ -1,6 +1,11 @@
-SELECT q.line_id, o.delivered_date,
-       CASE WHEN o.delivered_date >= :as_of - :return_window THEN 1 ELSE 0 END AS in_window,
-       CASE WHEN s.item IS NULL THEN 0 ELSE 1 END AS item_on_order
-FROM   lines q
-LEFT JOIN er.entity.order o      ON o.order_number = q.order_number AND o.customer = q.customer
-LEFT JOIN er.entity.sales_line s ON s.order_number = q.order_number AND s.item = q.item
+SELECT "t3"."line_id", "t3"."delivered_date", CASE WHEN "t3"."delivered_date" >= :as_of_minus_return_window_days THEN 1 ELSE 0 END AS "in_window", CASE WHEN "sales_line"."item" IS NULL THEN 0 ELSE 1 END AS "item_on_order"
+FROM (SELECT "t2"."line_id", "t2"."request_number", "t2"."item", "t2"."quantity", "t2"."unit_price", "t2"."line_value", "t2"."reason", "t2"."requested_resolution", "t2"."requested_variant", "t2"."customer", "t2"."customer_email", "t2"."order_number", "t2"."requested_date", "order"."channel", "order"."placed_date", "order"."delivered_date", "order"."fulfilling_warehouse", "order"."value", "order"."state", "order"."held_for", "order"."placed_by"
+        FROM (SELECT "line_id", "request_number", "item", "quantity", "unit_price", "quantity" * "unit_price" AS "line_value", "reason", "requested_resolution", "requested_variant", "customer0" AS "customer", "email" AS "customer_email", "order_number", "requested_date"
+                FROM (SELECT "t"."line_id", "t"."request_number", "t"."line_no", "t"."item", "t"."quantity", "t"."unit_price", "t"."reason", "t"."requested_resolution", "t"."requested_variant", "t"."state", "t"."way", "t"."customer", "t"."customer0", "t"."order_number", "t"."channel", "t"."requested_date", "t"."state0", "customer"."customer_id", "customer"."addr", "customer"."cdemo", "customer"."hdemo", "customer"."birth_year", "customer"."center", "customer"."email"
+                        FROM (SELECT "return_request_line"."line_id", "return_request_line"."request_number", "return_request_line"."line_no", "return_request_line"."item", "return_request_line"."quantity", "return_request_line"."unit_price", "return_request_line"."reason", "return_request_line"."requested_resolution", "return_request_line"."requested_variant", "return_request_line"."state", "return_request_line"."way", "return_request_line"."customer", "return_request"."customer" AS "customer0", "return_request"."order_number", "return_request"."channel", "return_request"."requested_date", "return_request"."state" AS "state0"
+                                FROM "return_request_line"
+                                    INNER JOIN "return_request" ON "return_request_line"."request_number" = "return_request"."request_number") AS "t"
+                            LEFT JOIN "customer" ON "t"."customer" = "customer"."sk") AS "t0"
+                WHERE "t0"."state" = 'received') AS "t2"
+            LEFT JOIN "order" ON "t2"."order_number" = "order"."order_number" AND "t2"."customer" = "order"."customer") AS "t3"
+    LEFT JOIN "sales_line" ON "t3"."order_number" = "sales_line"."order_number" AND "t3"."item" = "sales_line"."item"

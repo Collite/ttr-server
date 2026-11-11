@@ -1,267 +1,1112 @@
 {
   "schemaVersion": 3,
   "ttrpVersion": 2,
-  "toolchain": "fixture-prebuilt",
-  "program": "decide_return",
+  "toolchain": "org.tatrman:ttrp:0.22.3",
+  "program": "decide_return.ttrp",
   "world": {
     "qname": "hartland.worlds.demo",
-    "fingerprint": "sha256:835a2d5eda9a64795b00aa308a222a7412a5ed40e4ff5137d000b66ddb9d1499"
+    "fingerprint": "sha256:238762e0406d5b4f05fd3f5fe1496ca0049ee6fc29e12de4916f6e6186900ff8"
   },
   "islands": [
     {
       "name": "received",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/received.lines.sql",
-      "sha256": "sha256:ea47814170f27029b813004c7cb7d5981ef6b63db62d2f83f2e198f3722072a1",
+      "sha256": "sha256:f87626417f643ba47e3c0d183a77eca8a864cb47241e3ecc768bf81c4adf9883",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "lines",
           "file": "islands/received.lines.sql",
-          "sha256": "sha256:ea47814170f27029b813004c7cb7d5981ef6b63db62d2f83f2e198f3722072a1"
+          "sha256": "sha256:f87626417f643ba47e3c0d183a77eca8a864cb47241e3ecc768bf81c4adf9883",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "line_value",
+              "type": "decimal"
+            },
+            {
+              "name": "reason",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_resolution",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_variant",
+              "type": "int"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "requested_date",
+              "type": "date"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
       "name": "bought_here",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/bought_here.rows.sql",
-      "sha256": "sha256:92d2aaba4f5d6e7517dd23b81317dfe642137f2b2b552276fd0bbe2d1e274c1f",
+      "sha256": "sha256:dac3064bf26438f5350f18627be813df644aca3cb71e8411f3a4157374a73831",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of_minus_return_window_days"
       ],
       "outputs": [
         {
           "port": "rows",
           "file": "islands/bought_here.rows.sql",
-          "sha256": "sha256:92d2aaba4f5d6e7517dd23b81317dfe642137f2b2b552276fd0bbe2d1e274c1f"
+          "sha256": "sha256:dac3064bf26438f5350f18627be813df644aca3cb71e8411f3a4157374a73831",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "delivered_date",
+              "type": "date"
+            },
+            {
+              "name": "in_window",
+              "type": "int"
+            },
+            {
+              "name": "item_on_order",
+              "type": "int"
+            }
+          ],
+          "params": [
+            "as_of_minus_return_window_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
       "name": "return_share",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/return_share.rows.sql",
-      "sha256": "sha256:d2bc8c2093bfd59b53e45a600bfe82e3a16bea9d668542adba45dd14188ceac0",
+      "sha256": "sha256:c1068102bd912643f62f2b84a6749343c934baa5dd4c7cce034c91375edc3afb",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of_minus_365_days"
       ],
       "outputs": [
         {
           "port": "rows",
           "file": "islands/return_share.rows.sql",
-          "sha256": "sha256:d2bc8c2093bfd59b53e45a600bfe82e3a16bea9d668542adba45dd14188ceac0"
+          "sha256": "sha256:c1068102bd912643f62f2b84a6749343c934baa5dd4c7cce034c91375edc3afb",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "share",
+              "type": "float"
+            }
+          ],
+          "params": [
+            "as_of_minus_365_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
       "name": "request_value",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/request_value.rows.sql",
-      "sha256": "sha256:bcfc4f4e37dd0d955801b956f10af7b107d0e3f68cd03623771869e5588c39bf",
+      "sha256": "sha256:94a265268fb165b1fbef959e7026c2693f26a20b4164427db4f121dbbcd00e9b",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "rows",
           "file": "islands/request_value.rows.sql",
-          "sha256": "sha256:bcfc4f4e37dd0d955801b956f10af7b107d0e3f68cd03623771869e5588c39bf"
+          "sha256": "sha256:94a265268fb165b1fbef959e7026c2693f26a20b4164427db4f121dbbcd00e9b",
+          "columns": [
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "request_value",
+              "type": "float"
+            }
+          ],
+          "keyed": false,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
       "name": "stock_at_center",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/stock_at_center.rows.sql",
-      "sha256": "sha256:0aa3f5db4f82f05f540fed0ff0b242c594a0f235a864540f80db44a49016d7d0",
+      "sha256": "sha256:ae7a612d3c56513b3c56c96ee38f9528dc6042019c29349985fd6ec54dc0179c",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "rows",
           "file": "islands/stock_at_center.rows.sql",
-          "sha256": "sha256:0aa3f5db4f82f05f540fed0ff0b242c594a0f235a864540f80db44a49016d7d0"
+          "sha256": "sha256:ae7a612d3c56513b3c56c96ee38f9528dc6042019c29349985fd6ec54dc0179c",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "item_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "variant_on_hand",
+              "type": "int"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
-      "name": "way.reject_not_ours",
+      "name": "way",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/way.reject_not_ours.sql",
-      "sha256": "sha256:7f4dfd3e3701074046de255c4e1816de94aa070db6908d098bc5cc72d7973676",
+      "sha256": "sha256:e37465f8996503d21dd8eae65e5c64c1897eec9a9fc0a27b2abfcaaef019fff8",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "abuse_share",
+        "care_threshold",
+        "small_value",
+        "as_of_minus_return_window_days",
+        "as_of_minus_365_days",
+        "return_window"
       ],
       "outputs": [
         {
           "port": "reject_not_ours",
           "file": "islands/way.reject_not_ours.sql",
-          "sha256": "sha256:7f4dfd3e3701074046de255c4e1816de94aa070db6908d098bc5cc72d7973676"
-        }
-      ]
-    },
-    {
-      "name": "way.reject_late",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/way.reject_late.sql",
-      "sha256": "sha256:ec6f71c17233d390cd0bfb61c28ccd6afd003cf7299e561e98ca0a2b27fb473d",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:e37465f8996503d21dd8eae65e5c64c1897eec9a9fc0a27b2abfcaaef019fff8",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "line_value",
+              "type": "decimal"
+            },
+            {
+              "name": "reason",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_resolution",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_variant",
+              "type": "int"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "requested_date",
+              "type": "date"
+            },
+            {
+              "name": "delivered_date",
+              "type": "date"
+            },
+            {
+              "name": "in_window",
+              "type": "int"
+            },
+            {
+              "name": "item_on_order",
+              "type": "int"
+            },
+            {
+              "name": "share",
+              "type": "float"
+            },
+            {
+              "name": "item_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "variant_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "request_value",
+              "type": "float"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "abuse_share",
+            "care_threshold",
+            "small_value",
+            "as_of_minus_return_window_days",
+            "as_of_minus_365_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "reject_late",
           "file": "islands/way.reject_late.sql",
-          "sha256": "sha256:ec6f71c17233d390cd0bfb61c28ccd6afd003cf7299e561e98ca0a2b27fb473d"
-        }
-      ]
-    },
-    {
-      "name": "way.reject_abuse",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/way.reject_abuse.sql",
-      "sha256": "sha256:336510d00bbe763df711803bac0e528173b4bf69a7504513dc117419323efffd",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:e60e6561d3c433025af16a9ff84471580930df9e60ca8bb35f453ac5087f9c2d",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "line_value",
+              "type": "decimal"
+            },
+            {
+              "name": "reason",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_resolution",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_variant",
+              "type": "int"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "requested_date",
+              "type": "date"
+            },
+            {
+              "name": "delivered_date",
+              "type": "date"
+            },
+            {
+              "name": "in_window",
+              "type": "int"
+            },
+            {
+              "name": "item_on_order",
+              "type": "int"
+            },
+            {
+              "name": "share",
+              "type": "float"
+            },
+            {
+              "name": "item_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "variant_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "request_value",
+              "type": "float"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "return_window",
+            "abuse_share",
+            "care_threshold",
+            "small_value",
+            "as_of_minus_return_window_days",
+            "as_of_minus_365_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "reject_abuse",
           "file": "islands/way.reject_abuse.sql",
-          "sha256": "sha256:336510d00bbe763df711803bac0e528173b4bf69a7504513dc117419323efffd"
-        }
-      ]
-    },
-    {
-      "name": "way.to_customer_care",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/way.to_customer_care.sql",
-      "sha256": "sha256:4d9e0345d9e7acf436a79808d25dc73166fb1b8fc3ee2424fca50b4475b83ad2",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:0657b95a7aaaed311695218bd09f58e86554087211ca70e2124ca600a0e7776d",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "line_value",
+              "type": "decimal"
+            },
+            {
+              "name": "reason",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_resolution",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_variant",
+              "type": "int"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "requested_date",
+              "type": "date"
+            },
+            {
+              "name": "delivered_date",
+              "type": "date"
+            },
+            {
+              "name": "in_window",
+              "type": "int"
+            },
+            {
+              "name": "item_on_order",
+              "type": "int"
+            },
+            {
+              "name": "share",
+              "type": "float"
+            },
+            {
+              "name": "item_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "variant_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "request_value",
+              "type": "float"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "abuse_share",
+            "care_threshold",
+            "small_value",
+            "as_of_minus_return_window_days",
+            "as_of_minus_365_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "to_customer_care",
           "file": "islands/way.to_customer_care.sql",
-          "sha256": "sha256:4d9e0345d9e7acf436a79808d25dc73166fb1b8fc3ee2424fca50b4475b83ad2"
-        }
-      ]
-    },
-    {
-      "name": "way.refund_no_return",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/way.refund_no_return.sql",
-      "sha256": "sha256:c24907e3a6cbc443f7eecba1dcad8b576652241a1fc6746dc1399152189e2826",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:2b00377811693fb208b0f364972613748a3491ccafd1489af882db44b9a0e6a9",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "line_value",
+              "type": "decimal"
+            },
+            {
+              "name": "reason",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_resolution",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_variant",
+              "type": "int"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "requested_date",
+              "type": "date"
+            },
+            {
+              "name": "delivered_date",
+              "type": "date"
+            },
+            {
+              "name": "in_window",
+              "type": "int"
+            },
+            {
+              "name": "item_on_order",
+              "type": "int"
+            },
+            {
+              "name": "share",
+              "type": "float"
+            },
+            {
+              "name": "item_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "variant_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "request_value",
+              "type": "float"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "abuse_share",
+            "care_threshold",
+            "small_value",
+            "as_of_minus_return_window_days",
+            "as_of_minus_365_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "refund_no_return",
           "file": "islands/way.refund_no_return.sql",
-          "sha256": "sha256:c24907e3a6cbc443f7eecba1dcad8b576652241a1fc6746dc1399152189e2826"
-        }
-      ]
-    },
-    {
-      "name": "way.replacement_no_return",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/way.replacement_no_return.sql",
-      "sha256": "sha256:2d55b475dfde00f381a3f00571dcbd7f2305b385f9e42b07bbf7e2c86685a61b",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:dce2f2104676adce2bc7a11ba0c2cc085c27add60cbf51e80fa6f6e496e819cc",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "line_value",
+              "type": "decimal"
+            },
+            {
+              "name": "reason",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_resolution",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_variant",
+              "type": "int"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "requested_date",
+              "type": "date"
+            },
+            {
+              "name": "delivered_date",
+              "type": "date"
+            },
+            {
+              "name": "in_window",
+              "type": "int"
+            },
+            {
+              "name": "item_on_order",
+              "type": "int"
+            },
+            {
+              "name": "share",
+              "type": "float"
+            },
+            {
+              "name": "item_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "variant_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "request_value",
+              "type": "float"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "abuse_share",
+            "care_threshold",
+            "small_value",
+            "as_of_minus_return_window_days",
+            "as_of_minus_365_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "replacement_no_return",
           "file": "islands/way.replacement_no_return.sql",
-          "sha256": "sha256:2d55b475dfde00f381a3f00571dcbd7f2305b385f9e42b07bbf7e2c86685a61b"
-        }
-      ]
-    },
-    {
-      "name": "way.exchange",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/way.exchange.sql",
-      "sha256": "sha256:d564aa737eb090539cfb574a57300373f89fd07f0d5697548cf52d9313573113",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:337b70a26c9f14207af99b4d9600a23a9d586baa032a2e4f5f14eac6c228eab8",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "line_value",
+              "type": "decimal"
+            },
+            {
+              "name": "reason",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_resolution",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_variant",
+              "type": "int"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "requested_date",
+              "type": "date"
+            },
+            {
+              "name": "delivered_date",
+              "type": "date"
+            },
+            {
+              "name": "in_window",
+              "type": "int"
+            },
+            {
+              "name": "item_on_order",
+              "type": "int"
+            },
+            {
+              "name": "share",
+              "type": "float"
+            },
+            {
+              "name": "item_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "variant_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "request_value",
+              "type": "float"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "abuse_share",
+            "care_threshold",
+            "small_value",
+            "as_of_minus_return_window_days",
+            "as_of_minus_365_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "exchange",
           "file": "islands/way.exchange.sql",
-          "sha256": "sha256:d564aa737eb090539cfb574a57300373f89fd07f0d5697548cf52d9313573113"
-        }
-      ]
-    },
-    {
-      "name": "way.refund_after_return",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/way.refund_after_return.sql",
-      "sha256": "sha256:be91bc4bc88ddb171b5d4bce730d89b69b39eec3edc6ed5d3cde26474d00743e",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:1c80a32004baaa1b60b29028a2e23a15dfa65515fdc70fad23cab174be95f3f6",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "line_value",
+              "type": "decimal"
+            },
+            {
+              "name": "reason",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_resolution",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_variant",
+              "type": "int"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "requested_date",
+              "type": "date"
+            },
+            {
+              "name": "delivered_date",
+              "type": "date"
+            },
+            {
+              "name": "in_window",
+              "type": "int"
+            },
+            {
+              "name": "item_on_order",
+              "type": "int"
+            },
+            {
+              "name": "share",
+              "type": "float"
+            },
+            {
+              "name": "item_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "variant_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "request_value",
+              "type": "float"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "abuse_share",
+            "care_threshold",
+            "small_value",
+            "as_of_minus_return_window_days",
+            "as_of_minus_365_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "refund_after_return",
           "file": "islands/way.refund_after_return.sql",
-          "sha256": "sha256:be91bc4bc88ddb171b5d4bce730d89b69b39eec3edc6ed5d3cde26474d00743e"
+          "sha256": "sha256:aa10aa627bbafe18b8ad3c05ebfd1024e303ea3b9ae5e29217d1041d3e94d389",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "line_value",
+              "type": "decimal"
+            },
+            {
+              "name": "reason",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_resolution",
+              "type": "varchar"
+            },
+            {
+              "name": "requested_variant",
+              "type": "int"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "customer_email",
+              "type": "varchar"
+            },
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "requested_date",
+              "type": "date"
+            },
+            {
+              "name": "delivered_date",
+              "type": "date"
+            },
+            {
+              "name": "in_window",
+              "type": "int"
+            },
+            {
+              "name": "item_on_order",
+              "type": "int"
+            },
+            {
+              "name": "share",
+              "type": "float"
+            },
+            {
+              "name": "item_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "variant_on_hand",
+              "type": "int"
+            },
+            {
+              "name": "request_value",
+              "type": "float"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "abuse_share",
+            "care_threshold",
+            "small_value",
+            "as_of_minus_return_window_days",
+            "as_of_minus_365_days"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     }
   ],
   "transfers": [],
   "waves": [
     [
-      "received"
+      "received",
+      "request_value"
     ],
     [
-      "bought_here",
       "return_share",
-      "request_value",
-      "stock_at_center"
+      "stock_at_center",
+      "bought_here"
     ],
     [
       "way"
     ]
   ],
   "connections": [
-    "ERP"
+    "TTR_CONN_ERP"
   ],
   "displays": [],
+  "rejectSites": [],
   "recipe": {
     "name": "decide_return",
     "key": [
@@ -301,6 +1146,35 @@
         "value": "14"
       }
     ],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
+      },
+      {
+        "name": "as_of_minus_return_window_days",
+        "type": "datetime",
+        "source": "derived",
+        "derive": {
+          "base": "as_of",
+          "op": "minus",
+          "amount": "return_window",
+          "unit": "days"
+        }
+      },
+      {
+        "name": "as_of_minus_365_days",
+        "type": "datetime",
+        "source": "derived",
+        "derive": {
+          "base": "as_of",
+          "op": "minus",
+          "amount": "365",
+          "unit": "days"
+        }
+      }
+    ],
     "roles": {
       "candidates": "received",
       "contexts": [
@@ -322,7 +1196,7 @@
         {
           "name": "stock_at_center",
           "class": "per-candidate",
-          "kind": "sql"
+          "kind": "canonical"
         }
       ],
       "decision": "way",
@@ -390,8 +1264,7 @@
         "columns": {
           "line": "line_id",
           "to": "rejected"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -403,22 +1276,19 @@
         "columns": {
           "customer": "customer",
           "template": "\"return-rejected\""
-        },
-        "when": null
+        }
       },
       {
         "routes": [
           "way.to_customer_care"
         ],
-        "action": "ask",
+        "action": "decide_way",
         "columns": {
-          "who": "role.customer_care",
-          "about": "request_number",
-          "action": "set_state",
-          "group_by": "request_number",
-          "due": "3 working_days"
-        },
-        "when": null
+          "line": "line_id",
+          "request": "request_number",
+          "to": "settling",
+          "way": "\"care\""
+        }
       },
       {
         "routes": [
@@ -429,8 +1299,7 @@
           "line": "line_id",
           "to": "settling",
           "way": "refund_no_return"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -441,8 +1310,7 @@
           "line": "line_id",
           "kind": "credit_note",
           "due": "working_days(:settlement)"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -453,8 +1321,7 @@
           "line": "line_id",
           "to": "settling",
           "way": "replacement_no_return"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -465,8 +1332,7 @@
           "line": "line_id",
           "kind": "replacement",
           "due": "working_days(:settlement)"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -477,8 +1343,7 @@
           "line": "line_id",
           "to": "awaiting_goods",
           "way": "exchange"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -489,8 +1354,7 @@
           "line": "line_id",
           "to": "awaiting_goods",
           "way": "refund_after_return"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -502,8 +1366,7 @@
           "line": "line_id",
           "kind": "inbound",
           "due": "days(:inbound_reminder)"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -514,8 +1377,7 @@
         "columns": {
           "customer": "customer",
           "template": "\"return-instructions\""
-        },
-        "when": null
+        }
       }
     ],
     "kinds": [
@@ -563,32 +1425,45 @@
       "current": "decide_return_verdict_current"
     },
     "objectsRead": [
-      "er.entity.return_request_line",
-      "er.entity.return_request",
-      "er.entity.sales_line",
+      "er.entity.customer",
       "er.entity.inventory",
-      "er.entity.distribution_center"
+      "er.entity.order",
+      "er.entity.return_request",
+      "er.entity.return_request_line",
+      "er.entity.sales_line"
     ],
     "fingerprints": {
-      "text": "sha256:342e7f3ddc46a16fdd0d5fead95fac64b8f9b90a19ffbba3cbfbfe06fa1a2413",
-      "values": "sha256:9a4bb6b7dee7c6452bae47c1c16d13b8b40de10fc929b57dbfc23bd520553720"
+      "text": "sha256:75859c128c73de5c06e6b422ab3d5cf2bedd823dd286e3781530f8bf5ea60c49",
+      "values": "sha256:6c5da116527944c0c189fdfbd0c8bbdef9f549dd03079764e3f9c1c80bb1ec41",
+      "labels": "sha256:6c185bdc1cf02b6b5794516a646992039739cef8e462a97c3791c1517604f667"
     },
-    "protocol": "always"
+    "protocol": "always",
+    "actions": {
+      "decide_way": {
+        "by": "role.customer_care",
+        "due": {
+          "amount": 3,
+          "unit": "working_days"
+        }
+      }
+    }
   },
   "files": {
-    "catalog/decide_return.ttrm": "sha256:d3d33d334113a0a2466bd181bc0d6810d5e21f56ff80d3af3f976edf0ac4d38c",
-    "islands/bought_here.rows.sql": "sha256:92d2aaba4f5d6e7517dd23b81317dfe642137f2b2b552276fd0bbe2d1e274c1f",
-    "islands/received.lines.sql": "sha256:ea47814170f27029b813004c7cb7d5981ef6b63db62d2f83f2e198f3722072a1",
-    "islands/request_value.rows.sql": "sha256:bcfc4f4e37dd0d955801b956f10af7b107d0e3f68cd03623771869e5588c39bf",
-    "islands/return_share.rows.sql": "sha256:d2bc8c2093bfd59b53e45a600bfe82e3a16bea9d668542adba45dd14188ceac0",
-    "islands/stock_at_center.rows.sql": "sha256:0aa3f5db4f82f05f540fed0ff0b242c594a0f235a864540f80db44a49016d7d0",
-    "islands/way.exchange.sql": "sha256:d564aa737eb090539cfb574a57300373f89fd07f0d5697548cf52d9313573113",
-    "islands/way.refund_after_return.sql": "sha256:be91bc4bc88ddb171b5d4bce730d89b69b39eec3edc6ed5d3cde26474d00743e",
-    "islands/way.refund_no_return.sql": "sha256:c24907e3a6cbc443f7eecba1dcad8b576652241a1fc6746dc1399152189e2826",
-    "islands/way.reject_abuse.sql": "sha256:336510d00bbe763df711803bac0e528173b4bf69a7504513dc117419323efffd",
-    "islands/way.reject_late.sql": "sha256:ec6f71c17233d390cd0bfb61c28ccd6afd003cf7299e561e98ca0a2b27fb473d",
-    "islands/way.reject_not_ours.sql": "sha256:7f4dfd3e3701074046de255c4e1816de94aa070db6908d098bc5cc72d7973676",
-    "islands/way.replacement_no_return.sql": "sha256:2d55b475dfde00f381a3f00571dcbd7f2305b385f9e42b07bbf7e2c86685a61b",
-    "islands/way.to_customer_care.sql": "sha256:4d9e0345d9e7acf436a79808d25dc73166fb1b8fc3ee2424fca50b4475b83ad2"
+    "README.md": "sha256:d1b368c76e5166b3dedc046cd0a57988d146f3fcca956d000b7bfd0840fcc355",
+    "catalog/decide_return.ttrm": "sha256:f32c57a077b92028fc43ca94b81bee2d1be78ccb320d92948eada3654508357a",
+    "catalog/decide_return_verdict.ttrm": "sha256:c54e795cf8bf858ec69ab1469c61355fbcc0b929c04dd79216e7de1c80cb844c",
+    "islands/bought_here.rows.sql": "sha256:dac3064bf26438f5350f18627be813df644aca3cb71e8411f3a4157374a73831",
+    "islands/received.lines.sql": "sha256:f87626417f643ba47e3c0d183a77eca8a864cb47241e3ecc768bf81c4adf9883",
+    "islands/request_value.rows.sql": "sha256:94a265268fb165b1fbef959e7026c2693f26a20b4164427db4f121dbbcd00e9b",
+    "islands/return_share.rows.sql": "sha256:c1068102bd912643f62f2b84a6749343c934baa5dd4c7cce034c91375edc3afb",
+    "islands/stock_at_center.rows.sql": "sha256:ae7a612d3c56513b3c56c96ee38f9528dc6042019c29349985fd6ec54dc0179c",
+    "islands/way.exchange.sql": "sha256:1c80a32004baaa1b60b29028a2e23a15dfa65515fdc70fad23cab174be95f3f6",
+    "islands/way.refund_after_return.sql": "sha256:aa10aa627bbafe18b8ad3c05ebfd1024e303ea3b9ae5e29217d1041d3e94d389",
+    "islands/way.refund_no_return.sql": "sha256:dce2f2104676adce2bc7a11ba0c2cc085c27add60cbf51e80fa6f6e496e819cc",
+    "islands/way.reject_abuse.sql": "sha256:0657b95a7aaaed311695218bd09f58e86554087211ca70e2124ca600a0e7776d",
+    "islands/way.reject_late.sql": "sha256:e60e6561d3c433025af16a9ff84471580930df9e60ca8bb35f453ac5087f9c2d",
+    "islands/way.reject_not_ours.sql": "sha256:e37465f8996503d21dd8eae65e5c64c1897eec9a9fc0a27b2abfcaaef019fff8",
+    "islands/way.replacement_no_return.sql": "sha256:337b70a26c9f14207af99b4d9600a23a9d586baa032a2e4f5f14eac6c228eab8",
+    "islands/way.to_customer_care.sql": "sha256:2b00377811693fb208b0f364972613748a3491ccafd1489af882db44b9a0e6a9"
   }
 }

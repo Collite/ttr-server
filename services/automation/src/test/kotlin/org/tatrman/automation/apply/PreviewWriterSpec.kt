@@ -253,7 +253,7 @@ class PreviewWriterSpec :
         "published metadata carries structured decimal and Unicode text bounds into the writer" {
             val root = BundleFixture.copy()
             try {
-                root.edit("model/er/automation-entities.ttrm") {
+                root.edit("model/er/orders.ttrm") {
                     it +
                         """
 

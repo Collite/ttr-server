@@ -60,8 +60,8 @@ recipe {
         settlement.credit_note_issued -> expect    { line: line_id, kind: payment,      due: working_days(:settlement) }
         settlement.money_received     -> fulfil    { line: line_id, kind: payment,      to: fulfilled }
         settlement.goods_shipped      -> fulfil    { line: line_id, kind: replacement,  to: fulfilled }
-        settlement.money_overdue      -> task      { who: role.finance,   about: line_id, detail: open_obligations }
-        settlement.goods_overdue      -> task      { who: role.logistics, about: line_id, detail: open_obligations }
+        settlement.money_overdue      -> review    { who: role.finance,   about: line_id, detail: open_obligations }   // was: task
+        settlement.goods_overdue      -> review    { who: role.logistics, about: line_id, detail: open_obligations }   // was: task
         settlement.closed             -> set_state { line: line_id, to: closed }
     }
 }

@@ -38,8 +38,8 @@ import org.tatrman.automation.identity.RunAsRef as GrantRunAs
  *
  * **What refuses a commit:** a manifest that is not `schemaVersion` 3, carries no `recipe`, names another recipe
  * than its directory, or lists an island whose file is missing or whose sha256 differs; a deployment naming an
- * unknown program or a process its world does not declare, a program — its own or a step's of its process —
- * without a recipe bundle, or a target that is neither `native` nor an executor of its world; two worlds
+ * unknown program, a program
+ * without a recipe bundle, or a target that is not a declared executor of its world; two worlds
  * declaring one deployment name; a commit without an author (no deployer, D-90); and every load error of the
  * automation half —
  * a file under `automation/`, a `model world` file, an automation-validator or `ttr/automation-*` / `ttr/states-*`
@@ -106,7 +106,7 @@ class BundleLoader(
                 val name = d.qname.name
                 if (deployments.put(name, d) != null) findings += "deployment $name: declared by two worlds"
                 deploymentWorlds[name] = scope.name
-                checkDeployment(d, w, scope, recipes.keys, programs, findings)
+                checkDeployment(d, w, recipes.keys, programs, findings)
             }
         }
         for (p in programs.values) {
@@ -166,14 +166,13 @@ class BundleLoader(
     private fun checkDeployment(
         d: org.tatrman.ttr.metadata.model.WorldDeployment,
         world: World,
-        scope: WorldScope,
         recipeNames: Set<String>,
         programs: Map<String, org.tatrman.ttr.metadata.model.AutomationProgram>,
         findings: MutableList<String>,
     ) {
         val name = d.qname.name
 
-        // A program the deployment runs — its own, or a step's — must be declared and have its recipe's bundle.
+        // Grammar 0.22: every deployment names one program and an explicitly declared executor.
         fun runnable(
             p: String,
             via: String,
@@ -186,18 +185,10 @@ class BundleLoader(
                 if (r !in recipeNames) findings += "deployment $name: ${via}program $p's recipe $r has no bundle"
             }
         }
-        d.program?.let { runnable(it, "") }
-        d.process?.let { p ->
-            val process = scope.processes[p]
-            if (process == null) {
-                findings += "deployment $name: process $p is not declared in world ${scope.name}"
-            } else {
-                process.steps.forEach { step -> step.program?.let { runnable(it, "process $p step ${step.name}: ") } }
-            }
-        }
-        if (d.target != Bundle.NATIVE && world.executors.none { it.qname.name == d.target }) {
+        runnable(d.program, "")
+        if (world.executors.none { it.qname.name == d.target }) {
             findings +=
-                "deployment $name: target ${d.target} is neither native nor an executor of world ${world.qname.name}"
+                "deployment $name: target ${d.target} is not an executor of world ${world.qname.name}"
         }
     }
 
@@ -309,7 +300,14 @@ class BundleLoader(
         val file =
             runCatching { Path.of(e.file).relativeTo(root).toString() }.getOrDefault(e.file).ifBlank { e.sourceId }
         val at = if (e.line > 0) ":${e.line}" else ""
-        return "$file$at: ${e.message}"
+        // Core's model validator names CUT-nnn; expose the same cut under its public recipe diagnostic id.
+        val message =
+            if (e.message.startsWith("ttr/automation-removed")) {
+                e.message.replace(Regex("(?<!TTRP-)\\bCUT-\\d{3}\\b")) { "TTRP-${it.value}" }
+            } else {
+                e.message
+            }
+        return "$file$at: $message"
     }
 
     companion object {
@@ -341,7 +339,6 @@ class BundleLoader(
         ): WorldScope =
             WorldScope(
                 name = w.qname.name,
-                processes = w.processes.associateBy { it.qname.name },
                 identities = identities(w),
                 grants = grants(w),
                 roles =

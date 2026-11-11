@@ -1,156 +1,606 @@
 {
   "schemaVersion": 3,
   "ttrpVersion": 2,
-  "toolchain": "fixture-prebuilt",
-  "program": "release_order",
+  "toolchain": "org.tatrman:ttrp:0.22.3",
+  "program": "release_order.ttrp",
   "world": {
     "qname": "hartland.worlds.demo",
-    "fingerprint": "sha256:835a2d5eda9a64795b00aa308a222a7412a5ed40e4ff5137d000b66ddb9d1499"
+    "fingerprint": "sha256:238762e0406d5b4f05fd3f5fe1496ca0049ee6fc29e12de4916f6e6186900ff8"
   },
   "islands": [
     {
       "name": "placed_orders",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/placed_orders.orders.sql",
-      "sha256": "sha256:c2500c56830fde1f2eda8e9035ee2500e50ecce67f1a2c542512c75bc0fddd68",
+      "sha256": "sha256:87fc1d71dba0be2a03e674da6d79188432e2ec439625472e0c33201c7e640ce0",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "orders",
           "file": "islands/placed_orders.orders.sql",
-          "sha256": "sha256:c2500c56830fde1f2eda8e9035ee2500e50ecce67f1a2c542512c75bc0fddd68"
+          "sha256": "sha256:87fc1d71dba0be2a03e674da6d79188432e2ec439625472e0c33201c7e640ce0",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "channel",
+              "type": "varchar"
+            },
+            {
+              "name": "fulfilling_warehouse",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "type": "decimal"
+            },
+            {
+              "name": "placed_date",
+              "type": "date"
+            },
+            {
+              "name": "state",
+              "type": "varchar"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
       "name": "shortfall",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/shortfall.rows.sql",
-      "sha256": "sha256:9230f844e3cb4e053f6235a2016113340081015b6a13784b126e56507bc1b6e0",
+      "sha256": "sha256:33bf7ad666611282282a965431763f87285c10bce23b6747ef396ad61cc1436f",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of"
       ],
       "outputs": [
         {
           "port": "rows",
           "file": "islands/shortfall.rows.sql",
-          "sha256": "sha256:9230f844e3cb4e053f6235a2016113340081015b6a13784b126e56507bc1b6e0"
+          "sha256": "sha256:33bf7ad666611282282a965431763f87285c10bce23b6747ef396ad61cc1436f",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "line_no",
+              "type": "int"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "on_hand",
+              "type": "int"
+            },
+            {
+              "name": "outage",
+              "type": "bool"
+            },
+            {
+              "name": "short",
+              "type": "int"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
       "name": "price_differences",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/price_differences.rows.sql",
-      "sha256": "sha256:417c971f6fc57dbab21623548947cab82712cb70babe03b9b2ddb9c117ea53dc",
+      "sha256": "sha256:8242affb2c600e197f69b99c2a3b565bf8ee11040e0a337a5d404ce549bb19ad",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "tolerance"
       ],
       "outputs": [
         {
           "port": "rows",
           "file": "islands/price_differences.rows.sql",
-          "sha256": "sha256:417c971f6fc57dbab21623548947cab82712cb70babe03b9b2ddb9c117ea53dc"
+          "sha256": "sha256:8242affb2c600e197f69b99c2a3b565bf8ee11040e0a337a5d404ce549bb19ad",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "line_no",
+              "type": "int"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "list_price",
+              "type": "decimal"
+            }
+          ],
+          "params": [
+            "tolerance"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
       "name": "overdue",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/overdue.rows.sql",
-      "sha256": "sha256:3c1634be952cda14091eae0927a1fa6a844798862a4c913f87aa47428d5d9ad9",
+      "sha256": "sha256:3730c48e4975b3a5052a7e1a246a7c02f3c783c51505461e037842f503e6755a",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of"
       ],
       "outputs": [
         {
           "port": "rows",
           "file": "islands/overdue.rows.sql",
-          "sha256": "sha256:3c1634be952cda14091eae0927a1fa6a844798862a4c913f87aa47428d5d9ad9"
+          "sha256": "sha256:3730c48e4975b3a5052a7e1a246a7c02f3c783c51505461e037842f503e6755a",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "invoice_id",
+              "type": "int"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            },
+            {
+              "name": "open_amount",
+              "type": "decimal"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
-      "name": "verdict.hold_sales",
+      "name": "verdict",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/verdict.hold_sales.sql",
-      "sha256": "sha256:b63c2298c85a7f0460cc7af49ab4de0d620847f2c19cfd4edf38bc153fb73831",
+      "sha256": "sha256:6f2e6c32d0f4b992d76b62189d02f39cf5ac13f6513dc960a85b3c98740cade1",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of",
+        "tolerance",
+        "confirmation_threshold"
       ],
       "outputs": [
         {
           "port": "hold_sales",
           "file": "islands/verdict.hold_sales.sql",
-          "sha256": "sha256:b63c2298c85a7f0460cc7af49ab4de0d620847f2c19cfd4edf38bc153fb73831"
-        }
-      ]
-    },
-    {
-      "name": "verdict.hold_ar",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/verdict.hold_ar.sql",
-      "sha256": "sha256:ab3402f1de926cde649008667d6c55e9ed47e84ea184a0abbd78083ee73b8934",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:6f2e6c32d0f4b992d76b62189d02f39cf5ac13f6513dc960a85b3c98740cade1",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "channel",
+              "type": "varchar"
+            },
+            {
+              "name": "fulfilling_warehouse",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "type": "decimal"
+            },
+            {
+              "name": "placed_date",
+              "type": "date"
+            },
+            {
+              "name": "state",
+              "type": "varchar"
+            },
+            {
+              "name": "n_short",
+              "type": "int"
+            },
+            {
+              "name": "n_price",
+              "type": "int"
+            },
+            {
+              "name": "n_due",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of",
+            "tolerance"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "hold_ar",
           "file": "islands/verdict.hold_ar.sql",
-          "sha256": "sha256:ab3402f1de926cde649008667d6c55e9ed47e84ea184a0abbd78083ee73b8934"
-        }
-      ]
-    },
-    {
-      "name": "verdict.release_confirmed",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/verdict.release_confirmed.sql",
-      "sha256": "sha256:61f29cf57612526090d42ddd1175f81a6572bc04dc1a9841eed2ed1770f29d44",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:672ef62fc6db7f80406932ca709148c63e2148daf023f5909732cbe637ec8c73",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "channel",
+              "type": "varchar"
+            },
+            {
+              "name": "fulfilling_warehouse",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "type": "decimal"
+            },
+            {
+              "name": "placed_date",
+              "type": "date"
+            },
+            {
+              "name": "state",
+              "type": "varchar"
+            },
+            {
+              "name": "n_short",
+              "type": "int"
+            },
+            {
+              "name": "n_price",
+              "type": "int"
+            },
+            {
+              "name": "n_due",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of",
+            "tolerance"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "release_confirmed",
           "file": "islands/verdict.release_confirmed.sql",
-          "sha256": "sha256:61f29cf57612526090d42ddd1175f81a6572bc04dc1a9841eed2ed1770f29d44"
-        }
-      ]
-    },
-    {
-      "name": "verdict.release",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/verdict.release.sql",
-      "sha256": "sha256:df5d4c28a6a447e16bf612e94710b57d835f9a48a3a2a5c92419a293b6a6f66d",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "sha256": "sha256:d78804520394d11aa67c546e504cb65b80c44969521a7d2c5368c8c7f20c8e82",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "channel",
+              "type": "varchar"
+            },
+            {
+              "name": "fulfilling_warehouse",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "type": "decimal"
+            },
+            {
+              "name": "placed_date",
+              "type": "date"
+            },
+            {
+              "name": "state",
+              "type": "varchar"
+            },
+            {
+              "name": "n_short",
+              "type": "int"
+            },
+            {
+              "name": "n_price",
+              "type": "int"
+            },
+            {
+              "name": "n_due",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of",
+            "tolerance",
+            "confirmation_threshold"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
         {
           "port": "release",
           "file": "islands/verdict.release.sql",
-          "sha256": "sha256:df5d4c28a6a447e16bf612e94710b57d835f9a48a3a2a5c92419a293b6a6f66d"
+          "sha256": "sha256:1367b24244239242e24d0d310b143b1a2db379f4774f5bbf36faf6c458bc0307",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "channel",
+              "type": "varchar"
+            },
+            {
+              "name": "fulfilling_warehouse",
+              "type": "int"
+            },
+            {
+              "name": "value",
+              "type": "decimal"
+            },
+            {
+              "name": "placed_date",
+              "type": "date"
+            },
+            {
+              "name": "state",
+              "type": "varchar"
+            },
+            {
+              "name": "n_short",
+              "type": "int"
+            },
+            {
+              "name": "n_price",
+              "type": "int"
+            },
+            {
+              "name": "n_due",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of",
+            "tolerance",
+            "confirmation_threshold"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
+        {
+          "port": "hold_sales.shortfall",
+          "file": "islands/verdict.hold_sales.shortfall.sql",
+          "sha256": "sha256:cbc4b468f8e3ebde52638e20c545f27f38faba19507a4174d49fc3b110c31343",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "line_no",
+              "type": "int"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "on_hand",
+              "type": "int"
+            },
+            {
+              "name": "outage",
+              "type": "bool"
+            },
+            {
+              "name": "short",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "context",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of",
+            "tolerance"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
+        {
+          "port": "hold_sales.price_differences",
+          "file": "islands/verdict.hold_sales.price_differences.sql",
+          "sha256": "sha256:4399144de22dd38ec0649984e072a1e6d85d8b20f56a83f79db21297cbfbf31c",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "line_no",
+              "type": "int"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "unit_price",
+              "type": "decimal"
+            },
+            {
+              "name": "list_price",
+              "type": "decimal"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "context",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "tolerance",
+            "as_of"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
+        },
+        {
+          "port": "hold_ar.overdue",
+          "file": "islands/verdict.hold_ar.overdue.sql",
+          "sha256": "sha256:7e99929eee2b0647d40d57ef97aab74de92117dc3bcf46af1af506ae45b5aade",
+          "columns": [
+            {
+              "name": "order_number",
+              "type": "text"
+            },
+            {
+              "name": "invoice_id",
+              "type": "int"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            },
+            {
+              "name": "open_amount",
+              "type": "decimal"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "context",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of",
+            "tolerance"
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     }
   ],
   "transfers": [],
@@ -159,18 +609,19 @@
       "placed_orders"
     ],
     [
-      "shortfall",
       "price_differences",
-      "overdue"
+      "overdue",
+      "shortfall"
     ],
     [
       "verdict"
     ]
   ],
   "connections": [
-    "ERP"
+    "TTR_CONN_ERP"
   ],
   "displays": [],
+  "rejectSites": [],
   "recipe": {
     "name": "release_order",
     "key": [
@@ -190,13 +641,20 @@
         "value": "50000"
       }
     ],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
+      }
+    ],
     "roles": {
       "candidates": "placed_orders",
       "contexts": [
         {
           "name": "shortfall",
           "class": "per-candidate",
-          "kind": "sql"
+          "kind": "canonical"
         },
         {
           "name": "price_differences",
@@ -241,8 +699,7 @@
           "turnFed": false
         }
       ],
-      "switchMode": "overlapping",
-      "elseRoute": null
+      "switchMode": "overlapping"
     },
     "wiring": [
       {
@@ -252,21 +709,17 @@
         "action": "release",
         "columns": {
           "order": "order_number"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
           "verdict.release_confirmed"
         ],
-        "action": "ask",
+        "action": "release_confirmed",
         "columns": {
-          "who": "role.sales_manager",
-          "about": "order_number",
-          "action": "release",
-          "due": "2 working_days"
-        },
-        "when": null
+          "order": "order_number",
+          "value": "value"
+        }
       },
       {
         "routes": [
@@ -276,8 +729,7 @@
         "columns": {
           "order": "order_number",
           "department": "\"Sales\""
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -287,8 +739,7 @@
         "columns": {
           "who": "role.sales",
           "detail": "shortfall, price_differences"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -298,8 +749,7 @@
         "columns": {
           "order": "order_number",
           "department": "\"AR\""
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -309,8 +759,7 @@
         "columns": {
           "who": "role.ar",
           "detail": "overdue"
-        },
-        "when": null
+        }
       }
     ],
     "kinds": [
@@ -358,27 +807,44 @@
       "current": "release_order_verdict_current"
     },
     "objectsRead": [
-      "er.entity.order",
-      "er.entity.sales_line",
+      "er.entity.customer_price",
       "er.entity.inventory",
       "er.entity.invoice",
-      "er.entity.price_list"
+      "er.entity.order",
+      "er.entity.price_list",
+      "er.entity.sales_line",
+      "er.entity.warehouse_outage"
     ],
     "fingerprints": {
-      "text": "sha256:76049a8677a1a57d5264ddbff9ba57037c74eabef4963e0d2ed7d89111da959f",
-      "values": "sha256:6c63016f02df4d40daf1b4cdb247c36d5ec8dad2633083a0608265710d03e126"
+      "text": "sha256:71b8844953389b79bc5782fa7b7506cc413ccb5d9bc195bf44443d452cd13f4a",
+      "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
+      "labels": "sha256:de56d2e3195bd50fe40bfa34acd0e782a61aa8ec6c8b6ba67d868d218ac256f9"
     },
-    "protocol": "always"
+    "protocol": "always",
+    "actions": {
+      "release_confirmed": {
+        "by": "role.sales_manager",
+        "due": {
+          "amount": 2,
+          "unit": "working_days"
+        }
+      }
+    }
   },
   "files": {
-    "catalog/release_order.ttrm": "sha256:eee5cc3f69ae690e7f4ed0b4f793067d41ccf4828afd58b4edcdbe8359f4f4a2",
-    "islands/overdue.rows.sql": "sha256:3c1634be952cda14091eae0927a1fa6a844798862a4c913f87aa47428d5d9ad9",
-    "islands/placed_orders.orders.sql": "sha256:c2500c56830fde1f2eda8e9035ee2500e50ecce67f1a2c542512c75bc0fddd68",
-    "islands/price_differences.rows.sql": "sha256:417c971f6fc57dbab21623548947cab82712cb70babe03b9b2ddb9c117ea53dc",
-    "islands/shortfall.rows.sql": "sha256:9230f844e3cb4e053f6235a2016113340081015b6a13784b126e56507bc1b6e0",
-    "islands/verdict.hold_ar.sql": "sha256:ab3402f1de926cde649008667d6c55e9ed47e84ea184a0abbd78083ee73b8934",
-    "islands/verdict.hold_sales.sql": "sha256:b63c2298c85a7f0460cc7af49ab4de0d620847f2c19cfd4edf38bc153fb73831",
-    "islands/verdict.release.sql": "sha256:df5d4c28a6a447e16bf612e94710b57d835f9a48a3a2a5c92419a293b6a6f66d",
-    "islands/verdict.release_confirmed.sql": "sha256:61f29cf57612526090d42ddd1175f81a6572bc04dc1a9841eed2ed1770f29d44"
+    "README.md": "sha256:bf0c431f1a7cfbfbf095b11e6be391d0a63005a546b7f649f701bc4953385edc",
+    "catalog/release_order.ttrm": "sha256:3f9b07a9697534c9a921517892fb751a1902ef3bfc5ba0d9cd30b826fbc0f0ff",
+    "catalog/release_order_verdict.ttrm": "sha256:d712784b1a7c108b5415648dc3e93e2f3f7b01ce847952c156d6098ccf7c3e5a",
+    "islands/overdue.rows.sql": "sha256:3730c48e4975b3a5052a7e1a246a7c02f3c783c51505461e037842f503e6755a",
+    "islands/placed_orders.orders.sql": "sha256:87fc1d71dba0be2a03e674da6d79188432e2ec439625472e0c33201c7e640ce0",
+    "islands/price_differences.rows.sql": "sha256:8242affb2c600e197f69b99c2a3b565bf8ee11040e0a337a5d404ce549bb19ad",
+    "islands/shortfall.rows.sql": "sha256:33bf7ad666611282282a965431763f87285c10bce23b6747ef396ad61cc1436f",
+    "islands/verdict.hold_ar.overdue.sql": "sha256:7e99929eee2b0647d40d57ef97aab74de92117dc3bcf46af1af506ae45b5aade",
+    "islands/verdict.hold_ar.sql": "sha256:672ef62fc6db7f80406932ca709148c63e2148daf023f5909732cbe637ec8c73",
+    "islands/verdict.hold_sales.price_differences.sql": "sha256:4399144de22dd38ec0649984e072a1e6d85d8b20f56a83f79db21297cbfbf31c",
+    "islands/verdict.hold_sales.shortfall.sql": "sha256:cbc4b468f8e3ebde52638e20c545f27f38faba19507a4174d49fc3b110c31343",
+    "islands/verdict.hold_sales.sql": "sha256:6f2e6c32d0f4b992d76b62189d02f39cf5ac13f6513dc960a85b3c98740cade1",
+    "islands/verdict.release.sql": "sha256:1367b24244239242e24d0d310b143b1a2db379f4774f5bbf36faf6c458bc0307",
+    "islands/verdict.release_confirmed.sql": "sha256:d78804520394d11aa67c546e504cb65b80c44969521a7d2c5368c8c7f20c8e82"
   }
 }
