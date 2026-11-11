@@ -130,7 +130,9 @@ class Apply(
             try {
                 lowering.unwritable(rows, input.source.writable[storage].orEmpty())
             } catch (e: RowRefusal) {
-                rows
+                // A target the pinned metadata does not know: no door call, and the true code, not `not-writable`.
+                done(rows.map { RowOutcome(it.seq, "failed", e.code) })
+                return out
             }
         if (refused.isNotEmpty()) {
             val bad = refused.map { it.seq }.toSet()
