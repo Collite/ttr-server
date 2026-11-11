@@ -128,14 +128,22 @@ class StoreClient:
 
     def find_similar(self, notebook_id: str, query: str, node_kinds: list[str], k: int) -> ContextResult:
         """`POST /findSimilar` — vector similarity inside ONE mart (docwh-store `FindSimilarRequestDto`: `notebookId`
-        and `query` required; a blank mart is a 400). Answers `ContextResult`; a page hit carries `pageId`, the page's
-        concept is on `GET /pages/{id}` ([page])."""
+        and `query` required, no defaults). Answers `ContextResult`; a page hit carries `pageId` and its cosine as
+        `score`, the page's concept is on `GET /pages/{id}` ([page]). A blank mart or query is refused here, before
+        the wire: the DX dump would drop it and the route answer a bare `400` (review-244 F5)."""
+        if not notebook_id.strip() or not query.strip():
+            raise ValueError("store/find-similar-blank: notebookId and query are required")
         body = SimilarRequest(notebook_id=notebook_id, query=query, node_kinds=node_kinds, k=k).dump()
         return ContextResult.model_validate(self._ok(self._http.post("/findSimilar", json=body)))
 
     def page(self, page_id: int, notebook_id: str) -> Page:
-        """`GET /pages/{id}?notebookId=` — proto `Page`; a page outside the mart is a 404, as a missing one."""
-        return Page.model_validate(self._ok(self._http.get(f"/pages/{page_id}", params={"notebookId": notebook_id})))
+        """`GET /pages/{id}?notebookId=` — proto `Page`; a page outside the mart is a 404, as a missing one. A page
+        other than the one asked for is refused, as `get_unit` refuses another unit (review-244 F3)."""
+        r = self._http.get(f"/pages/{page_id}", params={"notebookId": notebook_id})
+        page = Page.model_validate(self._ok(r))
+        if page.id != page_id:
+            raise StoreError(r.status_code, "store/page-mismatch", f"GET /pages/{page_id} answered page {page.id}")
+        return page
 
     def sources_of_document(self, document_id: str) -> list[dict[str, Any]]:
         """`GET /sources?documentId=` as the service identity: every version, each with its mart (`notebookId`, see

@@ -127,8 +127,8 @@ class FakeWarehouse:
         self.lemmas.update({entry["unitId"]: entry for entry in lemmas})
 
     def find_similar(self, notebook_id: str, query: str, node_kinds: list[str], k: int) -> ContextResult:
-        if not notebook_id:  # docwh-store Routes.kt: `notebook_id required`
-            raise StoreError(400, "notebook_id required", "")
+        if not notebook_id.strip() or not query.strip():  # as StoreClient.find_similar refuses it, before the wire
+            raise ValueError("store/find-similar-blank: notebookId and query are required")
         self.similar_calls.append({"notebookId": notebook_id, "query": query, "nodeKinds": node_kinds, "k": k})
         return ContextResult.model_validate({"chunks": self.similar[:k], "grounded": bool(self.similar)})
 

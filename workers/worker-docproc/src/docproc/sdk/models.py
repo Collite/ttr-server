@@ -346,7 +346,8 @@ class Source(DxModel):
 
 
 class ListSourcesRequest(DxModel):
-    """`GET /sources` query: a document's versions (the service identity names no mart)."""
+    """`GET /sources` query: a document's versions (the service identity names no mart). The request half of the
+    listSources.json fixture, decoded in test_contracts; `StoreClient.sources_of_document` builds its query by hand."""
 
     document_id: str = ""
     version: str | None = None
@@ -354,7 +355,8 @@ class ListSourcesRequest(DxModel):
 
 
 class ListSourcesResponse(DxModel):
-    """`GET /sources` — newest `metadata.recordedAt` first; no source is `{}` on the wire (an empty list is absent)."""
+    """`GET /sources` — newest `metadata.recordedAt` first; no source is `{}` on the wire (an empty list is absent).
+    Decoded in test_contracts; the client still returns the raw source dicts, which `diff` reads (review-244 cleanup)."""
 
     sources: list[Source] = []
     messages: list[ResponseMessage] = []
@@ -370,7 +372,8 @@ class SimilarRequest(DxModel):
 
 
 class GetPageRequest(DxModel):
-    """`GET /pages/{id}?notebookId=` (proto `GetPageRequest`)."""
+    """`GET /pages/{id}?notebookId=` (proto `GetPageRequest`). The request half of the page.json fixture, decoded in
+    test_contracts; `StoreClient.page` builds its path and query by hand."""
 
     page_id: int = 0
     notebook_id: str = ""
@@ -406,9 +409,11 @@ class ContextChunk(DxModel):
 
 
 class ContextResult(DxModel):
-    """`POST /findSimilar`'s answer (docwh-store `ContextResponseDto`): nothing similar is `chunks: []`."""
+    """`POST /findSimilar`'s answer (docwh-store `ContextResponseDto`): nothing similar is `chunks: []`. The route
+    always writes `chunks` (ktor JSON), so it is required here: an answer without it is a drifted shape, refused,
+    never read as "no candidates" (review-244 F3). Unknown keys stay tolerated, so the route may add fields."""
 
-    chunks: list[ContextChunk] = []
+    chunks: list[ContextChunk]
     grounded: bool = False
 
 
