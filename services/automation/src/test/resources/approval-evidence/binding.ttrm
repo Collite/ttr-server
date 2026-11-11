@@ -1,4 +1,21 @@
 package hartland
 model binding
+
 def er2db_entity order_map { entity: er.entity.order, target: { table: db.dbo.sales_order } }
 def er2db_attribute number_map { attribute: er.entity.order.order_number, target: { column: db.dbo.sales_order.order_number } }
+def er2db_attribute customer_map { attribute: er.entity.order.customer, target: { column: db.dbo.sales_order.customer } }
+def er2db_attribute value_map { attribute: er.entity.order.value, target: { column: db.dbo.sales_order.value } }
+def er2db_attribute held_for_map { attribute: er.entity.order.held_for, target: { column: db.dbo.sales_order.held_for } }
+def er2db_attribute state_map { attribute: er.entity.order.state, target: { column: db.dbo.sales_order.state } }
+
+def er2db_entity customer_map { entity: er.entity.customer, target: { table: db.dbo.customer } }
+def er2db_attribute customer_sk_map { attribute: er.entity.customer.sk, target: { column: db.dbo.customer.sk } }
+def er2db_attribute customer_email_map { attribute: er.entity.customer.email, target: { column: db.dbo.customer.email } }
+
+def er2db_entity return_request_line_map { entity: er.entity.return_request_line, target: { table: db.dbo.return_request_line } }
+def er2db_attribute return_request_line_line_id_map { attribute: er.entity.return_request_line.line_id, target: { column: db.dbo.return_request_line.line_id } }
+def er2db_attribute return_request_line_request_number_map { attribute: er.entity.return_request_line.request_number, target: { column: db.dbo.return_request_line.request_number } }
+def er2db_attribute return_request_line_customer_map { attribute: er.entity.return_request_line.customer, target: { column: db.dbo.return_request_line.customer } }
+def er2db_attribute return_request_line_quantity_map { attribute: er.entity.return_request_line.quantity, target: { column: db.dbo.return_request_line.quantity } }
+def er2db_attribute return_request_line_way_map { attribute: er.entity.return_request_line.way, target: { column: db.dbo.return_request_line.way } }
+def er2db_attribute return_request_line_state_map { attribute: er.entity.return_request_line.state, target: { column: db.dbo.return_request_line.state } }

@@ -6,3 +6,8 @@ the exporters publish them, this service ships the two the hartland world's firs
 `n8n_l1` — transcribed to JSON. A world executor whose type is not here gets a `refused` cell naming the unknown
 type. `family` is the key an action's `sinks:` uses for the type (`n8n: door`); an action without one falls back to
 its `native:` sink kind, which the type's `sinks` must list (else `TTRP-TGT-003`).
+
+The built-in native executor on grammar 0.22 accepts ports `none`, `key`, `keys`
+and only sinks `transition`, `writer`, `obligation`. Removed event ports and
+process-engine sinks are refused; the registry checks native sinks against this
+manifest even when the action names its native sink explicitly.

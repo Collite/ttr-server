@@ -3,6 +3,7 @@ package org.tatrman.automation.bundle
 
 import org.tatrman.ttr.metadata.model.AutomationColumn
 import org.tatrman.ttr.metadata.model.AutomationDuration
+import org.tatrman.ttr.metadata.model.AutomationSet
 import org.tatrman.ttr.metadata.model.ErSchema
 import org.tatrman.ttr.metadata.model.LocalizedText
 import org.tatrman.ttr.metadata.source.FileBasedSource
@@ -27,8 +28,15 @@ fun legacyPreviewMetadata(bundle: Bundle): org.tatrman.automation.apply.PreviewM
                 bundle.model.schemas + ("er" to schema.copy(entities = schema.entities + er.entities)),
         )
     val actions = bundle.actions.filterKeys { it !in setOf("release_confirmed", "decide_way") }.toMutableMap()
+    // Projection tests use a surviving native sink with an omitted optional assignment, hence no effect rows.
+    val projectionOnly = AutomationColumn("projection_only", "text", optional = true)
     for (name in listOf("notify", "notify_customer")) {
-        actions[name] = actions.getValue(name).copy(sinks = mapOf("native" to "deliver"))
+        actions[name] =
+            actions.getValue(name).copy(
+                columns = actions.getValue(name).columns + projectionOnly,
+                set = AutomationSet("order.held_for", "projection_only"),
+                sinks = mapOf("native" to "transition"),
+            )
     }
     val prototype = actions.getValue("notify")
     actions["ask"] =
@@ -42,8 +50,9 @@ fun legacyPreviewMetadata(bundle: Bundle): org.tatrman.automation.apply.PreviewM
                     AutomationColumn("about", "text"),
                     AutomationColumn("action", "action"),
                     AutomationColumn("detail", "rows", optional = true),
+                    projectionOnly,
                 ),
-            sinks = mapOf("native" to "task"),
+            sinks = mapOf("native" to "transition"),
             approval = "required",
             deliverable = false,
             due = AutomationDuration(2.0, "working_days"),
@@ -62,8 +71,8 @@ fun legacyPreviewMetadata(bundle: Bundle): org.tatrman.automation.apply.PreviewM
             internalId = "typed-preview-start",
             qname = prototype.qname.copy(name = "start"),
             properties = emptyList(),
-            columns = listOf(AutomationColumn("process", "text")),
-            sinks = mapOf("native" to "start"),
+            columns = listOf(AutomationColumn("process", "text"), projectionOnly),
+            sinks = mapOf("native" to "transition"),
             deliverable = false,
             dryRun = LocalizedText.EMPTY,
         )

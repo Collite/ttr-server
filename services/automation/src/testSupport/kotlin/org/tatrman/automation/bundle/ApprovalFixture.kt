@@ -29,10 +29,19 @@ object ApprovalFixture {
 
         copyFixtureTree(Path.of("src/test/resources/bundles/hartland"), root)
         // Writer cases deliberately use their small target schema, not every required column of the hero model.
-        root.resolve("model/er").toFile().deleteRecursively()
-        Files.createDirectories(root.resolve("model/er"))
-        Files.copy(base.resolve("model.ttrm"), root.resolve("model/er/orders.ttrm"))
+        for ((directory, source, target) in listOf(
+            Triple("er", "model.ttrm", "orders.ttrm"),
+            Triple("binding", "binding.ttrm", "er2db.ttrm"),
+            Triple("db", "db.ttrm", "orders.ttrm"),
+        )) {
+            val destination = root.resolve("model/$directory")
+            destination.toFile().deleteRecursively()
+            Files.createDirectories(destination)
+            Files.copy(base.resolve(source), destination.resolve(target))
+        }
         if (generatedIds) {
+            Files.copy(resource.resolve("binding.ttrm"), root.resolve("model/binding/proposal.ttrm"))
+            Files.copy(resource.resolve("db.ttrm"), root.resolve("model/db/proposal.ttrm"))
             Files.copy(
                 resource.resolve("proposal.ttrm"),
                 root.resolve("model/er/proposal.ttrm"),

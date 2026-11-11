@@ -7,6 +7,7 @@ import org.tatrman.automation.bundle.ApprovalFixture
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -328,6 +329,9 @@ class DescriptorSpec :
                 response.status shouldBe HttpStatusCode.UnprocessableEntity
                 response.errorCode(response.bodyAsText()) shouldBe "bundle-invalid"
                 response.bodyAsText() shouldContain "TTRP-CUT-001"
+                response.bodyAsText() shouldContain "TTRP-CUT-002"
+                response.bodyAsText() shouldNotContain "(CUT-"
+                response.bodyAsText() shouldNotContain "is not an executor"
                 bundles.served shouldBe served
                 bundles.refreshFailed shouldBe true
             }

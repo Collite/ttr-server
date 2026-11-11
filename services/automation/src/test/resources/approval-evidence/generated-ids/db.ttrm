@@ -1,0 +1,12 @@
+package hartland
+model db schema dbo
+
+def table reorder_proposal {
+    primaryKey: [proposal_id]
+    columns: [
+        def column proposal_id { type: bigint, isKey: true },
+        def column item { type: text },
+        def column run { type: text },
+        def column state { type: text }
+    ]
+}

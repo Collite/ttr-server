@@ -26,7 +26,7 @@ class BundleLoaderSpec :
     StringSpec({
         "the hartland fixture loads: four recipes, eight programs, eleven deployments, the identity, four grants" {
             val b = BundleFixture.load()
-            b.warnings.filterNot { "ttr/unimported-reference" in it }.shouldBeEmpty()
+            b.warnings.shouldBeEmpty()
             b.recipes.keys shouldBe setOf("decide_return", "monitor_inbound", "release_order", "settle")
             b.programs.keys shouldBe
                 setOf(
@@ -54,6 +54,43 @@ class BundleLoaderSpec :
             b.id shouldBe "served:master@0123456789ab"
             b.author shouldBe "po"
             b.loadedAt shouldBe BundleFixture.LOADED_AT
+        }
+
+        "a genuinely missing role remains an unimported-reference warning" {
+            val root = BundleFixture.copy()
+            root.edit("model/er/calendar.ttrm") { it.replace("roles: [dimension]", "roles: [nonexistent_role]") }
+            BundleFixture.load(root).warnings.any {
+                "ttr/unimported-reference" in it && "nonexistent_role" in it
+            } shouldBe true
+        }
+
+        "pre-cut deployment findings are distinct and do not repeat the native pseudo-target check" {
+            val root = BundleFixture.copy()
+            java.nio.file.Files.copy(
+                java.nio.file.Path
+                    .of("src/test/resources/pre-cut/world.ttrm"),
+                root.resolve("model/worlds/demo.ttrm"),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+            val findings = shouldThrow<BundleInvalidException> { BundleFixture.load(root) }.diagnostics
+            findings.distinct() shouldBe findings
+            findings.any { "TTRP-CUT-004" in it } shouldBe true
+            findings.none { "is not an executor" in it } shouldBe true
+        }
+
+        "every writer evidence variant loads with zero model warnings" {
+            for (variant in listOf("base", "unqualified", "generated-ids", "obligations", "conflict", "fulfilment")) {
+                val root =
+                    ApprovalFixture.copyTo(
+                        BundleFixture.copy(),
+                        unqualified = variant == "unqualified",
+                        generatedIds = variant == "generated-ids",
+                        obligations = variant in setOf("obligations", "conflict"),
+                        obligationConflict = variant == "conflict",
+                        fulfilment = variant == "fulfilment",
+                    )
+                BundleFixture.load(root).warnings.shouldBeEmpty()
+            }
         }
 
         "a recipe's islands are read into memory, the decision's route islands included" {

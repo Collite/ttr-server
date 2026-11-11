@@ -26,7 +26,7 @@ for recipe in release_order decide_return monitor_inbound settle; do
     cp -R "$scratch/out/$recipe/$recipe.bundle" "$fixture/automation/$recipe/"
 done
 
-# Evidence-bearing writer cases use the same reader model with a dedicated action declaration.
+# Evidence-bearing writer cases use their own ER, binding and database slice.
 evidence="$fixture/../../approval-evidence"
 for variant in base generated-ids obligations conflict fulfilment unqualified; do
     resource="$evidence/$variant"
@@ -35,13 +35,17 @@ for variant in base generated-ids obligations conflict fulfilment unqualified; d
     input="$scratch/$variant"
     mkdir -p "$input/models/hartland/automation"
     cp -R "$fixture/model/." "$input/models/hartland/"
-    rm -rf "$input/models/hartland/er"
-    mkdir -p "$input/models/hartland/er"
+    rm -rf "$input/models/hartland/er" "$input/models/hartland/binding" "$input/models/hartland/db"
+    mkdir -p "$input/models/hartland/er" "$input/models/hartland/binding" "$input/models/hartland/db"
     cp "$evidence/model.ttrm" "$input/models/hartland/er/orders.ttrm"
+    cp "$evidence/binding.ttrm" "$input/models/hartland/binding/er2db.ttrm"
+    cp "$evidence/db.ttrm" "$input/models/hartland/db/orders.ttrm"
     cp "$fixture/automation/"*.ttrm "$input/models/hartland/automation/"
     cp "$resource/automation.ttrm" "$input/models/hartland/automation/automation.ttrm"
     if [ "$variant" = generated-ids ]; then
         cp "$resource/proposal.ttrm" "$input/models/hartland/er/proposal.ttrm"
+        cp "$resource/binding.ttrm" "$input/models/hartland/binding/proposal.ttrm"
+        cp "$resource/db.ttrm" "$input/models/hartland/db/proposal.ttrm"
     fi
     source="$resource/release_order.ttrp"
     [ "$variant" != unqualified ] || source="$evidence/release_order.ttrp"
@@ -60,7 +64,10 @@ approvals="$evidence/fulfilment/approvals.json"
 text_fp="$(awk -F '"' '/"text": "sha256:/ { print $4; exit }' "$manifest")"
 values_fp="$(awk -F '"' '/"values": "sha256:/ { print $4; exit }' "$manifest")"
 superseded="$(awk -F '"' '/"supersededText"/ { print $4 }' "$approvals")"
-test -n "$text_fp" && test -n "$values_fp" && test "$text_fp" != "$superseded"
+[ -n "$text_fp" ] || { echo "no text fingerprint in $manifest" >&2; exit 1; }
+[ -n "$values_fp" ] || { echo "no values fingerprint in $manifest" >&2; exit 1; }
+[ -n "$superseded" ] || { echo "no superseded text fingerprint in $approvals" >&2; exit 1; }
+[ "$text_fp" != "$superseded" ] || { echo "text fingerprint is still superseded in $manifest" >&2; exit 1; }
 cat > "$approvals" <<EOF
 {
   "recipe": "release_order",

@@ -4,6 +4,7 @@ package org.tatrman.automation.bundle
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
+import io.kotest.matchers.string.shouldContain
 
 /**
  * AU-server S0.2 T3 — the registry grid (D-35) over the hartland world: native runs everything; n8n runs the
@@ -44,6 +45,26 @@ class RegistrySpec :
                 grid.getValue(d).targetType shouldBe "native"
             }
             grid.getValue("release_native_morning").mode shouldBe "batch"
+        }
+
+        "the native manifest refuses a removed deliver sink even when explicitly selected" {
+            builtin.getValue("native").ports shouldBe listOf("none", "key", "keys")
+            builtin.getValue("native").sinks.keys shouldBe setOf("transition", "writer", "obligation")
+            val loaded = bundle.recipes.getValue("release_order")
+            val removed =
+                loaded.coverage.actions
+                    .getValue("release")
+                    .copy(sinks = mapOf("native" to "deliver"))
+            val recipe =
+                loaded.copy(
+                    recipe = loaded.recipe.copy(wiring = loaded.recipe.wiring.filter { it.action == "release" }),
+                    coverage = loaded.coverage.copy(actions = mapOf("release" to removed)),
+                )
+            val stale = bundle.copy(recipes = bundle.recipes + ("release_order" to recipe))
+            Registry(builtin).cell(stale, stale.deployments.getValue("release_native_event")).let { cell ->
+                cell.status shouldBe Registry.REFUSED
+                cell.reason!! shouldContain "action release (sink deliver"
+            }
         }
 
         "n8n runs release_order with notes for the writer and typed approval action" {

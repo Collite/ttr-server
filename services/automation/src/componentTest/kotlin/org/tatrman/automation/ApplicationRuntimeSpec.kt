@@ -197,7 +197,7 @@ class ApplicationRuntimeSpec :
             }
         }
 
-        "governed preview close/restart [AU-D3-1; S3.1]".config(enabled = false) {
+        "production runtime preserves a governed preview through close and restart" {
             val f = fixture()
             try {
                 lateinit var closed: String
@@ -345,7 +345,7 @@ class ApplicationRuntimeSpec :
             }
         }
 
-        "budget close with engine audit row [AU-D3-1; S3.1]".config(enabled = false) {
+        "mounted close after the original budget refuses without sealing or changing the preview" {
             val f = fixture()
             try {
                 f.api(batchBudget = "15s") { _ ->
@@ -375,7 +375,7 @@ class ApplicationRuntimeSpec :
             }
         }
 
-        "retention with engine audit row [AU-D3-1; S3.1]".config(enabled = false) {
+        "mounted maintenance releases a closed run after configured grace and preserves another prefix" {
             val f = fixture()
             try {
                 f.api(graceHours = 0) { _ ->

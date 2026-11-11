@@ -146,15 +146,6 @@
           "order": "order_number",
           "department": "\"Sales\""
         }
-      },
-      {
-        "routes": [
-          "verdict.release"
-        ],
-        "action": "audit_state",
-        "columns": {
-          "state": "\"open\""
-        }
       }
     ],
     "kinds": [
@@ -205,7 +196,7 @@
       "er.entity.order"
     ],
     "fingerprints": {
-      "text": "sha256:75f856a7e6f215cba8ccef5789b60f5d9fd62689f19771b5c148a6996c3a44ec",
+      "text": "sha256:669f69f3ba18a24ee25619e795d55039cfe910e26d9e20b92ebe42a9db283fc5",
       "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
       "labels": "sha256:bcf48e2c164b2a0175b5c310c4d8b77541a13ffcd1e6aee76b495b316a9f454b"
     },
@@ -216,17 +207,16 @@
         "hartland",
         "hartland.automation"
       ],
-      "textBase": "sha256:8bbfe960f6f64fa4a3f92a1c9c06ca1e618b00444db95436a69704341b026286",
+      "textBase": "sha256:7428a7a03dd1acc2064d8ea0ead974a7be8defdb79487a1ce96ca884bb32880e",
       "actions": {
-        "audit_state": "sha256:04aa9389415f1ccfb8e6c243d3fc9e732b0e20394af0cc5c41551a4fe8f351cb",
         "hold": "sha256:609a9e29ea8652f35e7ee6de8d664336be186d326a9b5d5191299008cb67acb5",
         "release": "sha256:d3ec475aa4de523f17414f89a47e9c22adcddd28013a40a1142397d9a953cb40"
       }
     }
   },
   "files": {
-    "README.md": "sha256:f7daf3a20518a62fbdf78afad7e795f54601b8238f477f4addff77a675b3777a",
-    "catalog/release_order.ttrm": "sha256:25525b40b9893994d9d5046d0025adb528b953ec3edf1d04f747a361d1352170",
+    "README.md": "sha256:99b0dc05efcac197a1af06b0a055ad6e0500c6e5a2366ecdb7e12953f01a4878",
+    "catalog/release_order.ttrm": "sha256:fec65e3ff5dcf9f8cc47004d245da1bdca7d74fb165a3f46da147a1dcba4af7a",
     "catalog/release_order_verdict.ttrm": "sha256:5897c3941df62fe1bf094f92d514e4635d28b0eb9870f10699cf7c51923c0069",
     "islands/placed_orders.orders.sql": "sha256:2c227bfe21185a8959c3ee2da3fa3891cb928d6a28268374365d7b08079fec7a",
     "islands/verdict.release.sql": "sha256:6e1b136e5f80929303cc0142923e923da081a326314606b4ff0ce1067864b01b"

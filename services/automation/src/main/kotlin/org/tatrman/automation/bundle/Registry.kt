@@ -119,8 +119,9 @@ class Registry(
                 val own = action.sinks[type.family]
                 val how =
                     when {
-                        own != null && own != DOOR -> own
+                        type.family == Bundle.NATIVE -> own?.let { type.sinks[it] }
                         own == DOOR -> DOOR
+                        own != null -> own
                         else -> action.sinks[Bundle.NATIVE]?.let { type.sinks[it] }
                     } ?: return refused(
                         "TTRP-TGT-003: ${type.name} cannot perform action ${w.action} " +

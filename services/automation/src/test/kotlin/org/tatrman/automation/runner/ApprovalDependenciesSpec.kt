@@ -35,7 +35,11 @@ class ApprovalDependenciesSpec :
         val caller = Caller("maya-id", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "verified")
         val manifestPath = "automation/release_order/release_order.bundle/manifest.json"
 
-        fun fixture(): Path = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
+        fun fixture(fulfilment: Boolean = false): Path =
+            ApprovalFixture.copyTo(
+                tempdir(prefix = "automation-bundles-").toPath().resolve("branch"),
+                fulfilment = fulfilment,
+            )
 
         fun load(root: Path): Bundle {
             val b = BundleFixture.load(root)
@@ -44,6 +48,20 @@ class ApprovalDependenciesSpec :
                     b.deployments + (deployment to b.deployments.getValue(deployment).copy(runAs = ModelRunAs.Caller)),
             )
         }
+
+        fun watchPackageReads(
+            bundle: Bundle,
+            onRead: () -> Unit,
+        ): Bundle =
+            bundle.copy(
+                packages =
+                    object : Map<String, String> by bundle.packages {
+                        override fun get(key: String): String? {
+                            onRead()
+                            return bundle.packages[key]
+                        }
+                    },
+            )
 
         fun editRecipe(
             root: Path,
@@ -136,7 +154,7 @@ class ApprovalDependenciesSpec :
         }
 
         "released text2 evidence approves qualified project and injected stdlib targets after relocation" {
-            val root = fixture()
+            val root = fixture(fulfilment = true)
             root.toString().contains("/hartland/") shouldBe false
             val b = load(root)
             val r = b.recipes.getValue(recipeName).recipe
@@ -147,7 +165,7 @@ class ApprovalDependenciesSpec :
             r.approvalDependencies!!
                 .jsonObject
                 .getValue("actions")
-                .jsonObject.keys shouldBe setOf("release", "hold", "audit_state")
+                .jsonObject.keys shouldBe setOf("release", "hold", "fulfil")
             val request =
                 OpenRequest(
                     deployment,
@@ -168,10 +186,9 @@ class ApprovalDependenciesSpec :
             result.context!!
                 .previewMetadata!!
                 .actions
-                .getValue("audit_state")
-                .columns
-                .single()
-                .type shouldBe
+                .getValue("fulfil")
+                .transition!!
+                .attribute shouldBe
                 "automation.obligation.state"
             (b.model.schemas.getValue("er") as ErSchema)
                 .entities.values
@@ -402,7 +419,7 @@ class ApprovalDependenciesSpec :
         }
 
         "project shadowing cannot silently rebind explicit stdlib evidence" {
-            val root = fixture()
+            val root = fixture(fulfilment = true)
             root.edit("model/er/orders.ttrm") {
                 it +
                     "\ndef entity obligation { attributes: [def attribute state { type: int }] }\n"
@@ -445,10 +462,12 @@ def action release {
             val legacy = ApprovalDependencies.check(b, withoutScope)
             legacy.refusal!! shouldContain "declared in several packages; rename it or adopt evidence"
             legacy.coverage shouldBe CoverageKind.AMBIGUOUS
-            Registry(ExecutorType.builtin()).cell(b, b.deployments.getValue(deployment)).let { cell ->
-                cell.status shouldBe Registry.REFUSED
-                cell.reason!! shouldContain "action audit_state (sink none"
+            var packageReads = 0
+            val pinned = watchPackageReads(b) { packageReads++ }
+            Registry(ExecutorType.builtin()).cell(pinned, pinned.deployments.getValue(deployment)).let { cell ->
+                cell.status shouldBe Registry.OK
             }
+            packageReads shouldBe 0
         }
 
         "a correctly rebound evidence map must still name exactly the wired actions" {
@@ -497,7 +516,7 @@ def action release { columns: [def column order { type: text }] sinks: { native:
         }
 
         "request consumers reuse the loaded target resolution and cached writer placement" {
-            val b = load(fixture())
+            val b = load(fixture(fulfilment = true))
             val cached = b.recipes.getValue(recipeName).coverage
             org.tatrman.automation.apply.PlanPlacement
                 .source(b, "demo", b.recipes.getValue(recipeName))
@@ -521,12 +540,14 @@ def action release { columns: [def column order { type: text }] sinks: { native:
             (result.context!!.previewMetadata!!.planSource === source) shouldBe true
             Staleness.of(pinned, deployment, approvals(b)).stale shouldBe false
             val native = ExecutorType.builtin().getValue("native").copy(family = "external")
+            var packageReads = 0
+            val registryBundle = watchPackageReads(pinned) { packageReads++ }
             Registry(
                 mapOf("native" to native),
-            ).cell(pinned, pinned.deployments.getValue(deployment)).let { cell ->
-                cell.status shouldBe Registry.REFUSED
-                cell.reason!! shouldContain "action audit_state (sink none"
+            ).cell(registryBundle, registryBundle.deployments.getValue(deployment)).let { cell ->
+                cell.status shouldBe Registry.OK
             }
+            packageReads shouldBe 0
         }
 
         "exported text must still match after dependency verification" {

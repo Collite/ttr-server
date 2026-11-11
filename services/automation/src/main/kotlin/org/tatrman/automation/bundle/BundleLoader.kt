@@ -17,9 +17,11 @@ import org.tatrman.ttr.metadata.model.RunAsRef
 import org.tatrman.ttr.metadata.model.World
 import org.tatrman.ttr.metadata.model.WorldSchema
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
+import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LoadWarning
 import org.tatrman.ttr.metadata.source.LocalFsStorage
+import org.tatrman.ttr.semantics.RemovedConstructs
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
@@ -66,14 +68,16 @@ class BundleLoader(
             listOf(MODEL_DIR to modelRoot, AUTOMATION_DIR to automationRoot)
                 .filter { (_, root) -> root.isDirectory() }
                 .map { (id, root) -> FileBasedSource(id, 100, LocalFsStorage(id, root)).load() }
-        val result = ModelReconciler(ModelDescriptor(id = "automation", name = "automation")).reconcile(snapshots)
+        val result =
+            ModelReconciler(ModelDescriptor(id = "automation", name = "automation"))
+                .reconcile(listOf(BuiltinStockSource().load()) + snapshots)
         val worldFiles =
             snapshots
                 .flatMap {
                     it.loadedFiles
                 }.filter { it.schemaCode == "world" }
                 .map { it.storageFile.path }
-        for (e in snapshots.flatMap { it.errors } + result.errors) {
+        for (e in (snapshots.flatMap { it.errors } + result.errors).distinct()) {
             if (LAYOUT_CODES.any { e.message.startsWith(it) }) continue
             if (isAutomationFinding(e, automationRoot, worldFiles)) {
                 findings += render(e, checkout.root)
@@ -186,7 +190,8 @@ class BundleLoader(
             }
         }
         runnable(d.program, "")
-        if (world.executors.none { it.qname.name == d.target }) {
+        val executors = world.executors.map { it.qname.name }
+        if (!RemovedConstructs.isNativeTarget(d.target, executors) && d.target !in executors) {
             findings +=
                 "deployment $name: target ${d.target} is not an executor of world ${world.qname.name}"
         }
@@ -302,8 +307,10 @@ class BundleLoader(
         val at = if (e.line > 0) ":${e.line}" else ""
         // Core's model validator names CUT-nnn; expose the same cut under its public recipe diagnostic id.
         val message =
-            if (e.message.startsWith("ttr/automation-removed")) {
-                e.message.replace(Regex("(?<!TTRP-)\\bCUT-\\d{3}\\b")) { "TTRP-${it.value}" }
+            if (e.message.startsWith(RemovedConstructs.CODE) ||
+                e.message.startsWith("ttr/automation-deployment-dropped")
+            ) {
+                e.message.replace(CUT_CODE) { "TTRP-${it.value}" }
             } else {
                 e.message
             }
@@ -316,6 +323,7 @@ class BundleLoader(
         private const val AUTOMATION_VALIDATOR = "automation-validator"
         private val LAYOUT_CODES = listOf("ttr/package-declaration-mismatch", "ttr/package-prefix-divergence")
         private val AUTOMATION_CODES = listOf("ttr/automation-", "ttr/states-")
+        private val CUT_CODE = Regex("(?<!TTRP-)\\bCUT-\\d{3}\\b")
         private val log = LoggerFactory.getLogger(BundleLoader::class.java)
 
         /** sha256 over the model root's files, path and content, in path order — what the bundle was built against. */

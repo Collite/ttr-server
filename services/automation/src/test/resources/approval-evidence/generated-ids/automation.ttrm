@@ -29,11 +29,6 @@ def action release {
     approval: none
     dry_run: { en: "would propose {id} for {order} as {state}" }
 }
-def action audit_state {
-    columns: [def column state { type: automation.obligation.state }]
-    sinks: { }
-    approval: none
-}
 def action hold {
     columns:    [def column order { type: hartland.order.order_number }, def column department { type: text }]
     set:        hartland.order.held_for = department

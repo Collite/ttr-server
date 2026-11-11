@@ -16,7 +16,6 @@ import java.time.LocalDate
 data class OpenPort(
     val keys: List<Map<String, Any?>>?,
     val eventAt: Instant?,
-    val eventValues: Map<String, Any?> = emptyMap(),
 ) {
     /** Canonical, resolved values for D-46; scalar/object key spellings and timestamp offsets are equivalent. */
     fun canonical(): JsonObject =
@@ -41,7 +40,8 @@ data class OpenPort(
                     ?.sortedBy { it.toString() }
                     ?.let(::JsonArray) ?: JsonNull,
             )
-            put("event", row(eventValues))
+            // D-46 retains the empty event key after the event port's grammar cut.
+            put("event", JsonObject(emptyMap()))
             put("at", eventAt?.toString()?.let(::JsonPrimitive) ?: JsonNull)
         }
 
@@ -131,7 +131,7 @@ data class OpenPort(
             value: JsonElement,
         ): Any {
             val p = value as? JsonPrimitive ?: portRefused("expected a $type scalar")
-            if (p == JsonNull) portRefused("a key or required event value cannot be null")
+            if (p == JsonNull) portRefused("a key value cannot be null")
             return try {
                 when (type.lowercase()) {
                     "text", "varchar", "string" -> if (p.isString) p.content else portRefused("expected a text value")

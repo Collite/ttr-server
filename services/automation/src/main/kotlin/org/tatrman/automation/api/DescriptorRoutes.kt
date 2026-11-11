@@ -303,7 +303,7 @@ private fun deploymentOf(
     val runAs = bundle.worldOf(d)?.let { runAsByWorld[it.name] }
     val granted =
         runAs != null &&
-            bundle.programsOf(d).ifEmpty { listOf("") }.all { program ->
+            bundle.programsOf(d).all { program ->
                 runAs.granted(
                     caller,
                     DeploymentIdentity(d.qname.name, program, BundleLoader.runAs(d.runAs), bundle.author),
