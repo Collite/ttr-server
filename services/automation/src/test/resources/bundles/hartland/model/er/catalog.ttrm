@@ -10,7 +10,7 @@ model er
 // one model. The rest of `model/er/` stays plain-string on purpose: both forms are legal
 // side by side, and the mix is what proves it.
 //
-// The chain a reader applies (Veles, D7): requested locale → plain form → `en` → first
+// The chain a reader applies (metadata, D7): requested locale → plain form → `en` → first
 // entry by language code → "". Writing both locales here means step 1 always hits.
 
 def entity item {

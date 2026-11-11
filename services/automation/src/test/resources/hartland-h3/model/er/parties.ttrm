@@ -107,10 +107,10 @@ def entity store {
     labelPlural: "Stores"
     // MS: the same two pointers in the vocabulary-v3 mention facet. The legacy properties
     // below are deliberately KEPT, which is why this entity raises TTR-SEM-218 ("both,
-    // agreeing" — see model/tests/project-harness.mjs). Readers before producers: veles
+    // agreeing" — see model/tests/project-harness.mjs). Readers before producers: metadata
     // reads `semantics { name:, code: }` only from MS-P2 on, and dropping the legacy
     // properties before the serving estate runs that build would blank
-    // EntityDetail.name_attribute for this dimension. Delete them once hartland's veles
+    // EntityDetail.name_attribute for this dimension. Delete them once hartland's metadata
     // is on an MS-P2 image, not before.
     semantics { name: store_name, code: store_id, code_pattern: "^[A-P]{16}$" }
     nameAttribute: store_name

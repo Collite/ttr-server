@@ -9,7 +9,7 @@ model er
 // FK-only relation needs no `join:` pairs for that). The entity `customer_revenue` reads the query;
 // agents are meant to ask over the entity only (LQ-6).
 //
-// ⚑ The query is NOT named after the entity. veles 0.11.11 still lists a logical query in ListQueries
+// ⚑ The query is NOT named after the entity. metadata 0.11.11 still lists a logical query in ListQueries
 // and in GetModel's namedQueries (so meta-mcp `list_queries` offers it, and running it is refused with
 // `query_ref_logical_query`), and golem's descriptor lookup tries a query's LOCAL name before an
 // entity's. A query called `customer_revenue` would answer for the entity there; a name of its own

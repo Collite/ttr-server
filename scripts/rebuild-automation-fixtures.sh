@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Rebuild the AU fixture bundles on bp-dsk using the published grammar CLI.
 set -euo pipefail
 
