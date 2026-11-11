@@ -652,6 +652,64 @@ class ApplyComponentSpec :
                 .size shouldBe 0
         }
 
+        "an R2a run: set_state transitions with history plus expect obligations; a second run is idempotent" {
+            fun r2a(run: UUID) =
+                planned(
+                    listOf(
+                        ApplyRow(
+                            1,
+                            "er.entity.return_request_line",
+                            "update",
+                            buildJsonObject {
+                                put("line_id", 1)
+                            },
+                            set = buildJsonObject { put("way", "replacement") },
+                        ),
+                        ApplyRow(
+                            1,
+                            "er.entity.return_request_line",
+                            "transition",
+                            buildJsonObject { put("line_id", 1) },
+                            attribute = "state",
+                            to = JsonPrimitive("awaiting_goods"),
+                            history = true,
+                        ),
+                        ApplyRow(
+                            1,
+                            "er.entity.obligation",
+                            "insert",
+                            buildJsonObject { put("line_id", 1) },
+                            row =
+                                buildJsonObject {
+                                    put("id", UUID.nameUUIDFromBytes("$run/replacement".toByteArray()).toString())
+                                    put("recipe", "decide_return")
+                                    put("run", run.toString())
+                                    put("entity", "er.entity.return_request_line")
+                                    put("key", """{"line_id":1}""")
+                                    put("kind", "replacement")
+                                    put("due", "2026-11-18")
+                                    put("state", "open")
+                                    put("created_at", "2026-11-11T10:00:00")
+                                },
+                        ),
+                    ),
+                    listOf(listOf(0, 1)),
+                    keys = emptyList(),
+                )
+            val first = commit(::r2a)
+            first.batch.statuses.map { it.status } shouldBe listOf("applied", "applied", "applied")
+            rows("SELECT state, way FROM erp_fixture.return_request_line") shouldBe
+                listOf(listOf("awaiting_goods", "replacement"))
+            rows("SELECT entity, key, from_state, to_state FROM wet_fixture.state_history") shouldBe
+                listOf(listOf("er.entity.return_request_line", """{"line_id":1}""", "received", "awaiting_goods"))
+            rows("SELECT kind, state FROM wet_fixture.obligation") shouldBe listOf(listOf("replacement", "open"))
+            val second = commit(::r2a)
+            second.batch.statuses.map { it.status to it.error } shouldBe
+                listOf("applied" to null, "applied" to null, "skipped" to "if_absent")
+            rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("1"))
+            rows("SELECT count(*) FROM wet_fixture.obligation") shouldBe listOf(listOf("1"))
+        }
+
         // ---- T3: refusals and the unknown outcome ----
 
         "a door refusal becomes the typed error on every row of the group" {
