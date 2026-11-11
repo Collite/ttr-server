@@ -176,5 +176,7 @@ dependencies {
     "componentTestImplementation"(libs.aws.sdk.s3)
     "componentTestImplementation"(libs.lettuce.core)
     "componentTestImplementation"(libs.tatrman.ttr.metadata)
+    // S2.2's component fake unparses row_writes with the pinned translator's own RowWriteUnparser (D2's contract).
+    "componentTestImplementation"(libs.tatrman.ttr.translator)
     "componentTestImplementation"(project(":shared:proto"))
 }
