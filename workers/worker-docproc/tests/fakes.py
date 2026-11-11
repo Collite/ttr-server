@@ -14,24 +14,63 @@ import yaml
 from docproc.runtime.validators import span_within_unit
 from docproc.sdk.models import (
     Annotation,
+    ContextResult,
     ListAnnotationsPage,
     ListAnnotationsRequest,
     LoadAnnotationsRequest,
     LoadAnnotationsResponse,
+    MetadataValue,
+    Page,
     Processor,
+    Source,
     Unit,
 )
-from tests.conftest import WORKER
+from docproc.sdk.store import StoreError
+from tests.conftest import CONTRACTS, WORKER
 
 PACK = WORKER / "tests/fixtures/packs/hartland-mini"
 
 
+def _response(name: str) -> dict[str, Any]:
+    value: dict[str, Any] = json.loads((CONTRACTS / name).read_text(encoding="utf-8"))["response"]
+    return value
+
+
+def page_hit(page_id: int, score: float, mart: str = "hartland-public") -> dict[str, Any]:
+    """A `/findSimilar` page hit as docwh-store prints it: findSimilar.json's (the store's RetrievalRoutesSpec holds
+    the route to that file), with this page id, score and mart."""
+    hit: dict[str, Any] = json.loads(json.dumps(_response("findSimilar.json")["chunks"][0]))
+    hit["pageId"] = hit["citation"]["pageId"] = page_id
+    hit["score"] = score
+    hit["citation"]["sourceRef"] = f"docwh://{mart}/page/{page_id}"
+    return hit
+
+
+def concept_page(page_id: int, qname: str, title: str = "Item") -> dict[str, Any]:
+    """`GET /pages/{id}` of a concept page compile wrote: page.json's (the store's spec holds the route to it)."""
+    page: dict[str, Any] = json.loads(json.dumps(_response("page.json")))
+    page["id"], page["title"] = page_id, title
+    page["conceptRef"].update(entityId=qname, metadataQname=qname, displayLabel=title)
+    return page
+
+
 class FakeWarehouse:
-    def __init__(self, units: list[Unit]) -> None:
+    """The store as the kinds see it. The retrieval reads answer the routes' own shapes (✅W5-2-C): `/findSimilar`
+    refuses a blank mart as the route does (400) and answers `ContextResult` built from [similar] (page hits, see
+    `page_hit`); `GET /pages/{id}` answers [pages] (see `concept_page`), 404 outside them; `GET /sources` lists one
+    source per source id of [units], in mart [mart], unless a test sets [sources]."""
+
+    def __init__(self, units: list[Unit], mart: str = "hartland-public") -> None:
         self.units = {u.id: u for u in units}
+        self.mart = mart
+        self.similar: list[dict[str, Any]] = []
+        self.similar_calls: list[dict[str, Any]] = []
+        self.pages: dict[int, dict[str, Any]] = {}
+        self.page_reads: list[tuple[int, str]] = []
+        self.source_reads = 0
         self.annotations: list[Annotation] = []
         self.lemmas: dict[int, dict[str, Any]] = {}
-        self.sources: list[dict[str, Any]] = []
+        self.sources: list[dict[str, Any]] | None = None  # None = one source per source id of the units
         self.loads = 0
         self.next_id = 1000
         self.visibility: dict[str, Any] = {}
@@ -85,11 +124,25 @@ class FakeWarehouse:
     def load_lemmas(self, run_id: str, lemmas: list[dict[str, Any]]) -> None:
         self.lemmas.update({entry["unitId"]: entry for entry in lemmas})
 
-    def find_similar(self, request: dict[str, Any]) -> dict[str, Any]:
-        return {"hits": []}
+    def find_similar(self, notebook_id: str, query: str, node_kinds: list[str], k: int) -> ContextResult:
+        if not notebook_id:  # docwh-store Routes.kt: `notebook_id required`
+            raise StoreError(400, "notebook_id required", "")
+        self.similar_calls.append({"notebookId": notebook_id, "query": query, "nodeKinds": node_kinds, "k": k})
+        return ContextResult.model_validate({"chunks": self.similar[:k], "grounded": bool(self.similar)})
+
+    def page(self, page_id: int, notebook_id: str) -> Page:
+        self.page_reads.append((page_id, notebook_id))
+        if page_id not in self.pages or notebook_id != self.mart:
+            raise StoreError(404, "page/not-found", str(page_id))
+        return Page.model_validate(self.pages[page_id])
 
     def sources_of_document(self, document_id: str) -> list[dict[str, Any]]:
-        return list(self.sources)
+        self.source_reads += 1
+        if self.sources is not None:
+            return list(self.sources)
+        ids = sorted({u.source_id for u in self.units.values()})
+        meta = {"documentId": MetadataValue(single=document_id)}
+        return [{"id": i, **Source(metadata=meta, notebook_id=self.mart).dump()} for i in ids]
 
 
 class PackManager:

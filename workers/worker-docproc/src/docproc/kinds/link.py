@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from docproc._generated.org.tatrman.fuzzy.v1 import fuzzy_pb2 as pb
 from docproc.kinds.common import annotation
 from docproc.runtime.registry import KindResult, RunContext
 from docproc.sdk.lexmatcher import LexMatcher
-from docproc.sdk.models import Annotation
+from docproc.sdk.models import Annotation, Page, Source
 from docproc.sdk.store import Warehouse
 
 
@@ -32,9 +33,41 @@ def sentence(ctx: RunContext, mention: Annotation) -> str:
     return unit.content_text[left : end + right.start() + 1 if right else len(unit.content_text)]
 
 
+@dataclass
+class _Reads:
+    """One run's store reads, made once: the document's source marts (`GET /sources`) and each page (`GET /pages/{id}`,
+    k is small)."""
+
+    marts: dict[int, str] | None = None
+    pages: dict[int, Page] = field(default_factory=dict)
+
+
 class Link:
     def __init__(self, lexmatcher: LexMatcher, warehouse: Warehouse) -> None:
         self.lexmatcher, self.warehouse = lexmatcher, warehouse
+
+    def _knn(self, ctx: RunContext, mention: Annotation, k: int, reads: _Reads) -> list[tuple[Page, float]]:
+        """The concept pages similar to the mention's sentence, inside the mart of the mention's source (✅W5-2: the
+        kNN never leaves it — a page of another mart is not this document's to propose). No concept page yet answers
+        nothing (S3.3: absent pages = no kNN candidates, never an error); a source with no single mart is an error,
+        never a silent "no candidates"."""
+        if reads.marts is None:
+            reads.marts = {}
+            for raw in self.warehouse.sources_of_document(ctx.item.document_id):
+                source = Source.model_validate(raw)
+                reads.marts[source.id] = source.notebook_id
+        source_id = ctx.units[mention.unit_id].source_id
+        mart = reads.marts.get(source_id, "")
+        if not mart:
+            raise ValueError(f"link/no-mart: source {source_id} of {ctx.item.document_id} has no single mart")
+        out = []
+        for hit in self.warehouse.find_similar(mart, sentence(ctx, mention), ["page"], k).chunks:
+            if hit.page_id is None:  # asked for pages only: a chunk proposes no concept
+                continue
+            if hit.page_id not in reads.pages:
+                reads.pages[hit.page_id] = self.warehouse.page(hit.page_id, mart)
+            out.append((reads.pages[hit.page_id], hit.score))
+        return out
 
     def run(self, ctx: RunContext) -> KindResult:
         engine = ctx.manifest["engine"]
@@ -70,6 +103,7 @@ class Link:
         result = KindResult()
         unmapped = linked = 0
         candidate_log = []
+        reads = _Reads()
         for n, mention in enumerate(mentions):
             options: dict[tuple[str, str], dict[str, Any]] = {}
             for hit in lex.get(n, pb.FuzzyMatchResponse()).matches:
@@ -104,16 +138,12 @@ class Link:
                 if math.isfinite(hit.score) and (key not in options or hit.score > options[key]["score"]):
                     options[key] = row
             if "knn" in sources:
-                reply = self.warehouse.find_similar({"text": sentence(ctx, mention), "nodeKinds": ["page"], "k": k})
-                for hit in reply.get("hits", []):
-                    page = hit.get("page", hit)
-                    ref = page.get("conceptRef", {})
-                    concept = ref.get("metadataQname", "") if isinstance(ref, dict) else ""
+                for page, score in self._knn(ctx, mention, k, reads):
+                    concept = page.concept_ref.metadata_qname if page.concept_ref else ""
                     if concept not in set(engine.get("targets", {}).values()) or mention.payload().get(
                         "concept"
                     ) not in (None, "", concept):
                         continue
-                    score = float(hit.get("score", 0))
                     if not math.isfinite(score):
                         continue
                     # Concept pages can support an existing member candidate; they do not manufacture a member.
@@ -127,7 +157,7 @@ class Link:
                             options[key] = {
                                 "system": concept,
                                 "code": concept,
-                                "label": page.get("title", concept),
+                                "label": page.title or concept,
                                 "score": score,
                                 "source": "knn",
                                 "_member": None,

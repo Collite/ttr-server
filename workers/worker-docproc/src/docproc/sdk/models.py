@@ -331,6 +331,104 @@ class GetUnitResponse(DxModel):
     messages: list[ResponseMessage] = []
 
 
+class Source(DxModel):
+    """proto `Source` as `GET /sources?documentId=` lists it. `notebook_id` (docwh-store 0.11.13, DX-P3 W5-2) is the
+    mart the source's load bound it into — "" when the store knows no single one (or is older)."""
+
+    id: int = 0
+    asset_ref: str = ""
+    mime_type: str = ""
+    title: str = ""
+    metadata: dict[str, MetadataValue] = {}
+    created_at: str = ""
+    embedding_status: str = ""  # proto `EmbeddingStatus`, vestigial: nothing reads it
+    notebook_id: str = ""
+
+
+class ListSourcesRequest(DxModel):
+    """`GET /sources` query: a document's versions (the service identity names no mart)."""
+
+    document_id: str = ""
+    version: str | None = None
+    notebook_id: str = ""
+
+
+class ListSourcesResponse(DxModel):
+    """`GET /sources` — newest `metadata.recordedAt` first; no source is `{}` on the wire (an empty list is absent)."""
+
+    sources: list[Source] = []
+    messages: list[ResponseMessage] = []
+
+
+class SimilarRequest(DxModel):
+    """`POST /findSimilar`'s body (proto `SimilarRequest`, docwh-store `FindSimilarRequestDto`)."""
+
+    notebook_id: str = ""
+    query: str = ""
+    k: int = 0
+    node_kinds: list[str] = []
+
+
+class GetPageRequest(DxModel):
+    """`GET /pages/{id}?notebookId=` (proto `GetPageRequest`)."""
+
+    page_id: int = 0
+    notebook_id: str = ""
+
+
+class Citation(DxModel):
+    source_id: int = 0
+    part_id: int = 0
+    page_id: int | None = None
+    title: str = ""
+    locator: str = ""
+    source_ref: str = ""
+    unit_id: int = 0
+
+
+class ContextChunk(DxModel):
+    """proto `ContextChunk` as docwh-store's v1 retrieval routes print it (ktor JSON: every field written, `null`s
+    included). A page hit has `pageId` and no unit, chunk or span; `lead` is the `RetrievalLead` name."""
+
+    part_id: int = 0
+    source_id: int = 0
+    page_id: int | None = None
+    text: str = ""
+    score: float = 0.0
+    lead: str = ""
+    citation: Citation | None = None
+    unit_id: int = 0
+    chunk_id: int | None = None
+    span: Span | None = None
+    mention_ids: list[int] = []
+
+
+class ContextResult(DxModel):
+    """`POST /findSimilar`'s answer (docwh-store `ContextResponseDto`): nothing similar is `chunks: []`."""
+
+    chunks: list[ContextChunk] = []
+    grounded: bool = False
+
+
+class ConceptRef(DxModel):
+    entity_type: str = ""
+    entity_id: str = ""
+    display_label: str = ""
+    metadata_qname: str = ""  # compile's: the mirrored cn concept the page is about
+
+
+class Page(DxModel):
+    """proto `Page` (`GET /pages/{id}`): a compiled wiki page; `concept_ref` is set on a concept page."""
+
+    id: int = 0
+    kind: str = ""  # proto `PageKind` name
+    title: str = ""
+    content_md: str = ""
+    concept_ref: ConceptRef | None = None
+    derived_from_parts: list[int] = []
+    updated_at: str = ""
+
+
 class ListAnnotationsPage(DxModel):
     """`ListAnnotationsResponse` — one page."""
 

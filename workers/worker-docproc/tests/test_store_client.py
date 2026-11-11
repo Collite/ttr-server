@@ -128,18 +128,56 @@ def test_remaining_reads_and_lemma_sink() -> None:
         return_value=httpx.Response(200, json={"units": [fixture("unit.json")]})
     )
     lemmas = respx.post(f"{BASE}/load/lemmas").mock(return_value=httpx.Response(200, json={}))
-    similar = respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json={"hits": []}))
-    sources = respx.get(f"{BASE}/sources", params={"documentId": "document"}).mock(
-        return_value=httpx.Response(200, json={"sources": [{"id": 7}]})
-    )
     client = StoreClient(BASE)
     assert client.units_of_source(7)[0].id == 101 and tree.called
     entry = {"unitId": 101, "contentLemmas": "recenze", "lang": "cs", "lemmatizer": "test"}
     client.load_lemmas("r/1", [entry])
     assert json.loads(lemmas.calls.last.request.content) == {"runId": "r/1", "lemmas": [entry]}
-    assert client.find_similar({"text": "x", "nodeKinds": ["unit"]}) == {"hits": []}
-    assert json.loads(similar.calls.last.request.content)["nodeKinds"] == ["unit"]
-    assert client.sources_of_document("document") == [{"id": 7}] and sources.called
+
+
+@respx.mock
+def test_link_reads_speak_the_store_wire() -> None:
+    """✅W5-2: `/findSimilar`, `GET /pages/{id}` and `GET /sources` against the fixtures docwh-store's own specs print
+    (RetrievalRoutesSpec, UnitRoutesSpec): the request is the store DTO's, the answers are read as the routes write."""
+    f = fixture("findSimilar.json")
+    similar = respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json=f["response"]))
+    client = StoreClient(BASE)
+    req: dict[str, object] = f["request"]  # type: ignore[assignment]
+    got = client.find_similar(
+        str(req["notebookId"]),
+        str(req["query"]),
+        list(req["nodeKinds"]),  # type: ignore[call-overload]
+        int(req["k"]),  # type: ignore[call-overload]
+    )
+    assert json.loads(similar.calls.last.request.content) == req  # FindSimilarRequestDto: notebookId + query required
+    hit = got.chunks[0]
+    assert hit.page_id is not None and hit.chunk_id is None and hit.span is None
+
+    p = fixture("page.json")
+    preq: dict[str, object] = p["request"]  # type: ignore[assignment]
+    page = respx.get(f"{BASE}/pages/{preq['pageId']}", params={"notebookId": preq["notebookId"]}).mock(
+        return_value=httpx.Response(200, json=p["response"])
+    )
+    read = client.page(int(preq["pageId"]), str(preq["notebookId"]))  # type: ignore[call-overload]
+    assert page.called and read.id == preq["pageId"] and read.concept_ref is not None
+    assert read.concept_ref.metadata_qname.startswith("cn.")
+
+    s = fixture("listSources.json")
+    sreq: dict[str, object] = s["request"]  # type: ignore[assignment]
+    sources = respx.get(f"{BASE}/sources", params=sreq).mock(return_value=httpx.Response(200, json=s["response"]))
+    listed = client.sources_of_document(str(sreq["documentId"]))
+    assert sources.called and [x["notebookId"] for x in listed] == ["hartland-reviews"]
+
+
+@respx.mock
+def test_no_sources_is_an_empty_list_and_a_blank_mart_is_the_routes_400() -> None:
+    # the DX JSON drops an empty list: a document with no source (or none in a mart) answers `{}`
+    respx.get(f"{BASE}/sources", params={"documentId": "none"}).mock(return_value=httpx.Response(200, json={}))
+    assert StoreClient(BASE).sources_of_document("none") == []
+    respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(400, json={"error": "notebook_id required"}))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).find_similar("", "x", ["page"], 5)
+    assert e.value.status == 400 and e.value.code == "notebook_id required"
 
 
 @respx.mock

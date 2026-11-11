@@ -1,0 +1,36 @@
+{
+  "request": {
+    "k": 5,
+    "nodeKinds": [
+      "page"
+    ],
+    "notebookId": "hartland-public",
+    "query": "The Aurora Desk Lamp is an item."
+  },
+  "response": {
+    "chunks": [
+      {
+        "chunkId": null,
+        "citation": {
+          "locator": "page",
+          "pageId": 9001,
+          "partId": 0,
+          "sourceId": 0,
+          "sourceRef": "docwh://hartland-public/page/9001",
+          "title": "Item",
+          "unitId": 0
+        },
+        "lead": "VECTOR",
+        "mentionIds": [],
+        "pageId": 9001,
+        "partId": 0,
+        "score": 1.0,
+        "sourceId": 0,
+        "span": null,
+        "text": "A product Hartland sells.",
+        "unitId": 0
+      }
+    ],
+    "grounded": true
+  }
+}
