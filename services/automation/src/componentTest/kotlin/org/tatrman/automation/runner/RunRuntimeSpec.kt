@@ -1472,8 +1472,9 @@ class RunRuntimeComponentSpec :
                     it["held"] shouldBe JsonPrimitive(2)
                     it["groups"] shouldBe JsonPrimitive(2)
                 }
-                // Waiting is never abandoned (D-97), however late.
-                f.base.now = f.base.now.plusSeconds(86_400)
+                // Waiting is never abandoned (D-97), however late. Three days on, the run's own deadline (open + its
+                // batch budget) has long passed; every decision below is bounded by its own budget instead (D-186 (b)).
+                f.base.now = f.base.now.plusSeconds(3 * 86_400)
                 f.ledger.abandonExpiredRuns().contains(id) shouldBe false
                 f.ledger.findRun(id)!!.status shouldBe RunStatus.WAITING
                 // A retried close answers the waiting state again.
