@@ -1,11 +1,90 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.bundle
 
-/** Legacy preview tests explicitly construct their metadata from a checked synthetic wiring scope. */
+import org.tatrman.ttr.metadata.model.AutomationColumn
+import org.tatrman.ttr.metadata.model.AutomationDuration
+import org.tatrman.ttr.metadata.model.AutomationSet
+import org.tatrman.ttr.metadata.model.ErSchema
+import org.tatrman.ttr.metadata.model.LocalizedText
+import org.tatrman.ttr.metadata.source.FileBasedSource
+import org.tatrman.ttr.metadata.source.LocalFsStorage
+import java.nio.file.Path
+
+/**
+ * Synthetic data for the existing typed planner tests, retained until S3.2 removes the legacy planner paths.
+ * These values never pass through /refresh. Real 0.22 hero bundles keep their engine-only sinks and refusals.
+ */
 fun legacyPreviewMetadata(bundle: Bundle): org.tatrman.automation.apply.PreviewMetadata {
-    val recipe = ManifestRecipe("preview_fixture", wiring = bundle.actions.keys.map { ManifestWiring(action = it) })
-    val checked = ApprovalDependencies.check(bundle, recipe)
+    val er =
+        FileBasedSource(
+            "typed-preview",
+            100,
+            LocalFsStorage("typed-preview", Path.of("src/test/resources/typed-preview")),
+        ).load()
+    val schema = bundle.model.schemas.getValue("er") as ErSchema
+    val model =
+        bundle.model.copy(
+            schemas =
+                bundle.model.schemas + ("er" to schema.copy(entities = schema.entities + er.entities)),
+        )
+    val actions = bundle.actions.filterKeys { it !in setOf("release_confirmed", "decide_way") }.toMutableMap()
+    // Projection tests use a surviving native sink with an omitted optional assignment, hence no effect rows.
+    val projectionOnly = AutomationColumn("projection_only", "text", optional = true)
+    for (name in listOf("notify", "notify_customer")) {
+        actions[name] =
+            actions.getValue(name).copy(
+                columns = actions.getValue(name).columns + projectionOnly,
+                set = AutomationSet("order.held_for", "projection_only"),
+                sinks = mapOf("native" to "transition"),
+            )
+    }
+    val prototype = actions.getValue("notify")
+    actions["ask"] =
+        prototype.copy(
+            internalId = "typed-preview-ask",
+            qname = prototype.qname.copy(name = "ask"),
+            properties = emptyList(),
+            columns =
+                listOf(
+                    AutomationColumn("who", "role"),
+                    AutomationColumn("about", "text"),
+                    AutomationColumn("action", "action"),
+                    AutomationColumn("detail", "rows", optional = true),
+                    projectionOnly,
+                ),
+            sinks = mapOf("native" to "transition"),
+            approval = "required",
+            deliverable = false,
+            due = AutomationDuration(2.0, "working_days"),
+            dryRun = LocalizedText.EMPTY,
+        )
+    actions["task"] =
+        actions.getValue("ask").copy(
+            internalId = "typed-preview-task",
+            qname = prototype.qname.copy(name = "task"),
+            columns = actions.getValue("ask").columns.filterNot { it.name == "action" },
+            approval = "none",
+            due = null,
+        )
+    actions["start"] =
+        prototype.copy(
+            internalId = "typed-preview-start",
+            qname = prototype.qname.copy(name = "start"),
+            properties = emptyList(),
+            columns = listOf(AutomationColumn("process", "text"), projectionOnly),
+            sinks = mapOf("native" to "transition"),
+            deliverable = false,
+            dryRun = LocalizedText.EMPTY,
+        )
+    val synthetic =
+        bundle
+            .copy(
+                model = model,
+                packages = bundle.packages + er.entities.values.associate { it.sourceFile to "hartland" },
+            ).withActions(actions)
+    val recipe = ManifestRecipe("preview_fixture", wiring = actions.keys.map { ManifestWiring(action = it) })
+    val checked = ApprovalDependencies.check(synthetic, recipe)
     require(checked.refusal == null || checked.defaultsWithoutEvidence) { checked.refusal.orEmpty() }
     return org.tatrman.automation.apply
-        .PreviewMetadata(checked.actions, bundle.entities, checked.targets)
+        .PreviewMetadata(checked.actions, synthetic.entities, checked.targets)
 }

@@ -687,6 +687,9 @@ jobs:
       - name: self-test metadata rename guard with binary and path probes
         run: bash scripts/guard-metadata-rename.selftest.sh
 
+      - name: self-test automation fixture fingerprint guards
+        run: bash scripts/rebuild-automation-fixtures.selftest.sh
+
       - name: enforce SPDX license headers
         run: bash scripts/check-spdx.sh
 

@@ -1,192 +1,873 @@
 {
   "schemaVersion": 3,
   "ttrpVersion": 2,
-  "toolchain": "fixture-prebuilt",
-  "program": "settle",
+  "toolchain": "org.tatrman:ttrp:0.22.3",
+  "program": "settle.ttrp",
   "world": {
     "qname": "hartland.worlds.demo",
-    "fingerprint": "sha256:835a2d5eda9a64795b00aa308a222a7412a5ed40e4ff5137d000b66ddb9d1499"
+    "fingerprint": "sha256:238762e0406d5b4f05fd3f5fe1496ca0049ee6fc29e12de4916f6e6186900ff8"
   },
   "islands": [
     {
       "name": "settling",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/settling.lines.sql",
-      "sha256": "sha256:72e58a12caafaffb91564ac4c41a87cdc56550dafdf31eb353990c18d3795d7f",
+      "sha256": "sha256:6fb59f830a15e5e2d07acab8c1c1de4e33fb506248ff9391348d398aa5c1a706",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "lines",
           "file": "islands/settling.lines.sql",
-          "sha256": "sha256:72e58a12caafaffb91564ac4c41a87cdc56550dafdf31eb353990c18d3795d7f"
+          "sha256": "sha256:6fb59f830a15e5e2d07acab8c1c1de4e33fb506248ff9391348d398aa5c1a706",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
       "name": "open_obligations",
-      "engine": "erp",
+      "engine": "duckdb",
       "executor": "native",
-      "invocation": "psql",
-      "file": "islands/open_obligations.rows.sql",
-      "sha256": "sha256:369a6513c43544d7c310efea2e3dedcff81289c52a7cad055a6d682fe9a275f4",
+      "invocation": "duckdb",
+      "file": "islands/open_obligations.rows.duckdb.sql",
+      "sha256": "sha256:34131d2fa0ff9ca3c0a31e4485a13fb0fdbd26cfb8e271efa777f1fadde2e75a",
       "connections": [
-        "ERP"
+        "TTR_CONN_AUTOMATION",
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "rows",
-          "file": "islands/open_obligations.rows.sql",
-          "sha256": "sha256:369a6513c43544d7c310efea2e3dedcff81289c52a7cad055a6d682fe9a275f4"
+          "file": "islands/open_obligations.rows.duckdb.sql",
+          "sha256": "sha256:34131d2fa0ff9ca3c0a31e4485a13fb0fdbd26cfb8e271efa777f1fadde2e75a",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "obligation_id",
+              "type": "text"
+            },
+            {
+              "name": "kind",
+              "type": "text"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            }
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/open_obligations.rows.duckdb.sql",
+            "sha256": "sha256:34131d2fa0ff9ca3c0a31e4485a13fb0fdbd26cfb8e271efa777f1fadde2e75a",
+            "parts": [
+              "p_927a867d",
+              "p_8124de4c"
+            ],
+            "params": [],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
         }
-      ]
+      ],
+      "schema": "db"
     },
     {
       "name": "documents",
       "engine": "erp",
       "executor": "native",
-      "invocation": "psql",
+      "invocation": "sql-text",
       "file": "islands/documents.rows.sql",
-      "sha256": "sha256:46e0e5db839d474e4bc45b5979d0140e7adc78015eb32fb04278f5f23acbe178",
+      "sha256": "sha256:41c398ad0086c9fdd9760afc170abb8eff98e96237cfa621de7cb03433f1a20e",
       "connections": [
-        "ERP"
+        "TTR_CONN_ERP"
       ],
       "outputs": [
         {
           "port": "rows",
           "file": "islands/documents.rows.sql",
-          "sha256": "sha256:46e0e5db839d474e4bc45b5979d0140e7adc78015eb32fb04278f5f23acbe178"
+          "sha256": "sha256:41c398ad0086c9fdd9760afc170abb8eff98e96237cfa621de7cb03433f1a20e",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "credit_note_id",
+              "type": "int"
+            },
+            {
+              "name": "issued_date",
+              "type": "date"
+            },
+            {
+              "name": "payment_id",
+              "type": "int"
+            },
+            {
+              "name": "paid_date",
+              "type": "date"
+            },
+            {
+              "name": "shipment_id",
+              "type": "int"
+            },
+            {
+              "name": "shipped_date",
+              "type": "date"
+            }
+          ],
+          "keyed": true,
+          "storage": "erp_db"
         }
-      ]
+      ],
+      "schema": "er"
     },
     {
       "name": "overdue_days",
-      "engine": "erp",
+      "engine": "duckdb",
       "executor": "native",
-      "invocation": "psql",
-      "file": "islands/overdue_days.rows.sql",
-      "sha256": "sha256:0636870831bc494b33c1b9846b02cb0ce027c691bf50c6394d03acdacaa15c30",
+      "invocation": "duckdb",
+      "file": "islands/overdue_days.rows.duckdb.sql",
+      "sha256": "sha256:89014e75313b3c26de8de4c41100b48252f34b5ca0936a7a4fd634c24c4bbd07",
       "connections": [
-        "ERP"
+        "TTR_CONN_AUTOMATION",
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of"
       ],
       "outputs": [
         {
           "port": "rows",
-          "file": "islands/overdue_days.rows.sql",
-          "sha256": "sha256:0636870831bc494b33c1b9846b02cb0ce027c691bf50c6394d03acdacaa15c30"
+          "file": "islands/overdue_days.rows.duckdb.sql",
+          "sha256": "sha256:89014e75313b3c26de8de4c41100b48252f34b5ca0936a7a4fd634c24c4bbd07",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "max_late",
+              "type": "int"
+            },
+            {
+              "name": "kinds_open",
+              "type": "int"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/overdue_days.rows.duckdb.sql",
+            "sha256": "sha256:89014e75313b3c26de8de4c41100b48252f34b5ca0936a7a4fd634c24c4bbd07",
+            "parts": [
+              "p_927a867d",
+              "p_8124de4c",
+              "p_7e21ab69"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
         }
-      ]
+      ],
+      "schema": "db"
     },
     {
-      "name": "settlement.credit_note_issued",
-      "engine": "erp",
+      "name": "settlement",
+      "engine": "duckdb",
       "executor": "native",
-      "invocation": "psql",
-      "file": "islands/settlement.credit_note_issued.sql",
-      "sha256": "sha256:997c56943d03bcd72dcbe168aaa2481a255c98b659806e168227f190a7375b3c",
+      "invocation": "duckdb",
+      "file": "islands/settlement.credit_note_issued.duckdb.sql",
+      "sha256": "sha256:36f15e93685fcb57dc16bef9c44a4baf0aa0216378ac980767a9a1ffebb9443b",
       "connections": [
-        "ERP"
+        "TTR_CONN_AUTOMATION",
+        "TTR_CONN_ERP"
+      ],
+      "params": [
+        "as_of"
       ],
       "outputs": [
         {
           "port": "credit_note_issued",
-          "file": "islands/settlement.credit_note_issued.sql",
-          "sha256": "sha256:997c56943d03bcd72dcbe168aaa2481a255c98b659806e168227f190a7375b3c"
-        }
-      ]
-    },
-    {
-      "name": "settlement.money_received",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/settlement.money_received.sql",
-      "sha256": "sha256:170f5aae955840a9e7f9444e5f87b33ef1c952cb05271e318b4715dda9b17b25",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "file": "islands/settlement.credit_note_issued.duckdb.sql",
+          "sha256": "sha256:36f15e93685fcb57dc16bef9c44a4baf0aa0216378ac980767a9a1ffebb9443b",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "credit_note_id",
+              "type": "int"
+            },
+            {
+              "name": "issued_date",
+              "type": "date"
+            },
+            {
+              "name": "payment_id",
+              "type": "int"
+            },
+            {
+              "name": "paid_date",
+              "type": "date"
+            },
+            {
+              "name": "shipment_id",
+              "type": "int"
+            },
+            {
+              "name": "shipped_date",
+              "type": "date"
+            },
+            {
+              "name": "max_late",
+              "type": "int"
+            },
+            {
+              "name": "kinds_open",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/settlement.credit_note_issued.duckdb.sql",
+            "sha256": "sha256:36f15e93685fcb57dc16bef9c44a4baf0aa0216378ac980767a9a1ffebb9443b",
+            "parts": [
+              "p_77af0c22",
+              "p_927a867d",
+              "p_8124de4c",
+              "p_7e21ab69"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
         {
           "port": "money_received",
-          "file": "islands/settlement.money_received.sql",
-          "sha256": "sha256:170f5aae955840a9e7f9444e5f87b33ef1c952cb05271e318b4715dda9b17b25"
-        }
-      ]
-    },
-    {
-      "name": "settlement.goods_shipped",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/settlement.goods_shipped.sql",
-      "sha256": "sha256:f14fd6ad80a9d6412933826950f739b597e7a3fdd61e9253026cd7877452cbaf",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "file": "islands/settlement.money_received.duckdb.sql",
+          "sha256": "sha256:a9184bac617b52075ec354b7ab26dc7226e78b820a12ae5eb7940865b69d52d3",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "credit_note_id",
+              "type": "int"
+            },
+            {
+              "name": "issued_date",
+              "type": "date"
+            },
+            {
+              "name": "payment_id",
+              "type": "int"
+            },
+            {
+              "name": "paid_date",
+              "type": "date"
+            },
+            {
+              "name": "shipment_id",
+              "type": "int"
+            },
+            {
+              "name": "shipped_date",
+              "type": "date"
+            },
+            {
+              "name": "max_late",
+              "type": "int"
+            },
+            {
+              "name": "kinds_open",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/settlement.money_received.duckdb.sql",
+            "sha256": "sha256:a9184bac617b52075ec354b7ab26dc7226e78b820a12ae5eb7940865b69d52d3",
+            "parts": [
+              "p_859395aa",
+              "p_927a867d",
+              "p_8124de4c",
+              "p_7e21ab69"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
         {
           "port": "goods_shipped",
-          "file": "islands/settlement.goods_shipped.sql",
-          "sha256": "sha256:f14fd6ad80a9d6412933826950f739b597e7a3fdd61e9253026cd7877452cbaf"
-        }
-      ]
-    },
-    {
-      "name": "settlement.money_overdue",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/settlement.money_overdue.sql",
-      "sha256": "sha256:4e2f30c414d9d6669c07322676d6b2de528b28956219daf3dfb65d51dd2b9db0",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "file": "islands/settlement.goods_shipped.duckdb.sql",
+          "sha256": "sha256:4275108ea9e1b84dc67f89f52db500d895431afb008e041227bdb55bf7732d2b",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "credit_note_id",
+              "type": "int"
+            },
+            {
+              "name": "issued_date",
+              "type": "date"
+            },
+            {
+              "name": "payment_id",
+              "type": "int"
+            },
+            {
+              "name": "paid_date",
+              "type": "date"
+            },
+            {
+              "name": "shipment_id",
+              "type": "int"
+            },
+            {
+              "name": "shipped_date",
+              "type": "date"
+            },
+            {
+              "name": "max_late",
+              "type": "int"
+            },
+            {
+              "name": "kinds_open",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/settlement.goods_shipped.duckdb.sql",
+            "sha256": "sha256:4275108ea9e1b84dc67f89f52db500d895431afb008e041227bdb55bf7732d2b",
+            "parts": [
+              "p_99be0ef6",
+              "p_927a867d",
+              "p_8124de4c",
+              "p_7e21ab69"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
         {
           "port": "money_overdue",
-          "file": "islands/settlement.money_overdue.sql",
-          "sha256": "sha256:4e2f30c414d9d6669c07322676d6b2de528b28956219daf3dfb65d51dd2b9db0"
-        }
-      ]
-    },
-    {
-      "name": "settlement.goods_overdue",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/settlement.goods_overdue.sql",
-      "sha256": "sha256:5a8031f4ac1ca1db0c773f84609000ed5e52709fb72501f82aa2c8d15dc578e7",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "file": "islands/settlement.money_overdue.duckdb.sql",
+          "sha256": "sha256:8904adcc4e5fa67f64d3b1620952d0f2c8c224283a2bb90325b478f6fb1d0f8d",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "credit_note_id",
+              "type": "int"
+            },
+            {
+              "name": "issued_date",
+              "type": "date"
+            },
+            {
+              "name": "payment_id",
+              "type": "int"
+            },
+            {
+              "name": "paid_date",
+              "type": "date"
+            },
+            {
+              "name": "shipment_id",
+              "type": "int"
+            },
+            {
+              "name": "shipped_date",
+              "type": "date"
+            },
+            {
+              "name": "max_late",
+              "type": "int"
+            },
+            {
+              "name": "kinds_open",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/settlement.money_overdue.duckdb.sql",
+            "sha256": "sha256:8904adcc4e5fa67f64d3b1620952d0f2c8c224283a2bb90325b478f6fb1d0f8d",
+            "parts": [
+              "p_202d930b",
+              "p_927a867d",
+              "p_8124de4c",
+              "p_7e21ab69"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
         {
           "port": "goods_overdue",
-          "file": "islands/settlement.goods_overdue.sql",
-          "sha256": "sha256:5a8031f4ac1ca1db0c773f84609000ed5e52709fb72501f82aa2c8d15dc578e7"
-        }
-      ]
-    },
-    {
-      "name": "settlement.closed",
-      "engine": "erp",
-      "executor": "native",
-      "invocation": "psql",
-      "file": "islands/settlement.closed.sql",
-      "sha256": "sha256:20628363d4da9f2644424c1c90cbd404d1abb38fca05dd1c521895e7d87fa939",
-      "connections": [
-        "ERP"
-      ],
-      "outputs": [
+          "file": "islands/settlement.goods_overdue.duckdb.sql",
+          "sha256": "sha256:f1cf247ca183a99ebc4cada39ad37d6911b0168b56c6055334ace42c790a7d9c",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "credit_note_id",
+              "type": "int"
+            },
+            {
+              "name": "issued_date",
+              "type": "date"
+            },
+            {
+              "name": "payment_id",
+              "type": "int"
+            },
+            {
+              "name": "paid_date",
+              "type": "date"
+            },
+            {
+              "name": "shipment_id",
+              "type": "int"
+            },
+            {
+              "name": "shipped_date",
+              "type": "date"
+            },
+            {
+              "name": "max_late",
+              "type": "int"
+            },
+            {
+              "name": "kinds_open",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/settlement.goods_overdue.duckdb.sql",
+            "sha256": "sha256:f1cf247ca183a99ebc4cada39ad37d6911b0168b56c6055334ace42c790a7d9c",
+            "parts": [
+              "p_6755f6ba",
+              "p_927a867d",
+              "p_8124de4c",
+              "p_7e21ab69"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
         {
           "port": "closed",
-          "file": "islands/settlement.closed.sql",
-          "sha256": "sha256:20628363d4da9f2644424c1c90cbd404d1abb38fca05dd1c521895e7d87fa939"
+          "file": "islands/settlement.closed.duckdb.sql",
+          "sha256": "sha256:26b3bd35397d66a24f1ec6e82741f0beba2005f55ca7954c0967f8e6b1f2e63a",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "request_number",
+              "type": "text"
+            },
+            {
+              "name": "item",
+              "type": "int"
+            },
+            {
+              "name": "quantity",
+              "type": "int"
+            },
+            {
+              "name": "way",
+              "type": "varchar"
+            },
+            {
+              "name": "customer",
+              "type": "int"
+            },
+            {
+              "name": "credit_note_id",
+              "type": "int"
+            },
+            {
+              "name": "issued_date",
+              "type": "date"
+            },
+            {
+              "name": "payment_id",
+              "type": "int"
+            },
+            {
+              "name": "paid_date",
+              "type": "date"
+            },
+            {
+              "name": "shipment_id",
+              "type": "int"
+            },
+            {
+              "name": "shipped_date",
+              "type": "date"
+            },
+            {
+              "name": "max_late",
+              "type": "int"
+            },
+            {
+              "name": "kinds_open",
+              "type": "int"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "verdict_reason",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/settlement.closed.duckdb.sql",
+            "sha256": "sha256:26b3bd35397d66a24f1ec6e82741f0beba2005f55ca7954c0967f8e6b1f2e63a",
+            "parts": [
+              "p_2cb8a6cb",
+              "p_927a867d",
+              "p_8124de4c",
+              "p_7e21ab69"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
+        {
+          "port": "money_overdue.open_obligations",
+          "file": "islands/settlement.money_overdue.open_obligations.duckdb.sql",
+          "sha256": "sha256:41efdfe3b366857b9609399616210f55ba67e814860e1742b8b6f5592442df02",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "obligation_id",
+              "type": "text"
+            },
+            {
+              "name": "kind",
+              "type": "text"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "context",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/settlement.money_overdue.open_obligations.duckdb.sql",
+            "sha256": "sha256:41efdfe3b366857b9609399616210f55ba67e814860e1742b8b6f5592442df02",
+            "parts": [
+              "p_927a867d",
+              "p_8124de4c",
+              "p_202d930b",
+              "p_7e21ab69"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
+        },
+        {
+          "port": "goods_overdue.open_obligations",
+          "file": "islands/settlement.goods_overdue.open_obligations.duckdb.sql",
+          "sha256": "sha256:5537e355658d13a87b84e5aa5ae4a5c37f88db9ffffe8f130d0ecb6a01e69b04",
+          "columns": [
+            {
+              "name": "line_id",
+              "type": "int"
+            },
+            {
+              "name": "obligation_id",
+              "type": "text"
+            },
+            {
+              "name": "kind",
+              "type": "text"
+            },
+            {
+              "name": "due",
+              "type": "date"
+            },
+            {
+              "name": "route",
+              "type": "text"
+            },
+            {
+              "name": "context",
+              "type": "text"
+            }
+          ],
+          "params": [
+            "as_of"
+          ],
+          "keyed": true,
+          "combine": {
+            "file": "islands/settlement.goods_overdue.open_obligations.duckdb.sql",
+            "sha256": "sha256:5537e355658d13a87b84e5aa5ae4a5c37f88db9ffffe8f130d0ecb6a01e69b04",
+            "parts": [
+              "p_927a867d",
+              "p_8124de4c",
+              "p_6755f6ba",
+              "p_7e21ab69"
+            ],
+            "params": [
+              "as_of"
+            ],
+            "engine": "duckdb",
+            "dialect": "duckdb"
+          }
         }
-      ]
+      ],
+      "schema": "db"
     }
   ],
   "transfers": [],
@@ -195,8 +876,10 @@
       "settling"
     ],
     [
-      "open_obligations",
       "documents",
+      "open_obligations"
+    ],
+    [
       "overdue_days"
     ],
     [
@@ -204,9 +887,11 @@
     ]
   ],
   "connections": [
-    "ERP"
+    "TTR_CONN_AUTOMATION",
+    "TTR_CONN_ERP"
   ],
   "displays": [],
+  "rejectSites": [],
   "recipe": {
     "name": "settle",
     "key": [
@@ -219,6 +904,13 @@
         "name": "settlement",
         "type": "working_days",
         "value": "5"
+      }
+    ],
+    "bindings": [
+      {
+        "name": "as_of",
+        "type": "datetime",
+        "source": "run"
       }
     ],
     "roles": {
@@ -237,7 +929,7 @@
         {
           "name": "overdue_days",
           "class": "per-candidate",
-          "kind": "sql"
+          "kind": "canonical"
         }
       ],
       "decision": "settlement",
@@ -283,8 +975,7 @@
           "turnFed": false
         }
       ],
-      "switchMode": "overlapping",
-      "elseRoute": null
+      "switchMode": "overlapping"
     },
     "wiring": [
       {
@@ -296,8 +987,7 @@
           "line": "line_id",
           "kind": "credit_note",
           "to": "fulfilled"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -308,8 +998,7 @@
           "line": "line_id",
           "kind": "payment",
           "due": "working_days(:settlement)"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -320,8 +1009,7 @@
           "line": "line_id",
           "kind": "payment",
           "to": "fulfilled"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -332,32 +1020,29 @@
           "line": "line_id",
           "kind": "replacement",
           "to": "fulfilled"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
           "settlement.money_overdue"
         ],
-        "action": "task",
+        "action": "review",
         "columns": {
           "who": "role.finance",
           "about": "line_id",
           "detail": "open_obligations"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
           "settlement.goods_overdue"
         ],
-        "action": "task",
+        "action": "review",
         "columns": {
           "who": "role.logistics",
           "about": "line_id",
           "detail": "open_obligations"
-        },
-        "when": null
+        }
       },
       {
         "routes": [
@@ -367,8 +1052,7 @@
         "columns": {
           "line": "line_id",
           "to": "closed"
-        },
-        "when": null
+        }
       }
     ],
     "kinds": [
@@ -416,29 +1100,512 @@
       "current": "settle_verdict_current"
     },
     "objectsRead": [
-      "er.entity.return_request_line",
-      "er.entity.obligation",
       "er.entity.credit_note",
-      "er.entity.payment",
-      "er.entity.shipment"
+      "er.entity.date_dim",
+      "er.entity.obligation",
+      "er.entity.refund_payment",
+      "er.entity.replacement_shipment",
+      "er.entity.return_request",
+      "er.entity.return_request_line"
     ],
     "fingerprints": {
-      "text": "sha256:ebf5e9a9789bbff3c2b34f4101c48a1a69e2ffae254b4d6535b987df5dbb6f7c",
-      "values": "sha256:74cdef7d5307c826f30d8f0516f855d6867c0b5667b35a91d6afb4a9a7981337"
+      "text": "sha256:a9ab9c3d1112d6ed0e722c4f9f24a6d588e33f764fcfd75a2a0f1ad0d841ce0b",
+      "values": "sha256:26cd4bbbdef5ad8c69ea41324530ab1e48a37ff0a1a73819a49ce3c729d82016",
+      "labels": "sha256:b4128a3567da1d03132ac82ba05f664d8b0fadc4fcdec0891a4ed824a4fec6a7"
     },
-    "protocol": "always"
+    "protocol": "always",
+    "parts": [
+      {
+        "name": "p_202d930b",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_202d930b.sql",
+        "sha256": "sha256:d319f5ab8000c5531434b8a05483dd7eaea617da27ffe53c9cf9f9c6203f0ad8",
+        "columns": [
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "request_number",
+            "type": "text"
+          },
+          {
+            "name": "item",
+            "type": "int"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "name": "way",
+            "type": "varchar"
+          },
+          {
+            "name": "customer",
+            "type": "int"
+          },
+          {
+            "name": "credit_note_id",
+            "type": "int"
+          },
+          {
+            "name": "issued_date",
+            "type": "date"
+          },
+          {
+            "name": "payment_id",
+            "type": "int"
+          },
+          {
+            "name": "paid_date",
+            "type": "date"
+          },
+          {
+            "name": "shipment_id",
+            "type": "int"
+          },
+          {
+            "name": "shipped_date",
+            "type": "date"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      },
+      {
+        "name": "p_2cb8a6cb",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_2cb8a6cb.sql",
+        "sha256": "sha256:804146713b25d01a0ea1d48ba3c786f76d65af63dec076444090c310dcef8161",
+        "columns": [
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "request_number",
+            "type": "text"
+          },
+          {
+            "name": "item",
+            "type": "int"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "name": "way",
+            "type": "varchar"
+          },
+          {
+            "name": "customer",
+            "type": "int"
+          },
+          {
+            "name": "credit_note_id",
+            "type": "int"
+          },
+          {
+            "name": "issued_date",
+            "type": "date"
+          },
+          {
+            "name": "payment_id",
+            "type": "int"
+          },
+          {
+            "name": "paid_date",
+            "type": "date"
+          },
+          {
+            "name": "shipment_id",
+            "type": "int"
+          },
+          {
+            "name": "shipped_date",
+            "type": "date"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      },
+      {
+        "name": "p_6755f6ba",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_6755f6ba.sql",
+        "sha256": "sha256:568fd243b04cc41a1989a9d8b99c5bf473c8365de05143d658d1151649ab5d13",
+        "columns": [
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "request_number",
+            "type": "text"
+          },
+          {
+            "name": "item",
+            "type": "int"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "name": "way",
+            "type": "varchar"
+          },
+          {
+            "name": "customer",
+            "type": "int"
+          },
+          {
+            "name": "credit_note_id",
+            "type": "int"
+          },
+          {
+            "name": "issued_date",
+            "type": "date"
+          },
+          {
+            "name": "payment_id",
+            "type": "int"
+          },
+          {
+            "name": "paid_date",
+            "type": "date"
+          },
+          {
+            "name": "shipment_id",
+            "type": "int"
+          },
+          {
+            "name": "shipped_date",
+            "type": "date"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      },
+      {
+        "name": "p_77af0c22",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_77af0c22.sql",
+        "sha256": "sha256:1e1663b54f34a7227f7973fddd73db8a07b2cc52284e677435737711aa30c766",
+        "columns": [
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "request_number",
+            "type": "text"
+          },
+          {
+            "name": "item",
+            "type": "int"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "name": "way",
+            "type": "varchar"
+          },
+          {
+            "name": "customer",
+            "type": "int"
+          },
+          {
+            "name": "credit_note_id",
+            "type": "int"
+          },
+          {
+            "name": "issued_date",
+            "type": "date"
+          },
+          {
+            "name": "payment_id",
+            "type": "int"
+          },
+          {
+            "name": "paid_date",
+            "type": "date"
+          },
+          {
+            "name": "shipment_id",
+            "type": "int"
+          },
+          {
+            "name": "shipped_date",
+            "type": "date"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      },
+      {
+        "name": "p_7e21ab69",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_7e21ab69.sql",
+        "sha256": "sha256:7c9510903ac49bd97457a90c61e901f6d3339532ee2c7144012287fbd5653251",
+        "columns": [
+          {
+            "name": "_ttrp_d_n20_0",
+            "type": "date"
+          },
+          {
+            "name": "_ttrp_w_n20_0",
+            "type": "bool"
+          }
+        ],
+        "params": [
+          "as_of"
+        ],
+        "keyed": false
+      },
+      {
+        "name": "p_8124de4c",
+        "storage": "automation_db",
+        "engine": "automation",
+        "file": "parts/p_8124de4c.sql",
+        "sha256": "sha256:c4e74fcd8724ee95ebc2be43c5dfb684f8356746ff714cc1a1c09713551bdc89",
+        "columns": [
+          {
+            "name": "id",
+            "type": "text"
+          },
+          {
+            "name": "recipe",
+            "type": "text"
+          },
+          {
+            "name": "run",
+            "type": "text"
+          },
+          {
+            "name": "entity",
+            "type": "text"
+          },
+          {
+            "name": "key",
+            "type": "text"
+          },
+          {
+            "name": "kind",
+            "type": "text"
+          },
+          {
+            "name": "due",
+            "type": "date"
+          },
+          {
+            "name": "state",
+            "type": "text"
+          },
+          {
+            "name": "fulfilled_by",
+            "type": "text"
+          },
+          {
+            "name": "fulfilled_at",
+            "type": "timestamp"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp"
+          }
+        ],
+        "params": [],
+        "keyed": false
+      },
+      {
+        "name": "p_859395aa",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_859395aa.sql",
+        "sha256": "sha256:de59977beeed87ef454450fffe72b327fe0efc805eef6f836ea4265c5281b6ae",
+        "columns": [
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "request_number",
+            "type": "text"
+          },
+          {
+            "name": "item",
+            "type": "int"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "name": "way",
+            "type": "varchar"
+          },
+          {
+            "name": "customer",
+            "type": "int"
+          },
+          {
+            "name": "credit_note_id",
+            "type": "int"
+          },
+          {
+            "name": "issued_date",
+            "type": "date"
+          },
+          {
+            "name": "payment_id",
+            "type": "int"
+          },
+          {
+            "name": "paid_date",
+            "type": "date"
+          },
+          {
+            "name": "shipment_id",
+            "type": "int"
+          },
+          {
+            "name": "shipped_date",
+            "type": "date"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      },
+      {
+        "name": "p_927a867d",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_927a867d.sql",
+        "sha256": "sha256:6b278431878f4289b0768c6ed3aafde2548ee6c8744c92c55e0d6e84e6fd64e3",
+        "columns": [
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "request_number",
+            "type": "text"
+          },
+          {
+            "name": "item",
+            "type": "int"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "name": "way",
+            "type": "varchar"
+          },
+          {
+            "name": "customer",
+            "type": "int"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      },
+      {
+        "name": "p_99be0ef6",
+        "storage": "erp_db",
+        "engine": "erp",
+        "file": "parts/p_99be0ef6.sql",
+        "sha256": "sha256:a95df18e322d28c4ef048016df0ccd86dfb26599cda37b4db02098d50402ddb5",
+        "columns": [
+          {
+            "name": "line_id",
+            "type": "int"
+          },
+          {
+            "name": "request_number",
+            "type": "text"
+          },
+          {
+            "name": "item",
+            "type": "int"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "name": "way",
+            "type": "varchar"
+          },
+          {
+            "name": "customer",
+            "type": "int"
+          },
+          {
+            "name": "credit_note_id",
+            "type": "int"
+          },
+          {
+            "name": "issued_date",
+            "type": "date"
+          },
+          {
+            "name": "payment_id",
+            "type": "int"
+          },
+          {
+            "name": "paid_date",
+            "type": "date"
+          },
+          {
+            "name": "shipment_id",
+            "type": "int"
+          },
+          {
+            "name": "shipped_date",
+            "type": "date"
+          }
+        ],
+        "params": [],
+        "keyed": true
+      }
+    ]
   },
   "files": {
-    "catalog/settle.ttrm": "sha256:686962c6df9f861c00d31e31b423c0f22827d68ceec702c97e0ef34ccc0a1079",
-    "islands/documents.rows.sql": "sha256:46e0e5db839d474e4bc45b5979d0140e7adc78015eb32fb04278f5f23acbe178",
-    "islands/open_obligations.rows.sql": "sha256:369a6513c43544d7c310efea2e3dedcff81289c52a7cad055a6d682fe9a275f4",
-    "islands/overdue_days.rows.sql": "sha256:0636870831bc494b33c1b9846b02cb0ce027c691bf50c6394d03acdacaa15c30",
-    "islands/settlement.closed.sql": "sha256:20628363d4da9f2644424c1c90cbd404d1abb38fca05dd1c521895e7d87fa939",
-    "islands/settlement.credit_note_issued.sql": "sha256:997c56943d03bcd72dcbe168aaa2481a255c98b659806e168227f190a7375b3c",
-    "islands/settlement.goods_overdue.sql": "sha256:5a8031f4ac1ca1db0c773f84609000ed5e52709fb72501f82aa2c8d15dc578e7",
-    "islands/settlement.goods_shipped.sql": "sha256:f14fd6ad80a9d6412933826950f739b597e7a3fdd61e9253026cd7877452cbaf",
-    "islands/settlement.money_overdue.sql": "sha256:4e2f30c414d9d6669c07322676d6b2de528b28956219daf3dfb65d51dd2b9db0",
-    "islands/settlement.money_received.sql": "sha256:170f5aae955840a9e7f9444e5f87b33ef1c952cb05271e318b4715dda9b17b25",
-    "islands/settling.lines.sql": "sha256:72e58a12caafaffb91564ac4c41a87cdc56550dafdf31eb353990c18d3795d7f"
+    "README.md": "sha256:e5bac4f3fbfcba404155bacaf4cf2991b3b4556a39bef188acf85a7714b04e4e",
+    "catalog/settle.ttrm": "sha256:cebe3fe9a45e9709ca43535537346a10e12c9647fa8c4775c9392108bbf78c97",
+    "catalog/settle_verdict.ttrm": "sha256:8bef7895d5acc30dff3004b158b6bdc71a4495a3dc683117f9534b56c618eb5e",
+    "islands/documents.rows.sql": "sha256:41c398ad0086c9fdd9760afc170abb8eff98e96237cfa621de7cb03433f1a20e",
+    "islands/open_obligations.rows.duckdb.sql": "sha256:34131d2fa0ff9ca3c0a31e4485a13fb0fdbd26cfb8e271efa777f1fadde2e75a",
+    "islands/overdue_days.rows.duckdb.sql": "sha256:89014e75313b3c26de8de4c41100b48252f34b5ca0936a7a4fd634c24c4bbd07",
+    "islands/settlement.closed.duckdb.sql": "sha256:26b3bd35397d66a24f1ec6e82741f0beba2005f55ca7954c0967f8e6b1f2e63a",
+    "islands/settlement.credit_note_issued.duckdb.sql": "sha256:36f15e93685fcb57dc16bef9c44a4baf0aa0216378ac980767a9a1ffebb9443b",
+    "islands/settlement.goods_overdue.duckdb.sql": "sha256:f1cf247ca183a99ebc4cada39ad37d6911b0168b56c6055334ace42c790a7d9c",
+    "islands/settlement.goods_overdue.open_obligations.duckdb.sql": "sha256:5537e355658d13a87b84e5aa5ae4a5c37f88db9ffffe8f130d0ecb6a01e69b04",
+    "islands/settlement.goods_shipped.duckdb.sql": "sha256:4275108ea9e1b84dc67f89f52db500d895431afb008e041227bdb55bf7732d2b",
+    "islands/settlement.money_overdue.duckdb.sql": "sha256:8904adcc4e5fa67f64d3b1620952d0f2c8c224283a2bb90325b478f6fb1d0f8d",
+    "islands/settlement.money_overdue.open_obligations.duckdb.sql": "sha256:41efdfe3b366857b9609399616210f55ba67e814860e1742b8b6f5592442df02",
+    "islands/settlement.money_received.duckdb.sql": "sha256:a9184bac617b52075ec354b7ab26dc7226e78b820a12ae5eb7940865b69d52d3",
+    "islands/settling.lines.sql": "sha256:6fb59f830a15e5e2d07acab8c1c1de4e33fb506248ff9391348d398aa5c1a706",
+    "parts/p_202d930b.sql": "sha256:d319f5ab8000c5531434b8a05483dd7eaea617da27ffe53c9cf9f9c6203f0ad8",
+    "parts/p_2cb8a6cb.sql": "sha256:804146713b25d01a0ea1d48ba3c786f76d65af63dec076444090c310dcef8161",
+    "parts/p_6755f6ba.sql": "sha256:568fd243b04cc41a1989a9d8b99c5bf473c8365de05143d658d1151649ab5d13",
+    "parts/p_77af0c22.sql": "sha256:1e1663b54f34a7227f7973fddd73db8a07b2cc52284e677435737711aa30c766",
+    "parts/p_7e21ab69.sql": "sha256:7c9510903ac49bd97457a90c61e901f6d3339532ee2c7144012287fbd5653251",
+    "parts/p_8124de4c.sql": "sha256:c4e74fcd8724ee95ebc2be43c5dfb684f8356746ff714cc1a1c09713551bdc89",
+    "parts/p_859395aa.sql": "sha256:de59977beeed87ef454450fffe72b327fe0efc805eef6f836ea4265c5281b6ae",
+    "parts/p_927a867d.sql": "sha256:6b278431878f4289b0768c6ed3aafde2548ee6c8744c92c55e0d6e84e6fd64e3",
+    "parts/p_99be0ef6.sql": "sha256:a95df18e322d28c4ef048016df0ccd86dfb26599cda37b4db02098d50402ddb5"
   }
 }

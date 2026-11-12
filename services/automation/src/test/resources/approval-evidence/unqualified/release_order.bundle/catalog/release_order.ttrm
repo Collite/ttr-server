@@ -11,5 +11,5 @@ def recipe release_order {
     routes: [release],
     kinds: ["sql"],
     mode: "per-candidate",
-    fingerprints: { text: "sha256:89674330d162ad037958c60c6b937e52a89823360a68674f470b9f46f6939a3b", values: "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888", labels: "sha256:bcf48e2c164b2a0175b5c310c4d8b77541a13ffcd1e6aee76b495b316a9f454b" }
+    fingerprints: { text: "sha256:4391d62ba003015242310c4ee79b401471dfd31d139036965e49e95ec8c0ab0f", values: "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888", labels: "sha256:bcf48e2c164b2a0175b5c310c4d8b77541a13ffcd1e6aee76b495b316a9f454b" }
 }

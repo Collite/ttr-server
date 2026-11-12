@@ -29,11 +29,6 @@ def action release {
     approval: none
     dry_run: { en: "would propose {id} for {order} as {state}" }
 }
-def action audit_state {
-    columns: [def column state { type: automation.obligation.state }]
-    sinks: { native: deliver }
-    approval: none
-}
 def action hold {
     columns:    [def column order { type: hartland.order.order_number }, def column department { type: text }]
     set:        hartland.order.held_for = department
@@ -44,26 +39,27 @@ def action hold {
 }
 def action notify {
     columns:    [def column who { type: role }, def column detail { type: rows }, def column template { type: text, optional: true }]
-    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend", camunda: "send task", hebe: message }
+    sinks:      { n8n: "n8n-nodes-base.emailSend", camunda: "send task", hebe: message }
     deliverable: true
     approval:   none
     dry_run:    { en: "would notify {who} with {detail.count} rows" }
 }
 def action notify_customer {
-    columns:    [def column customer { type: customer.customer_sk }, def column template { type: text }]
-    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend" }
+    columns:    [def column customer { type: customer.sk }, def column template { type: text }]
+    sinks:      { n8n: "n8n-nodes-base.emailSend" }
     deliverable: true
     approval:   none
 }
 def action ask {
     columns:    [def column who { type: role }, def column about { type: text }, def column action { type: action }, def column detail { type: rows, optional: true }]
-    sinks:      { native: task, hebe: task, camunda: "user task", n8n: door }    // n8n: perform ask, then Wait (D-109)
+    sinks:      { hebe: task, camunda: "user task", n8n: door }    // n8n: perform ask, then Wait (D-109)
     approval:   required
+    by:         role.sales_manager
     due:        2 working_days                                                  // program/action default (D-98)
 }
 def action task {
     columns:    [def column who { type: role }, def column about { type: text }, def column detail { type: rows, optional: true }]
-    sinks:      { native: task, hebe: task, n8n: door }
+    sinks:      { hebe: task, n8n: door }
     approval:   none
 }
 def action set_state {
@@ -86,13 +82,13 @@ def action fulfil {
 }
 def action start {                                                               // the outbound face (H-2 ERP, H-3 purchasing)
     columns:    [def column process { type: text }, def column rows { type: rows }]
-    sinks:      { native: start, n8n: "n8n-nodes-base.httpRequest" }
+    sinks:      { n8n: "n8n-nodes-base.httpRequest" }
     approval:   none
 }
 
 // ---- roles and approvals ----
-def role sales          { resolve: keycloak_group "hartland-sales",  delivery: { email: "sales@hartland.example" } }
-def role ar             { resolve: keycloak_group "hartland-ar",     delivery: { email: "ar@hartland.example" } }
+def role sales          { resolve: keycloak_group "hartland-sales" }
+def role ar             { resolve: keycloak_group "hartland-ar" }
 def role sales_manager  { resolve: keycloak_group "hartland-sales-managers" }     // Maya
 def role customer_care  { resolve: keycloak_group "hartland-care" }
 def role finance        { resolve: keycloak_group "hartland-finance" }
@@ -104,3 +100,9 @@ def approval recipe     { by: role.process_owner, quorum: 1 }
 def approval values     { by: role.process_owner, quorum: 1 }
 def approval program    { by: role.process_owner, quorum: 1 }
 def approval deployment { by: role.ops,           quorum: 1 }
+
+def action review {                                               // was: task { who, about, detail } — a user task with no transition
+    columns:    [def column who { type: role }, def column about { type: text }, def column detail { type: rows, optional: true }]
+    sinks:      { process_engine: "user task", hebe: task, n8n: door }
+    approval:   none
+}

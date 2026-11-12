@@ -10,6 +10,18 @@ object CalendarFixture {
     private val resource = Path.of("src/test/resources/calendar-preview")
 
     fun add(root: Path): Path {
+        // The shared hero model now has calendar bindings; this fixture supplies its own isolated mapping.
+        val shared = root.resolve("model/binding/er2db.ttrm")
+        if (Files.exists(shared)) {
+            Files.writeString(
+                shared,
+                Files
+                    .readString(shared)
+                    .lineSequence()
+                    .filterNot { "er.entity.date_dim" in it }
+                    .joinToString("\n"),
+            )
+        }
         copyFixtureTree(resource.resolve("model"), root.resolve("model"))
         return root
     }

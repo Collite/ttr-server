@@ -10,10 +10,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
 import org.tatrman.automation.bundle.ApprovalReader
 import org.tatrman.automation.bundle.Bundle
 import org.tatrman.automation.bundle.BundleLoader
@@ -34,7 +30,6 @@ import org.tatrman.automation.identity.RunAs
 import org.tatrman.automation.identity.caller
 import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.ttr.metadata.model.AutomationProgram
-import org.tatrman.ttr.metadata.model.ProgramDelivery
 import org.tatrman.ttr.metadata.model.WorldDeployment
 
 /**
@@ -286,19 +281,8 @@ private fun programOf(
         port = p.port,
         mode = p.mode,
         asOf = p.asOf,
-        schedule = p.schedule,
-        deliver =
-            when (val d = p.deliver) {
-                ProgramDelivery.Immediate -> JsonPrimitive("immediate")
-                is ProgramDelivery.Digest ->
-                    buildJsonObject {
-                        putJsonObject("digest") {
-                            put("by", d.by)
-                            put("per", d.per)
-                        }
-                    }
-                null -> null
-            },
+        schedule = null,
+        deliver = null,
         fingerprint = bundle.programFps.getValue(p.qname.name),
     )
 
@@ -319,7 +303,7 @@ private fun deploymentOf(
     val runAs = bundle.worldOf(d)?.let { runAsByWorld[it.name] }
     val granted =
         runAs != null &&
-            bundle.programsOf(d).ifEmpty { listOf("") }.all { program ->
+            bundle.programsOf(d).all { program ->
                 runAs.granted(
                     caller,
                     DeploymentIdentity(d.qname.name, program, BundleLoader.runAs(d.runAs), bundle.author),
@@ -328,11 +312,11 @@ private fun deploymentOf(
     return DeploymentDescriptor(
         name = d.qname.name,
         program = d.program,
-        process = d.process,
+        process = null,
         target = d.target,
         targetType = bundle.targetType(d),
         runAs = Fingerprints.runAsWire(d.runAs),
-        trigger = Fingerprints.triggerWire(d.trigger),
+        trigger = null,
         dryRun = d.dryRun,
         enabled = d.enabled,
         stale = stale,

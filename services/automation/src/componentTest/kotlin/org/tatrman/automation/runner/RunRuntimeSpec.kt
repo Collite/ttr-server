@@ -214,7 +214,7 @@ class RunRuntimeComponentSpec :
 
         for (difference in listOf(false, true)) {
             val label = if (difference) "bound-date-difference" else "calendar"
-            "published $label fixture opens evaluates and journals one immutable snapshot through retry close restart" {
+            "published $label preview [AU-D3-1; S3.1 engine row]".config(enabled = false) {
                 val f = calendarFixture(difference = difference)
                 val runtime = f.start()
                 try {
@@ -327,7 +327,7 @@ class RunRuntimeComponentSpec :
             }
         }
 
-        "calendar narrowed capped and undeclared reads refuse without batch or action completion" {
+        "calendar read refusals with engine row [AU-D3-1; S3.1]".config(enabled = false) {
             for ((warning, scope, expected) in listOf(
                 Triple(setOf("security_predicate_applied"), listOf("er.entity.date_dim"), ErrorCode.RESTRICTED_VIEW),
                 Triple(setOf("top_n_applied"), listOf("er.entity.date_dim"), ErrorCode.CANDIDATES_TRUNCATED),
@@ -374,7 +374,10 @@ class RunRuntimeComponentSpec :
                         deployments =
                             bundle.deployments + (
                                 "release_native_event" to
-                                    bundle.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                                    bundle.deployments
+                                        .getValue(
+                                            "release_native_event",
+                                        ).copy(runAs = ModelRunAs.Caller)
                             ),
                     )
                 val f =

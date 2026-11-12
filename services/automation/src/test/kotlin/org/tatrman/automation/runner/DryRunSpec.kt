@@ -76,7 +76,7 @@ class DryRunSpec :
         fun defaultMetadata(defaults: String): PreviewMetadata {
             val root = BundleFixture.copy()
             try {
-                root.edit("model/er/automation-entities.ttrm") {
+                root.edit("model/er/orders.ttrm") {
                     it.replace(
                         "def attribute order_number",
                         """
@@ -1968,12 +1968,12 @@ class DryRunSpec :
             }
         }
 
-        "wrong explicit due or on-due kinds refuse without a journal even on empty routes" {
+        "wrong explicit due kinds refuse without a journal even on empty routes" {
             val original = legacyPreviewMetadata(BundleFixture.load())
             val ask = original.actions.getValue("ask").copy(due = AutomationDuration(2.0, "working_days"))
             val metadata = original.copy(actions = original.actions + ("ask" to ask))
             for (route in listOf("way.hold", "way.empty")) {
-                for ((name, source) in listOf("due" to "amount", "on_due" to "hold")) {
+                for ((name, source) in listOf("due" to "amount", "due" to "hold {}")) {
                     supervisorScope {
                         val columns =
                             mapOf(
@@ -1997,10 +1997,10 @@ class DryRunSpec :
             }
         }
 
-        "writer grouping and on-due stay in evidence and out of assignments" {
+        "writer grouping stays in evidence and out of assignments" {
             supervisorScope {
                 val columns =
-                    writerWiring().columns + mapOf("group_by" to "tenant", "on_due" to "hold { label: \"later\" }")
+                    writerWiring().columns + mapOf("group_by" to "tenant")
                 val wiring = writerWiring().copy(columns = columns)
                 val f = PreviewFixture(this, previewRecipe().withWiring(listOf(wiring)), writerMetadata())
                 f.runner.use { runner ->
@@ -2011,12 +2011,6 @@ class DryRunSpec :
                             .single()
                             .arguments
                     arguments["group_by"] shouldBe JsonPrimitive("a")
-                    arguments["on_due"] shouldBe
-                        buildJsonObject {
-                            put("action", "hold")
-                            put("arguments", buildJsonObject { put("label", "later") })
-                            put("deferred", true)
-                        }
                     val row =
                         f.plan!!
                             .rows

@@ -7,8 +7,15 @@
 //     `emit` and `record`, and the role `buyer` (S2.2 T4).
 // One deviation from `17` §1: `notify_customer.customer` is typed `customer.sk` — hartland's customer is the native
 // TPC-DS dimension, keyed `sk` (`17` §0 wrote `customer_sk`).
-// The programs and the event schemas are in programs.ttrm; the identities, executors, grants, deployments and the
-// process in the world (model/worlds/demo.ttrm). A value change here is a re-approval of kind `values` (D-13).
+// One addition: the customer mail actions (`notify_customer`, `emit`) carry the address column `to`
+// (`customer.email`). It is the row's address, which the n8n export sends to; a role-addressed action uses `who`.
+// The programs are in programs.ttrm; the identities, executors, grants and deployments in the world
+// (worlds/demo.ttrm). A value change here is a re-approval of kind `values` (D-13).
+// Re-typed for the engine (grammar 0.22, AU design `20` §1, AU-hartland P3E): an action is a row the verdict emits.
+// A writer sink (`transition`, `writer`, `obligation`) is performed by the Server in the run; an action with no
+// native sink is an engine action, performed by the process engine from the verdict's actions (send task, user
+// task, call activity). "Needs approval" is on the action (`approval: required, by:, due:`), not a verb: `ask`,
+// `task` and `start` are gone (D-142), and so are delivery (`deliverable`, `role.delivery`).
 package hartland.automation
 model automation
 
@@ -34,56 +41,67 @@ def parameter quiet_months           { type: int,      value: 12,    label: { en
 def parameter active_orders          { type: int,      value: 4,     label: { en: "Orders before the quiet period", cs: "Objednávky před obdobím bez objednávky" } }
 def parameter mail_window            { type: days,     value: 92,    label: { en: "Win-back mail window", cs: "Interval win-back e-mailů" } }
 
-// ---- actions (sinks per target; `native` = the Server writer or a connector) ----
+// ---- actions: writer sinks unchanged; engine actions carry no native sink (`20` §1) ----
 def action release {
     columns:    [def column order { type: order.order_number }]
     transition: order.state -> released { from: [placed, held] }
-    sinks:      { native: transition, n8n: door, camunda: door }
+    sinks:      { native: transition, n8n: door, process_engine: door }
     approval:   none
     dry_run:    { en: "would release order {order}", cs: "uvolnil by objednávku {order}" }
+}
+def action release_confirmed {                                   // was: ask { who: sales_manager, action: release, due, on_due }
+    columns:    [def column order { type: order.order_number }, def column value { type: order.value }]
+    transition: order.state -> released { from: [placed, held] }
+    sinks:      { native: transition, n8n: door, process_engine: door }
+    approval:   required
+    by:         role.sales_manager                                // → a user task for hartland-sales-managers (D-161)
+    due:        2 working_days                                    // → the user task's due date; the fallback is BPMN (`20` rule 2)
+    dry_run:    { en: "would ask the sales manager to confirm the release of {order} ({value})", cs: "požádal by vedoucího prodeje o potvrzení uvolnění objednávky {order} ({value})" }
 }
 def action hold {
     columns:    [def column order { type: order.order_number }, def column department { type: text }]
     set:        order.held_for = department
     transition: order.state -> held { from: placed }            // held → held is an implicit silent self-transition (D-85)
-    sinks:      { native: transition, n8n: door, camunda: door }
+    sinks:      { native: transition, n8n: door, process_engine: door }
     approval:   none
     dry_run:    { en: "would hold order {order} for {department}", cs: "pozastavil by objednávku {order} pro oddělení {department}" }
 }
-def action notify {
+def action notify {                                               // engine action: the BPMN's send task (D-148)
     columns:    [def column who { type: role }, def column detail { type: rows }, def column template { type: text, optional: true }]
-    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend", camunda: "send task", hebe: message }
-    deliverable: true
+    sinks:      { process_engine: "send task", n8n: "n8n-nodes-base.emailSend", hebe: message }
     approval:   none
     dry_run:    { en: "would notify {who} with {detail.count} rows", cs: "upozornil by {who}, řádků: {detail.count}" }
 }
-def action notify_customer {
-    columns:    [def column customer { type: customer.sk }, def column template { type: text }]
-    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend" }
-    deliverable: true
+def action notify_customer {                                      // engine action
+    columns:    [def column customer { type: customer.sk }, def column to { type: customer.email }, def column template { type: text }]
+    sinks:      { process_engine: "send task", n8n: "n8n-nodes-base.emailSend" }
     approval:   none
     dry_run:    { en: "would send customer {customer} the {template} message", cs: "poslal by zákazníkovi {customer} zprávu {template}" }
 }
-def action ask {
-    columns:    [def column who { type: role }, def column about { type: text }, def column action { type: action }, def column detail { type: rows, optional: true }]
-    sinks:      { native: task, hebe: task, camunda: "user task", n8n: door }    // n8n: perform ask, then Wait (D-109)
-    approval:   required
-    due:        2 working_days                                                  // program/action default (D-98)
-    dry_run:    { en: "would ask {who} to approve {action} for {about}", cs: "požádal by {who} o schválení {action} pro {about}" }
-}
-def action task {
+def action review {                                               // was: task { who, about, detail }: a user task with no transition
     columns:    [def column who { type: role }, def column about { type: text }, def column detail { type: rows, optional: true }]
-    sinks:      { native: task, hebe: task, n8n: door }
+    sinks:      { process_engine: "user task", hebe: task, n8n: door }
     approval:   none
-    dry_run:    { en: "would give {who} a task about {about}", cs: "zadal by {who} úkol k {about}" }
+    dry_run:    { en: "would give {who} a review of {about}", cs: "zadal by {who} kontrolu k {about}" }
 }
 def action set_state {
     columns:    [def column line { type: return_request_line.line_id }, def column to { type: text }, def column way { type: text, optional: true }]
     transition: return_request_line.state -> {to}
     set:        return_request_line.way = way
-    sinks:      { native: transition, n8n: door, camunda: door }
+    sinks:      { native: transition, n8n: door, process_engine: door }
     approval:   none
     dry_run:    { en: "would set return line {line} to {to}", cs: "převedl by řádek reklamace {line} do stavu {to}" }
+}
+def action decide_way {                                           // was: ask { who: customer_care, action: set_state, group_by: request }
+    columns:    [def column line { type: return_request_line.line_id }, def column request { type: return_request.request_number },
+                 def column to { type: text }, def column way { type: text }]
+    transition: return_request_line.state -> {to}
+    set:        return_request_line.way = way
+    sinks:      { native: transition, process_engine: door }
+    approval:   required
+    by:         role.customer_care                                // one user task per line in v1 (⚑20-2)
+    due:        3 working_days
+    dry_run:    { en: "would ask customer care to decide the way of return line {line} (request {request})", cs: "požádal by zákaznickou péči o rozhodnutí o řádku reklamace {line} (reklamace {request})" }
 }
 def action expect {
     columns:    [def column line { type: return_request_line.line_id }, def column kind { type: text }, def column due { type: date }]
@@ -93,16 +111,21 @@ def action expect {
 }
 def action fulfil {
     columns:    [def column line { type: return_request_line.line_id }, def column kind { type: text }, def column to { type: text } ]
-    transition: obligation.state -> {to}                                        // set_state on obligation ⇒ signal (D-52, GI-4)
+    transition: obligation.state -> {to}                                        // no signal: the BPMN loop notices (D-147)
     sinks:      { native: obligation }
     approval:   none
     dry_run:    { en: "would mark the {kind} of return line {line} {to}", cs: "označil by {kind} k řádku reklamace {line} jako {to}" }
 }
-def action start {                                                               // the outbound face (H-2 ERP, H-3 purchasing)
-    columns:    [def column process { type: text }, def column rows { type: rows }]
-    sinks:      { native: start, n8n: "n8n-nodes-base.httpRequest" }
-    approval:   none
-    dry_run:    { en: "would start {process} with {rows.count} rows", cs: "spustil by {process}, řádků: {rows.count}" }
+// was: start (the outbound face, D-142). H-3's purchasing hand-off: the buyer approves it, then the engine calls the
+// purchasing process (a BPMN call activity) for the candidate (P3E's rule for an `ask … action: start`). `rows` is
+// optional: a rows argument must name its route's `detail:` contexts, and H-3's `propose` route has none.
+def action handoff {
+    columns:    [def column process { type: text }, def column rows { type: rows, optional: true }]
+    sinks:      { process_engine: "call activity" }
+    approval:   required
+    by:         role.buyer
+    due:        2 working_days
+    dry_run:    { en: "would ask the buyer to hand the proposal to {process}", cs: "požádal by nákupčího o předání návrhu procesu {process}" }
 }
 // H-3: all eight required attributes are mapped; explicit defaults supply omitted metadata.
 // bigint_id_v1 is retry-stable per pinned run/wiring/candidate; the buyer holds the batch (D-66).
@@ -124,11 +147,10 @@ def action propose {
     approval:   none
     dry_run:    { en: "would propose reordering {proposed_qty} of item {item} for center {warehouse}", cs: "navrhl by doobjednat {proposed_qty} ks položky {item} pro centrum {warehouse}" }
 }
-// H-5: quarter uses the UTC quarter of pinned as-of (YYYY-Qn); run and mailed_at use committed Open context.
+// H-5: `emit` is an engine action (a send task, D-167); `record` is the writer. The quarter uses the UTC quarter of pinned as-of (YYYY-Qn); run and mailed_at use committed Open context.
 def action emit {
-    columns:    [def column customer { type: customer.sk }, def column offer { type: text }]
-    sinks:      { native: deliver, n8n: "n8n-nodes-base.emailSend" }
-    deliverable: true
+    columns:    [def column customer { type: customer.sk }, def column to { type: customer.email }, def column offer { type: text }]
+    sinks:      { process_engine: "send task", n8n: "n8n-nodes-base.emailSend" }   // engine action (D-167)
     approval:   none
     dry_run:    { en: "would mail customer {customer} the {offer} win-back offer", cs: "poslal by zákazníkovi {customer} win-back nabídku {offer}" }
 }
@@ -147,9 +169,9 @@ def action record {
     dry_run:    { en: "would record the win-back mail to customer {customer}", cs: "zaznamenal by win-back e-mail zákazníkovi {customer}" }
 }
 
-// ---- roles and approvals ----
-def role sales          { resolve: keycloak_group "hartland-sales",  delivery: { email: "sales@hartland.example" } }
-def role ar             { resolve: keycloak_group "hartland-ar",     delivery: { email: "ar@hartland.example" } }
+// ---- roles: no delivery addresses (D-142); approvals of rule changes unchanged (D-13) ----
+def role sales          { resolve: keycloak_group "hartland-sales" }
+def role ar             { resolve: keycloak_group "hartland-ar" }
 def role sales_manager  { resolve: keycloak_group "hartland-sales-managers" }     // Maya
 def role customer_care  { resolve: keycloak_group "hartland-care" }
 def role finance        { resolve: keycloak_group "hartland-finance" }

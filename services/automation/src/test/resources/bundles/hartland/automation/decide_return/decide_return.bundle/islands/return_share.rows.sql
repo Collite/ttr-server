@@ -1,16 +1,19 @@
-WITH returned AS (
-    SELECT rr.customer, SUM(rl.quantity * rl.unit_price) AS returned_value
-    FROM   er.entity.return_request_line rl JOIN er.entity.return_request rr ON rr.request_number = rl.request_number
-    WHERE  rr.requested_date >= :as_of - 365 AND rl.state <> 'rejected'
-    GROUP  BY rr.customer
-),
-bought AS (
-    SELECT s.customer, SUM(s.ext_sales_price) AS bought_value
-    FROM   er.entity.sales_line s
-    WHERE  s.sold_date >= :as_of - 365
-    GROUP  BY s.customer
-)
-SELECT q.line_id, COALESCE(r.returned_value, 0) / NULLIF(b.bought_value, 0) AS share
-FROM   lines q
-LEFT JOIN returned r ON r.customer = q.customer
-LEFT JOIN bought   b ON b.customer = q.customer
+SELECT "t8"."line_id", COALESCE("t8"."returned_value", 0) / NULLIF("t10"."bought_value", 0) AS "share"
+FROM (SELECT "t2"."line_id", "t2"."request_number", "t2"."item", "t2"."quantity", "t2"."unit_price", "t2"."line_value", "t2"."reason", "t2"."requested_resolution", "t2"."requested_variant", "t2"."customer", "t2"."customer_email", "t2"."order_number", "t2"."requested_date", "t7"."returned_value"
+        FROM (SELECT "line_id", "request_number", "item", "quantity", "unit_price", "quantity" * "unit_price" AS "line_value", "reason", "requested_resolution", "requested_variant", "customer0" AS "customer", "email" AS "customer_email", "order_number", "requested_date"
+                FROM (SELECT "t"."line_id", "t"."request_number", "t"."line_no", "t"."item", "t"."quantity", "t"."unit_price", "t"."reason", "t"."requested_resolution", "t"."requested_variant", "t"."state", "t"."way", "t"."customer", "t"."customer0", "t"."order_number", "t"."channel", "t"."requested_date", "t"."state0", "customer"."customer_id", "customer"."addr", "customer"."cdemo", "customer"."hdemo", "customer"."birth_year", "customer"."center", "customer"."email"
+                        FROM (SELECT "return_request_line"."line_id", "return_request_line"."request_number", "return_request_line"."line_no", "return_request_line"."item", "return_request_line"."quantity", "return_request_line"."unit_price", "return_request_line"."reason", "return_request_line"."requested_resolution", "return_request_line"."requested_variant", "return_request_line"."state", "return_request_line"."way", "return_request_line"."customer", "return_request"."customer" AS "customer0", "return_request"."order_number", "return_request"."channel", "return_request"."requested_date", "return_request"."state" AS "state0"
+                                FROM "return_request_line"
+                                    INNER JOIN "return_request" ON "return_request_line"."request_number" = "return_request"."request_number") AS "t"
+                            LEFT JOIN "customer" ON "t"."customer" = "customer"."sk") AS "t0"
+                WHERE "t0"."state" = 'received') AS "t2"
+            LEFT JOIN (SELECT "customer", SUM("quantity" * "unit_price") AS "returned_value"
+                FROM (SELECT "return_request_line0"."line_id", "return_request_line0"."request_number", "return_request_line0"."line_no", "return_request_line0"."item", "return_request_line0"."quantity", "return_request_line0"."unit_price", "return_request_line0"."reason", "return_request_line0"."requested_resolution", "return_request_line0"."requested_variant", "return_request_line0"."state", "return_request_line0"."way", "return_request_line0"."customer", "return_request0"."customer" AS "customer0", "return_request0"."order_number", "return_request0"."channel", "return_request0"."requested_date", "return_request0"."state" AS "state0"
+                        FROM "return_request_line" AS "return_request_line0"
+                            INNER JOIN "return_request" AS "return_request0" ON "return_request_line0"."request_number" = "return_request0"."request_number") AS "t3"
+                WHERE "t3"."requested_date" >= :as_of_minus_365_days AND "t3"."state" <> 'rejected'
+                GROUP BY "customer") AS "t7" ON "t2"."customer" = "t7"."customer") AS "t8"
+    LEFT JOIN (SELECT "customer", SUM("ext_sales_price") AS "bought_value"
+        FROM "sales_line"
+        WHERE "sold_date" >= :as_of_minus_365_days
+        GROUP BY "customer") AS "t10" ON "t8"."customer" = "t10"."customer"

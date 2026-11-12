@@ -23,7 +23,9 @@ def entity customer {
         def attribute hdemo       { type: int, description: "Household demographics — FK to the 'sk' attribute of the Household Demographics entity." },
         def attribute birth_year  { type: int, description: "Customer's year of birth — buyer-age analyses derive age from this." },
         // AU D-83 — derived by the data build from the modal warehouse of the customer's lines.
-        def attribute center      { type: int, description: "The customer's distribution center — the one that ships most of their orders; FK to the 'sk' attribute of the Distribution Center (warehouse) entity. Empty for a customer with no web or marketplace order." }
+        def attribute center      { type: int, description: "The customer's distribution center — the one that ships most of their orders; FK to the 'sk' attribute of the Distribution Center (warehouse) entity. Empty for a customer with no web or marketplace order." },
+        // AU — the address the customer mail actions (notify_customer, emit) send to.
+        def attribute email       { type: text, description: "The customer's mail address, where customer mail is sent. A demo address under the reserved hartland.example domain; it never reaches a real inbox." }
     ]
 }
 
@@ -105,10 +107,10 @@ def entity store {
     labelPlural: "Stores"
     // MS: the same two pointers in the vocabulary-v3 mention facet. The legacy properties
     // below are deliberately KEPT, which is why this entity raises TTR-SEM-218 ("both,
-    // agreeing" — see model/tests/project-harness.mjs). Readers before producers: veles
+    // agreeing" — see model/tests/project-harness.mjs). Readers before producers: metadata
     // reads `semantics { name:, code: }` only from MS-P2 on, and dropping the legacy
     // properties before the serving estate runs that build would blank
-    // EntityDetail.name_attribute for this dimension. Delete them once hartland's veles
+    // EntityDetail.name_attribute for this dimension. Delete them once hartland's metadata
     // is on an MS-P2 image, not before.
     semantics { name: store_name, code: store_id, code_pattern: "^[A-P]{16}$" }
     nameAttribute: store_name

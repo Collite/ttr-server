@@ -1,0 +1,8 @@
+package hartland
+model binding
+
+def er2db_entity proposal_map { entity: er.entity.reorder_proposal, target: { table: db.dbo.reorder_proposal } }
+def er2db_attribute proposal_id_map { attribute: er.entity.reorder_proposal.proposal_id, target: { column: db.dbo.reorder_proposal.proposal_id } }
+def er2db_attribute proposal_item_map { attribute: er.entity.reorder_proposal.item, target: { column: db.dbo.reorder_proposal.item } }
+def er2db_attribute proposal_run_map { attribute: er.entity.reorder_proposal.run, target: { column: db.dbo.reorder_proposal.run } }
+def er2db_attribute proposal_state_map { attribute: er.entity.reorder_proposal.state, target: { column: db.dbo.reorder_proposal.state } }

@@ -35,6 +35,16 @@ class OpenSpec :
 
         fun request(port: JsonObject = buildJsonObject { put("key", "4711") }) = OpenRequest(deployment, port)
 
+        // Port validation is independent of adoption of the new hero's contextual writer action.
+        fun portOnly(source: Bundle): Bundle {
+            val keyRecipe = source.recipes.getValue("decide_return")
+            return source.copy(
+                recipes =
+                    source.recipes +
+                        ("decide_return" to keyRecipe.copy(recipe = keyRecipe.recipe.copy(wiring = emptyList()))),
+            )
+        }
+
         fun refused(
             code: ErrorCode,
             action: () -> Unit,
@@ -409,19 +419,20 @@ class OpenSpec :
                 emptyList()
             refused(ErrorCode.PORT) { service().open(recipe, request(buildJsonObject { put("none", true) }), caller) }
         }
-        "events validate schema and key types; event time applies only to event programs" {
+        "key ports validate key types and preserve the engine event clock" {
             val d = "decide_native_event"
-            val b =
+            val sourceBundle =
                 bundle().copy(
                     deployments =
                         original.deployments + (d to original.deployments.getValue(d).copy(runAs = ModelRunAs.Caller)),
                 )
+            val b = portOnly(sourceBundle)
             val at = "2026-10-20T09:00:00+02:00"
             val req =
                 OpenRequest(
                     d,
                     buildJsonObject {
-                        putJsonObject("event") { put("line_id", 123) }
+                        putJsonObject("key") { put("line_id", 123) }
                         put("at", at)
                     },
                 )
@@ -437,14 +448,14 @@ class OpenSpec :
                     req.copy(
                         port =
                             buildJsonObject {
-                                putJsonObject("event") { put("line_id", "123") }
+                                putJsonObject("key") { put("line_id", "123") }
                             },
                     ),
                     caller,
                 )
             }
             refused(ErrorCode.PORT) {
-                service(b).open("decide_return", req.copy(port = buildJsonObject { putJsonObject("event") {} }), caller)
+                service(b).open("decide_return", req.copy(port = buildJsonObject { putJsonObject("key") {} }), caller)
             }
             refused(ErrorCode.PORT) {
                 service(b).open(
@@ -452,7 +463,7 @@ class OpenSpec :
                     req.copy(
                         port =
                             buildJsonObject {
-                                putJsonObject("event") {
+                                putJsonObject("key") {
                                     put("line_id", 123)
                                     put("surprise", 1)
                                 }
@@ -564,13 +575,14 @@ class OpenSpec :
                 )
             }
         }
-        "process opens use the step port while retaining the selected program identity and fingerprint" {
-            val d = "returns_n8n"
-            val b =
+        "key-port deployments retain the selected program identity and fingerprint" {
+            val d = "decide_native_event"
+            val sourceBundle =
                 original.copy(
                     deployments =
                         original.deployments + (d to original.deployments.getValue(d).copy(runAs = ModelRunAs.Caller)),
                 )
+            val b = portOnly(sourceBundle)
             var row: RunOpen? = null
             val result =
                 service(b, claim = {

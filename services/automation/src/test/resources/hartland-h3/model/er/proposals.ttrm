@@ -15,8 +15,8 @@ def entity reorder_proposal {
         def attribute run           { type: text, description: "The automation run that made the proposal." },
         def attribute item          { type: int, description: "Product to reorder — FK to the 'sk' attribute of the Product (item) entity." },
         def attribute warehouse     { type: int, description: "Distribution center to reorder for — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
-        def attribute on_hand       { type: int, description: "Units on hand when the proposal was made." },
-        def attribute weekly_demand { type: { type: decimal, length: 12, precision: 2 }, description: "Average units sold per week at that center." },
+        def attribute on_hand       { type: int, optional: true, description: "Units on hand when the proposal was made." },
+        def attribute weekly_demand { type: { type: decimal, length: 12, precision: 2 }, optional: true, description: "Average units sold per week at that center." },
         def attribute proposed_qty  { type: int, description: "Units proposed for reorder." },
         def attribute state {
             type: text,

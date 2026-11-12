@@ -17,9 +17,11 @@ import org.tatrman.ttr.metadata.model.RunAsRef
 import org.tatrman.ttr.metadata.model.World
 import org.tatrman.ttr.metadata.model.WorldSchema
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
+import org.tatrman.ttr.metadata.source.BuiltinStockSource
 import org.tatrman.ttr.metadata.source.FileBasedSource
 import org.tatrman.ttr.metadata.source.LoadWarning
 import org.tatrman.ttr.metadata.source.LocalFsStorage
+import org.tatrman.ttr.semantics.RemovedConstructs
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
@@ -38,8 +40,8 @@ import org.tatrman.automation.identity.RunAsRef as GrantRunAs
  *
  * **What refuses a commit:** a manifest that is not `schemaVersion` 3, carries no `recipe`, names another recipe
  * than its directory, or lists an island whose file is missing or whose sha256 differs; a deployment naming an
- * unknown program or a process its world does not declare, a program — its own or a step's of its process —
- * without a recipe bundle, or a target that is neither `native` nor an executor of its world; two worlds
+ * unknown program, a program
+ * without a recipe bundle, or a target that is not a declared executor of its world; two worlds
  * declaring one deployment name; a commit without an author (no deployer, D-90); and every load error of the
  * automation half —
  * a file under `automation/`, a `model world` file, an automation-validator or `ttr/automation-*` / `ttr/states-*`
@@ -66,14 +68,16 @@ class BundleLoader(
             listOf(MODEL_DIR to modelRoot, AUTOMATION_DIR to automationRoot)
                 .filter { (_, root) -> root.isDirectory() }
                 .map { (id, root) -> FileBasedSource(id, 100, LocalFsStorage(id, root)).load() }
-        val result = ModelReconciler(ModelDescriptor(id = "automation", name = "automation")).reconcile(snapshots)
+        val result =
+            ModelReconciler(ModelDescriptor(id = "automation", name = "automation"))
+                .reconcile(listOf(BuiltinStockSource().load()) + snapshots)
         val worldFiles =
             snapshots
                 .flatMap {
                     it.loadedFiles
                 }.filter { it.schemaCode == "world" }
                 .map { it.storageFile.path }
-        for (e in snapshots.flatMap { it.errors } + result.errors) {
+        for (e in (snapshots.flatMap { it.errors } + result.errors).distinct()) {
             if (LAYOUT_CODES.any { e.message.startsWith(it) }) continue
             if (isAutomationFinding(e, automationRoot, worldFiles)) {
                 findings += render(e, checkout.root)
@@ -106,7 +110,7 @@ class BundleLoader(
                 val name = d.qname.name
                 if (deployments.put(name, d) != null) findings += "deployment $name: declared by two worlds"
                 deploymentWorlds[name] = scope.name
-                checkDeployment(d, w, scope, recipes.keys, programs, findings)
+                checkDeployment(d, w, recipes.keys, programs, findings)
             }
         }
         for (p in programs.values) {
@@ -166,14 +170,13 @@ class BundleLoader(
     private fun checkDeployment(
         d: org.tatrman.ttr.metadata.model.WorldDeployment,
         world: World,
-        scope: WorldScope,
         recipeNames: Set<String>,
         programs: Map<String, org.tatrman.ttr.metadata.model.AutomationProgram>,
         findings: MutableList<String>,
     ) {
         val name = d.qname.name
 
-        // A program the deployment runs — its own, or a step's — must be declared and have its recipe's bundle.
+        // Grammar 0.22: every deployment names one program and an explicitly declared executor.
         fun runnable(
             p: String,
             via: String,
@@ -186,18 +189,11 @@ class BundleLoader(
                 if (r !in recipeNames) findings += "deployment $name: ${via}program $p's recipe $r has no bundle"
             }
         }
-        d.program?.let { runnable(it, "") }
-        d.process?.let { p ->
-            val process = scope.processes[p]
-            if (process == null) {
-                findings += "deployment $name: process $p is not declared in world ${scope.name}"
-            } else {
-                process.steps.forEach { step -> step.program?.let { runnable(it, "process $p step ${step.name}: ") } }
-            }
-        }
-        if (d.target != Bundle.NATIVE && world.executors.none { it.qname.name == d.target }) {
+        runnable(d.program, "")
+        val executors = world.executors.map { it.qname.name }
+        if (!RemovedConstructs.isNativeTarget(d.target, executors) && d.target !in executors) {
             findings +=
-                "deployment $name: target ${d.target} is neither native nor an executor of world ${world.qname.name}"
+                "deployment $name: target ${d.target} is not an executor of world ${world.qname.name}"
         }
     }
 
@@ -309,7 +305,16 @@ class BundleLoader(
         val file =
             runCatching { Path.of(e.file).relativeTo(root).toString() }.getOrDefault(e.file).ifBlank { e.sourceId }
         val at = if (e.line > 0) ":${e.line}" else ""
-        return "$file$at: ${e.message}"
+        // Core's model validator names CUT-nnn; expose the same cut under its public recipe diagnostic id.
+        val message =
+            if (e.message.startsWith(RemovedConstructs.CODE) ||
+                e.message.startsWith("ttr/automation-deployment-dropped")
+            ) {
+                e.message.replace(CUT_CODE) { "TTRP-${it.value}" }
+            } else {
+                e.message
+            }
+        return "$file$at: $message"
     }
 
     companion object {
@@ -318,6 +323,7 @@ class BundleLoader(
         private const val AUTOMATION_VALIDATOR = "automation-validator"
         private val LAYOUT_CODES = listOf("ttr/package-declaration-mismatch", "ttr/package-prefix-divergence")
         private val AUTOMATION_CODES = listOf("ttr/automation-", "ttr/states-")
+        private val CUT_CODE = Regex("(?<!TTRP-)\\bCUT-\\d{3}\\b")
         private val log = LoggerFactory.getLogger(BundleLoader::class.java)
 
         /** sha256 over the model root's files, path and content, in path order — what the bundle was built against. */
@@ -341,7 +347,6 @@ class BundleLoader(
         ): WorldScope =
             WorldScope(
                 name = w.qname.name,
-                processes = w.processes.associateBy { it.qname.name },
                 identities = identities(w),
                 grants = grants(w),
                 roles =

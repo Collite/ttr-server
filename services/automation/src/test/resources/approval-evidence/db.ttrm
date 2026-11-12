@@ -1,3 +1,33 @@
 package hartland
 model db schema dbo
-def table sales_order { primaryKey: [order_number] columns: [def column order_number { type: text, isKey: true }] }
+
+def table sales_order {
+    primaryKey: [order_number]
+    columns: [
+        def column order_number { type: text, isKey: true },
+        def column customer { type: int },
+        def column value { type: decimal },
+        def column held_for { type: text },
+        def column state { type: text }
+    ]
+}
+
+def table customer {
+    primaryKey: [sk]
+    columns: [
+        def column sk { type: int, isKey: true },
+        def column email { type: text }
+    ]
+}
+
+def table return_request_line {
+    primaryKey: [line_id]
+    columns: [
+        def column line_id { type: int, isKey: true },
+        def column request_number { type: text },
+        def column customer { type: int },
+        def column quantity { type: int },
+        def column way { type: text },
+        def column state { type: text }
+    ]
+}

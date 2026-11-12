@@ -1,0 +1,114 @@
+package hartland
+
+model er
+
+// Channel sales entities (D-5). Attribute names are logical — physical table-prefix
+// stripped (ss_/ws_/cs_) — the whole point of the er layer vs raw db columns. D-6's
+// channel-vocabulary structure (T4) is these three distinct entities + labelPlural/
+// displayLabel; the actual synonym forms (`aliases:` is legacy — flagged by
+// ttr/lexicon-legacy-aliases, "declare a lexicon `term`" instead) are Stage 2.5's lexicon.
+
+def entity store_sales {
+    description: "Stores-channel sales lines — store / brick-and-mortar revenue (sales) = SUM(ext_sales_price), units sold = quantity, dated by sold_date."
+    labelPlural: "Store Sales"
+    roles: [fact]
+    // ttr-demo#62 (2026-10-14): the Czech label names the FACT, like the en "Store Sales" and the
+    // other channels' „Webové objednávky“ / „Objednávky z tržiště“. It used to be „Tržby z prodejen“
+    // — the measure phrase — and a label is a METADATA term matched EXACT at 1.168 on three words,
+    // so «Tržby z prodejen za 2025» bound this ENTITY instead of its revenue, the door could not
+    // answer, and the composer ran a 3-channel monthly query. No declared term can outrank that
+    // (a profiled EXACT scores 1.000, a TOKENS phrase is a class below), so the phrase moved to
+    // `lexicon/aliases/hartland.lex.yaml`, on the measure, beside its singular.
+    displayLabel: { en: "Store Sales", cs: "Prodeje v prodejnách" }
+    // MS (mention semantics, vocabulary v3): the MENTION facet — what a human is asking
+    // for when they mention this entity. Declared order is load-bearing: ext_sales_price
+    // is FIRST, so revenue is the default measure of a bare "store sales". Both are
+    // `sum`, which is the bare-id default, so neither needs an item object. This is what
+    // makes store_sales resolve as `entity_with_measures` rather than a plain `entity`,
+    // which is what wakes FrameRoles R2 and the R3–R6 `podle`/"by" exemptions.
+    semantics { measures: [ ext_sales_price, quantity ] }
+    attributes: [
+        def attribute item           { type: int, isKey: true, description: "Sold product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute ticket_number  { type: int, isKey: true, description: "Sales ticket number; one ticket = one basket. Part of the primary key." },
+        def attribute sold_date      { type: int, description: "Sale date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute customer       { type: int, description: "Buying customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute addr           { type: int, description: "Customer address at sale time — FK to the 'sk' attribute of the Customer Address entity." },
+        def attribute store          { type: int, description: "Selling store — FK to the 'sk' attribute of the Store entity." },
+        def attribute promo          { type: int, description: "Promotion applied to this line, if any — FK to the 'sk' attribute of the Promotion entity." },
+        def attribute quantity       { type: int, description: "Units sold on this line." },
+        def attribute ext_sales_price { type: { type: decimal, length: 10, precision: 2 }, description: "Extended sales price of the line (unit price × quantity) — the revenue amount; SUM this for revenue/sales." }
+    ]
+}
+
+def entity web_sales {
+    description: "Web-channel sales lines — web / online / e-shop revenue (sales) = SUM(ext_sales_price), units sold = quantity, dated by sold_date."
+    labelPlural: "Web Orders"
+    roles: [fact]
+    displayLabel: { en: "Web Orders", cs: "Webové objednávky" }
+    // MS: the mention facet, same shape and same reason as store_sales above —
+    // ext_sales_price FIRST, so revenue is the default measure of a bare "tržby z webu".
+    semantics { measures: [ ext_sales_price, quantity ] }
+    attributes: [
+        def attribute item           { type: int, isKey: true, description: "Sold product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute order_number   { type: text, isKey: true, description: "Web order number; one order = one basket. Part of the primary key." },
+        def attribute sold_date      { type: int, description: "Sale date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute customer       { type: int, description: "Buying customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute addr           { type: int, description: "Customer address at sale time — FK to the 'sk' attribute of the Customer Address entity." },
+        def attribute warehouse      { type: int, description: "Fulfilling distribution center — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
+        def attribute promo          { type: int, description: "Promotion applied to this line, if any — FK to the 'sk' attribute of the Promotion entity." },
+        def attribute quantity       { type: int, description: "Units sold on this line." },
+        def attribute ext_sales_price { type: { type: decimal, length: 10, precision: 2 }, description: "Extended sales price of the line (unit price × quantity) — the revenue amount; SUM this for revenue/sales." }
+    ]
+}
+
+def entity catalog_sales {
+    description: "Marketplace (third-party / 3P) sales lines — marketplace revenue (sales) = SUM(ext_sales_price), units sold = quantity, dated by sold_date; the channel of the incident."
+    labelPlural: "Marketplace Orders"
+    roles: [fact]
+    displayLabel: { en: "Marketplace Orders", cs: "Objednávky z tržiště" }
+    // MS: the mention facet. ⛑ Its absence is what made the estate's OWN advertised
+    // questions unanswerable: without it this entity compiles to `entity` rather than
+    // `entity_with_measures`, FrameRoles R2 never fires, so "tržba z tržiště" came back
+    // SUBJECT (not MEASURE) and its modifier "tržiště" took FILTER through R5 — and the
+    // query door refuses a subject it has no column to read. This is the channel the
+    // demo's headline beats ask about, so it was the most visible entity to omit.
+    semantics { measures: [ ext_sales_price, quantity ] }
+    attributes: [
+        def attribute item           { type: int, isKey: true, description: "Sold product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute order_number   { type: text, isKey: true, description: "Marketplace order number; one order = one basket. Part of the primary key." },
+        def attribute sold_date      { type: int, description: "Sale date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute customer       { type: int, description: "Buying customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute addr           { type: int, description: "Customer address at sale time — FK to the 'sk' attribute of the Customer Address entity." },
+        def attribute call_center    { type: int, description: "Seller support center handling the order — FK to the 'sk' attribute of the Seller Support Center (call_center) entity." },
+        def attribute warehouse      { type: int, description: "Fulfilling distribution center — FK to the 'sk' attribute of the Distribution Center (warehouse) entity." },
+        def attribute promo          { type: int, description: "Promotion applied to this line, if any — FK to the 'sk' attribute of the Promotion entity." },
+        def attribute quantity       { type: int, description: "Units sold on this line." },
+        def attribute ext_sales_price { type: { type: decimal, length: 10, precision: 2 }, description: "Extended sales price of the line (unit price × quantity) — the revenue amount; SUM this for revenue/sales." }
+    ]
+}
+
+// ===== channel_sales — the three channels as ONE object =====
+// The question the three entities above cannot answer on the fast path: *"revenue by channel"*.
+// There the channel is which ENTITY a row lives in, so a bare "revenue" names three columns and
+// "channel" names nothing. `channel_sales` is backed by the physical view
+// `db.dbo.channel_sales` (data/views/channel_sales.sql — UNION ALL of the three facts), which makes
+// the channel a COLUMN and revenue ONE measure. The per-channel entities stay: *"marketplace
+// revenue"* still means catalog_sales, and every existing question keeps its object.
+def entity channel_sales {
+    description: "All-channel sales lines — store, web and marketplace sales in one object, labelled by channel. Revenue (sales) = SUM(ext_sales_price), units sold = quantity, dated by sold_date; group by channel to compare the channels."
+    labelPlural: "All-Channel Sales"
+    roles: [fact]
+    displayLabel: { en: "All-Channel Sales", cs: "Prodeje napříč kanály" }
+    // MS: revenue FIRST — the default measure of a bare "revenue"/"tržby" — then units sold.
+    semantics { measures: [ ext_sales_price, quantity ] }
+    attributes: [
+        def attribute channel         { type: text, description: "Sales channel of the line — 'store', 'web' or 'marketplace'." },
+        def attribute sold_date       { type: int, description: "Sale date — FK to the 'sk' attribute of the Calendar (date_dim) entity." },
+        def attribute item            { type: int, description: "Sold product — FK to the 'sk' attribute of the Product (item) entity." },
+        def attribute customer        { type: int, description: "Buying customer — FK to the 'sk' attribute of the Customer entity." },
+        def attribute quantity        { type: int, description: "Units sold on this line." },
+        def attribute ext_sales_price { type: { type: decimal, length: 10, precision: 2 }, description: "Extended sales price of the line (unit price × quantity) — the revenue amount; SUM this for revenue/sales, in any channel." },
+        // LR ⚑LR-9 — what the DC-scope row rule narrows by; empty on a store line.
+        def attribute warehouse       { type: int, description: "Fulfilling distribution center of a web or marketplace line — FK to the 'sk' attribute of the Distribution Center (warehouse) entity; empty for a store line, which no distribution center ships." }
+    ]
+}

@@ -1,0 +1,49 @@
+// The hartland demo world as AU-hartland P2 writes it (ttr-core grammar 0.16): the engines and storages of
+// AU P0 with `writable:`, and the automation half of design 17 §2 — ttr-core's shared fixture
+// `ttr-parser/src/test/resources/automation/demo-world.ttrm` (identity credential per D-132).
+package hartland.worlds
+model world
+
+def world demo {
+    def engine erp        { type: postgres }
+    def engine automation { type: postgres }
+
+    def storage erp_db        { type: postgres, via: erp, hosts: [hartland],
+                                writable: [order.state, order.held_for, return_request_line.state, return_request_line.way] }
+    def storage automation_db { type: postgres, via: automation,
+                                writable: [obligation, state_history, "*_verdict", "*_verdict_detail", approvals] }
+    def storage stage         { type: local_dir, staging: true }
+
+    def identity automation_decider { principal: "svc-hartland-automation", credential: TTR_CONN_AUTOMATION_DECIDER }
+    def executor n8n   { extends: n8n_l1,   url: "https://n8n.hartland.example",  connection: n8n_hartland }
+    def executor bpmn  { extends: camunda_8 }
+    def executor py    { extends: python_client }
+
+    def grant { who: role.ops,           program: *,                    as: identity.automation_decider }
+    def grant { who: role.sales_manager, program: release_on_placement, as: identity.automation_decider }
+    def grant { who: role.process_owner, program: *,                    as: identity.automation_decider }
+    def grant { who: *,                  program: decide_on_request,    as: author }
+
+    def deployment release_native_morning { program: morning_release,      target: native, run_as: identity.automation_decider, trigger: schedule "06:00 Europe/Prague" }
+    def deployment release_native_event   { program: release_on_placement, target: native, run_as: identity.automation_decider }
+    def deployment release_n8n            { program: release_on_placement, target: n8n,    run_as: identity.automation_decider, granularity: parts }
+    def deployment release_py             { program: release_on_placement, target: py,     run_as: identity.automation_decider }
+    def deployment release_bpmn           { program: release_on_placement, target: bpmn,   run_as: identity.automation_decider }
+
+    def deployment decide_native_event    { program: decide_on_request,   target: native, run_as: identity.automation_decider }
+    def deployment decide_native_batch    { program: decide_catch_up,     target: native, run_as: identity.automation_decider, trigger: schedule "06:30 Europe/Prague" }
+    def deployment inbound_native_event   { program: inbound_on_receipt,  target: native, run_as: identity.automation_decider }
+    def deployment inbound_native_batch   { program: inbound_daily,       target: native, run_as: identity.automation_decider, trigger: schedule "07:00 Europe/Prague" }
+    def deployment settle_native_event    { program: settle_on_document,  target: native, run_as: identity.automation_decider }
+    def deployment settle_native_batch    { program: settle_daily,        target: native, run_as: identity.automation_decider, trigger: schedule "07:30 Europe/Prague" }
+
+    def process return_line_flow {
+        instance: return_request_line.line_id
+        steps: [
+            def step decide   { program: decide_on_request,  port: key },
+            def step inbound  { program: inbound_on_receipt, port: key, after: { obligation: inbound, until: [fulfilled, due, absent] } },
+            def step settle   { program: settle_on_document, port: key, after: { obligation: [credit_note, payment, replacement], until: [fulfilled, due, absent] } }
+        ]
+    }
+    def deployment returns_n8n { process: return_line_flow, target: n8n, run_as: identity.automation_decider }
+}
