@@ -182,10 +182,51 @@ def test_a_page_never_lifts_its_concept_over_that_concepts_member() -> None:
     assert concept_only["score"] == 0.5 and concept_only["source"] == "lexicon"
 
 
+class _Member:
+    """lex-matcher's answer for "Aurora": member HL-1001 of `cn.Item` at 0.9."""
+
+    def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
+        member = pb.FuzzyMatch(
+            candidate_id="HL-1001", candidate="Aurora", score=0.9, source=pb.MEMBER, category="er.entity.item.name"
+        )
+        return pb.BatchMatchResponse(results=[pb.FuzzyMatchResponse(matches=[member]) for _ in queries])
+
+
+@pytest.mark.parametrize(
+    "cosine,method", [(0.03, "lexicon"), (CLOSE, "both")], ids=["page-below-the-floor", "page-at-or-above-it"]
+)
+def test_a_page_below_abstain_below_is_no_evidence(cosine: float, method: str) -> None:
+    """✅R244-E: a page whose cosine is below `abstain_below` does not corroborate. findSimilar's own `min-score` is 0,
+    so any page in the top k used to turn a member's link into `both`; at or above the floor it still does."""
+    unit = Unit(id=1, content_text="Aurora")
+    mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"})
+    ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
+    store = with_page([unit], "cn.Item", cosine)
+    linked = next(a.payload() for a in Link(_Member(), store).run(ctx).annotations if a.type == "Mention")
+    assert linked["member"]["id"] == "HL-1001" and linked["linkMethod"] == method
+    assert [(c["code"], c["source"]) for c in linked["candidates"]] == [("HL-1001", method)]
+    assert len(store.page_reads) == (0 if method == "lexicon" else 1)
+
+
+def test_two_pages_without_a_lexicon_option_are_knn_not_both() -> None:
+    """✅R244-E: with an empty lexicon, the first `cn.Item` page (compile grounds ENTITY drafts too) proposes the concept
+    as `knn`; a second page finds that key and only raises its score. `both` needs the lexicon to have proposed it."""
+    unit = Unit(id=1, content_text="Aurora")
+    mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"})
+    ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
+    store = with_page([unit], "cn.Item", 0.65, page_id=9002)
+    store.similar = [page_hit(9001, 0.70), *store.similar]
+    store.pages[9001] = concept_page(9001, "cn.Item")
+    linked = next(a.payload() for a in Link(_Lex(), store).run(ctx).annotations if a.type == "Mention")
+    assert linked["concept"] == "cn.Item" and linked["linkMethod"] == "knn"
+    assert [(c["code"], c["score"], c["source"]) for c in linked["candidates"]] == [("cn.Item", 0.70, "knn")]
+
+
 @pytest.mark.parametrize("cosine", [None, REALISTIC], ids=["no-concept-page", "concept-page-at-a-realistic-cosine"])
 def test_every_real_hartland_replay_abstains(cosine: float | None) -> None:
     """The 11 real Hartland replays abstain, and still do beside a `cn.Item` concept page at a realistic cosine
-    (review-244 F1: at the store's old normalized 1.0, five of them linked by kNN)."""
+    (review-244 F1: at the store's old normalized 1.0, five of them linked by kNN). Below `abstain_below` that page is
+    no evidence at all (✅R244-E): no kNN candidate, and it is never read."""
     from google.protobuf.json_format import ParseDict
 
     replay = RecordedLexMatcher("hartland.json")
@@ -202,7 +243,9 @@ def test_every_real_hartland_replay_abstains(cosine: float | None) -> None:
         store = FakeWarehouse([unit]) if cosine is None else with_page([unit], "cn.Item", cosine)
         result = Link(Lex(), store).run(ctx)
         assert result.abstained and not any(a.type == "Mention" for a in result.annotations), row["query"]
-        assert len(store.page_reads) == (0 if cosine is None else 1)
+        assert len(store.similar_calls) == 1 and store.page_reads == []
+        logged = [c for item in result.sections["candidates"]["items"] for c in item["items"]]
+        assert all(c["source"] == "lexicon" for c in logged), row["query"]
 
 
 class _Lex:

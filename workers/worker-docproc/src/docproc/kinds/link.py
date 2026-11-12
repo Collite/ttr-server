@@ -48,12 +48,15 @@ class Link:
     def __init__(self, lexmatcher: LexMatcher, warehouse: Warehouse) -> None:
         self.lexmatcher, self.warehouse = lexmatcher, warehouse
 
-    def _knn(self, ctx: RunContext, mention: Annotation, k: int, reads: _Reads) -> list[tuple[Page, float]]:
+    def _knn(
+        self, ctx: RunContext, mention: Annotation, k: int, floor: float, reads: _Reads
+    ) -> list[tuple[Page, float]]:
         """The concept pages similar to the mention's sentence, inside the mart of the mention's source (✅W5-2: the
         kNN never leaves it — a page of another mart is not this document's to propose). No concept page yet answers
         nothing (S3.3: absent pages = no kNN candidates, never an error); a source with no single mart is an error,
         never a silent "no candidates". Each hit's score is its cosine to the sentence (docwh-store ≥ 0.11.13,
-        contracts §1.4), never normalized to the best hit's, so `abstain_below` and `margin` gate it absolutely."""
+        contracts §1.4), never normalized to the best hit's, so `abstain_below` and `margin` gate it absolutely. A hit
+        below [floor] (`abstain_below`) is not evidence (✅R244-E): it is dropped here, and its page is never read."""
         if reads.marts is None:
             reads.marts = {}
             for raw in self.warehouse.sources_of_document(ctx.item.document_id):
@@ -69,6 +72,8 @@ class Link:
         out = []
         for hit in reads.similar[(mart, query)]:
             if hit.page_id is None:  # asked for pages only: a chunk proposes no concept
+                continue
+            if not math.isfinite(hit.score) or hit.score < floor:
                 continue
             if hit.page_id not in reads.pages:
                 reads.pages[hit.page_id] = self.warehouse.page(hit.page_id, mart)
@@ -89,6 +94,7 @@ class Link:
             raise ValueError("link/invalid-k")
         sources = engine.get("candidates", ["lexicon", "knn"])
         target_concepts = set(engine.get("targets", {}).values())
+        abstain_below = float(engine.get("abstain_below", 0.6))
         if set(sources) - {"lexicon", "knn"}:
             raise ValueError("link/unknown-candidate-source")
         queries = [
@@ -145,20 +151,22 @@ class Link:
                 if math.isfinite(hit.score) and (key not in options or hit.score > options[key]["score"]):
                     options[key] = row
             if "knn" in sources:
-                for page, score in self._knn(ctx, mention, k, reads):
+                for page, score in self._knn(ctx, mention, k, abstain_below, reads):
                     concept = page.concept_ref.metadata_qname if page.concept_ref else ""
                     if concept not in target_concepts or mention.payload().get("concept") not in (None, "", concept):
                         continue
-                    if not math.isfinite(score):
-                        continue
-                    # A concept page corroborates its concept's member candidates (`both`, scores untouched: "concept-page
-                    # scores never increase member identity scores") and then leaves the concept-only candidate alone, so
-                    # it never lifts that one over a member of its own concept (review-244 F2). With no member candidate
-                    # it lifts, or proposes, the concept itself. It never manufactures a member.
+                    # Evidence is a page at a cosine ≥ `abstain_below` (`_knn` drops the rest, ✅R244-E). It
+                    # corroborates its concept's member candidates (scores untouched: "concept-page scores never
+                    # increase member identity scores") and then leaves the concept-only candidate alone, so it never
+                    # lifts that one over a member of its own concept (review-244 F2). With no member candidate it
+                    # lifts, or proposes, the concept itself. It never manufactures a member. `both` means the lexicon
+                    # proposed the option and a page corroborated it: a second page on a `knn` option only raises its
+                    # score (✅R244-E).
                     members = [key for key in options if key[0] == concept and key[1]]
                     for key in members or [(concept, "")]:
                         if key in options:
-                            options[key]["source"] = "both"
+                            if options[key]["source"] in ("lexicon", "both"):
+                                options[key]["source"] = "both"
                             if not key[1]:
                                 options[key]["score"] = max(options[key]["score"], score)
                         else:
@@ -177,7 +185,7 @@ class Link:
             margin = top["score"] - ranked[1]["score"] if top is not None and len(ranked) > 1 else None
             choose = (
                 top is not None
-                and top["score"] >= float(engine.get("abstain_below", 0.6))
+                and top["score"] >= abstain_below
                 and (margin is None or margin + 1e-12 >= float(engine.get("margin", 0.05)))
             )
             decision = {
