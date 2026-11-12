@@ -23,6 +23,7 @@ from docproc.sdk.models import (
     Page,
     Processor,
     Source,
+    SourceTree,
     Unit,
 )
 from docproc.sdk.store import StoreError
@@ -74,6 +75,8 @@ class FakeWarehouse:
         self.annotations: list[Annotation] = []
         self.lemmas: dict[int, dict[str, Any]] = {}
         self.sources: list[dict[str, Any]] | None = None  # None = one source per source id of the units
+        # `GET /sources/{id}/units`'s `source` (docwh-store 0.11.14): its metadata as split writes it, by source id
+        self.source_metadata: dict[int, dict[str, MetadataValue]] = {}
         self.loads = 0
         self.next_id = 1000
         self.visibility: dict[str, Any] = {}
@@ -85,6 +88,12 @@ class FakeWarehouse:
     def units_of_source(self, source_id: int, text: bool = True) -> list[Unit]:
         out = [u for u in self.units.values() if u.source_id == source_id]
         return sorted(out, key=lambda u: (u.parent_id is not None, u.idx))
+
+    def source_tree(self, source_id: int, text: bool = True) -> SourceTree:
+        """The tree with its source, as unitTree.json's response has it: the source's metadata from [source_metadata]
+        (split's keys: documentId, version, recordedAt, feed, subjectId, lang), its mart [mart]."""
+        source = Source(id=source_id, metadata=self.source_metadata.get(source_id, {}), notebook_id=self.mart)
+        return SourceTree(source_id=source_id, units=self.units_of_source(source_id, text), source=source)
 
     def iter_annotations(self, req: ListAnnotationsRequest) -> Iterator[Annotation]:
         for a in self.annotations:

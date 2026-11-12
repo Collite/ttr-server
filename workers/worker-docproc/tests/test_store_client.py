@@ -122,14 +122,20 @@ def test_service_identity_paging_and_generation(monkeypatch: pytest.MonkeyPatch)
     assert "activeOnly" not in listing.calls.last.request.url.params
 
 
+def units_answer() -> dict[str, object]:
+    """`GET /sources/7/units` as the store's own route prints it (unitTree.json, UnitRoutesSpec)."""
+    response: dict[str, object] = fixture("unitTree.json")["response"]  # type: ignore[assignment]
+    return response
+
+
 @respx.mock
 def test_remaining_reads_and_lemma_sink() -> None:
     tree = respx.get(f"{BASE}/sources/7/units", params={"text": "true"}).mock(
-        return_value=httpx.Response(200, json={"units": [fixture("unit.json")]})
+        return_value=httpx.Response(200, json=units_answer())
     )
     lemmas = respx.post(f"{BASE}/load/lemmas").mock(return_value=httpx.Response(200, json={}))
     client = StoreClient(BASE)
-    assert client.units_of_source(7)[0].id == 101 and tree.called
+    assert [u.id for u in client.units_of_source(7)] == [100, 101] and tree.called
     entry = {"unitId": 101, "contentLemmas": "recenze", "lang": "cs", "lemmatizer": "test"}
     client.load_lemmas("r/1", [entry])
     assert json.loads(lemmas.calls.last.request.content) == {"runId": "r/1", "lemmas": [entry]}
@@ -275,3 +281,42 @@ def test_conflict_and_token_file(tmp_path: Path) -> None:
     with pytest.raises(RunConflict):
         StoreClient(BASE, token_file=str(token)).get_unit(1)
     assert route.calls.last.request.headers["authorization"] == "Bearer file-secret"
+
+
+@respx.mock
+def test_the_units_answer_carries_its_source_as_get_sources_lists_it() -> None:
+    """T8f W5-4 (docwh-store 0.11.14): `GET /sources/{id}/units` answers the source with its mart — the same object
+    `GET /sources?documentId=` lists. A subject step reads each member's subject from it."""
+    from docproc.sdk.models import ListSourcesResponse
+
+    respx.get(f"{BASE}/sources/7/units").mock(return_value=httpx.Response(200, json=units_answer()))
+    tree = StoreClient(BASE).source_tree(7)
+    listed = ListSourcesResponse.strict(fixture("listSources.json")["response"]).sources[0]
+    assert tree.source == listed
+    assert tree.source is not None and tree.source.notebook_id == "hartland-reviews"
+    assert tree.source.metadata["documentId"].single == "hartland-review-000123"
+    assert [u.id for u in tree.units] == [100, 101]
+
+
+@respx.mock
+def test_an_older_store_answers_no_source() -> None:
+    body = {"sourceId": 7, "units": units_answer()["units"]}
+    respx.get(f"{BASE}/sources/7/units").mock(return_value=httpx.Response(200, json=body))
+    tree = StoreClient(BASE).source_tree(7)
+    assert tree.source is None and [u.id for u in tree.units] == [100, 101]
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    ("body", "code", "message"),
+    [
+        ({"sourceId": 7, "units": "x"}, "store/units-shape", "units: list_type"),
+        ({**units_answer(), "sourceId": 8}, "store/units-mismatch", "GET /sources/7/units answered 8"),
+    ],
+)
+def test_a_units_answer_of_another_shape_or_source_is_refused(body: dict[str, object], code: str, message: str) -> None:
+    """Never another source's subject read as this member's."""
+    respx.get(f"{BASE}/sources/7/units").mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).source_tree(7)
+    assert (e.value.code, e.value.message) == (code, message)

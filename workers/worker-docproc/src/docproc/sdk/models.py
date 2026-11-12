@@ -162,7 +162,8 @@ class Usage(DxModel):
 
 
 class Completion(DxModel):
-    """The ``done`` queue message."""
+    """The ``done`` queue message. ``permanent`` (T8f W5-4): a FAILED no next attempt can change — a kind's
+    `KindRefused` — so the planner fails the step at once instead of spending ``budget.retries`` on it."""
 
     run_id: str
     step_id: str
@@ -173,6 +174,7 @@ class Completion(DxModel):
     usage: Usage = Usage()
     error: str | None = None
     verdict_ids: list[str] = []
+    permanent: bool = False
 
 
 # ── The warehouse contracts (DX contracts §1.1–§1.4; the proto truth is kantheon's `org.tatrman.docwh.store.v1`) ───
@@ -343,6 +345,16 @@ class Source(DxModel):
     created_at: str = ""
     embedding_status: str = ""  # proto `EmbeddingStatus`, vestigial: nothing reads it
     notebook_id: str = ""
+
+
+class SourceTree(DxModel):
+    """`GET /sources/{id}/units` (proto `ListUnitsResponse`): the tree in document order and, since docwh-store 0.11.14
+    (T8f W5-4), the source itself with its mart. `source` is None from an older store. A subject step reads each
+    member's subject from `source.metadata.subjectId`: split writes it there, not on the DOCUMENT unit."""
+
+    source_id: int = 0
+    units: list[Unit] = []
+    source: Source | None = None
 
 
 class ListSourcesRequest(DxModel):

@@ -27,6 +27,13 @@ mart fails the run `link/no-mart` rather than linking without kNN. Each hit page
 `GET /pages/{id}?notebookId=` (`conceptRef.metadataQname`, compile's), once per page per run. No concept page yet
 answers nothing, and the links are `lexicon` (S3.3).
 
+A subject step (`consolidate`, `record-etl`; 0.11.4, T8f W5-4) takes each member's subject from its Source,
+`Source.metadata.subjectId`, where split writes it; the DOCUMENT unit carries only `title` and `lang`. The runner reads
+each member's source with its tree from `GET /sources/{id}/units` (docwh-store ≥ 0.11.14 answers the source). Members
+naming no subject, or more than one, fail the run `consolidate/single-subject-required`, and so does a store older than
+0.11.14, which answers no source. A kind's `KindRefused` is a permanent FAILED (`Completion.permanent`): docwh-pipeline ≥
+0.11.15 fails the step at once instead of spending `budget.retries` on a deterministic error.
+
 Kinds run synchronously on the main thread on Linux/macOS. A POSIX interval timer
 interrupts a timed-out kind; no executor thread continues writing afterward.
 Heartbeat renewal runs separately. SIGTERM stops fetches and finishes the current

@@ -1,0 +1,11 @@
+{
+  "artefactRef": "pipeline://run_artefacts/step-9/1",
+  "error": "consolidate/single-subject-required: 2 records",
+  "permanent": true,
+  "runId": "step-9/1",
+  "status": "FAILED",
+  "stepId": "step-9",
+  "usage": {
+    "latencyMs": 42
+  }
+}

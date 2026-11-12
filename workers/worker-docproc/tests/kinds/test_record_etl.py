@@ -39,7 +39,10 @@ def test_rows_rerun_candidate_and_rollback(world_db: str) -> None:
     wh.annotations.extend(consolidated.annotations)
     base = context("review-001.en.json", "records-review")
     etlctx = replace(
-        base, units=ctx.units, annotations=[a for a in consolidated.annotations if a.type == "Record.review"]
+        base,
+        units=ctx.units,
+        sources=ctx.sources,
+        annotations=[a for a in consolidated.annotations if a.type == "Record.review"],
     )
     etlctx = replace(etlctx, item=etlctx.item.model_copy(update={"visibility": RunVisibility.ACTIVE}))
     etl = RecordEtl(wh, reg, str(PACK), world_db)
@@ -92,7 +95,7 @@ def test_feeds_records_and_decimal_rejection(world_db: str) -> None:
     ctx, wh = complete_subject()
     reg = registry()
     base = context("review-001.en.json", "records-review")
-    etlctx = replace(base, units=ctx.units, annotations=[])
+    etlctx = replace(base, units=ctx.units, sources=ctx.sources, annotations=[])
     reg.entries["Record.review"]["feedsRecords"] = False
     with pytest.raises(ValueError, match="feeds-records-required"):
         RecordEtl(wh, reg, str(PACK), world_db).run(etlctx)
@@ -109,6 +112,7 @@ def prepared_etl(world_db: str) -> tuple[RecordEtl, RunContext, FakeWarehouse]:
     etlctx = replace(
         base,
         units=ctx.units,
+        sources=ctx.sources,
         annotations=[a for a in result.annotations if a.type == "Record.review"],
         item=base.item.model_copy(update={"visibility": RunVisibility.ACTIVE}),
     )
@@ -144,14 +148,15 @@ def test_active_fail_closed_candidate_retains_rows(world_db: str) -> None:
 
 @pytest.mark.component
 def test_known_id_is_scoped_by_subject(world_db: str) -> None:
-    from docproc.sdk.models import MetadataValue, UnitKind
+    from docproc.sdk.models import MetadataValue
 
     etl, ctx, wh = prepared_etl(world_db)
     first = etl.run(ctx).sections["outputs"]["recordRows"]
-    roots = {id_: u.model_copy(deep=True) for id_, u in ctx.units.items()}
-    for u in roots.values():
-        if u.kind == UnitKind.DOCUMENT:
-            u.metadata["subjectId"] = MetadataValue(single="other-subject")
+    # the subject is the member's Source's, where split writes it (T8f W5-4)
+    sources = {
+        sid: s.model_copy(update={"metadata": {**s.metadata, "subjectId": MetadataValue(single="other-subject")}})
+        for sid, s in ctx.sources.items()
+    }
     for d in list(wh.annotations):
         if d.type == "Decision" and d.payload().get("decider") == "consolidate/key":
             d = d.model_copy(deep=True)
@@ -159,7 +164,7 @@ def test_known_id_is_scoped_by_subject(world_db: str) -> None:
             p["factors"]["subjectId"] = "other-subject"
             d.payload_json = payload_text(p)
             wh.annotations.append(d)
-    other = replace(ctx, units=roots)
+    other = replace(ctx, sources=sources)
     try:
         second = etl.run(other).sections["outputs"]["recordRows"]
         assert {r["rowId"] for r in first}.isdisjoint(r["rowId"] for r in second)

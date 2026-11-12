@@ -235,6 +235,7 @@ def test_kind_error_and_transaction_rollback(
     runner.bus.extend(message, 0)
     result = runner.process(runner.bus.fetch(message.queue, 30)[0])
     assert result and result.error == "ValueError: kind broke" and result.status == CompletionStatus.FAILED
+    assert not result.permanent  # a kind's exception may be a bug a next attempt outlives: the planner retries it
     assert len(completions(runner, item)) == 1
 
 
@@ -830,11 +831,13 @@ def test_record_etl_refusal_fails_without_loading(runtime: tuple[ProcessorRunner
         result = runner.process(enqueue(runner, item))
         assert result is not None
         assert result.status == CompletionStatus.FAILED and result.error == "record-etl/rows-rejected: 1 records"
+        # T8f W5-4: a refusal is deterministic, so the completion says so and the planner does not retry it. The
+        # subject check passed on the member's Source, which the runner read with its tree (`GET /sources/{id}/units`).
+        assert result.permanent and [c.permanent for c in completions(runner, item)] == [True]
         assert wh.loads == 0
         assert json.loads(section(runner, item, "errors")["diagnosticsJson"]) == [
             {"annotationId": a.id, "rule": "record-etl/unresolved-ref"}
         ]
-        assert len(completions(runner, item)) == 1
         with psycopg.connect(world_db) as conn:
             assert conn.execute("SELECT * FROM review ORDER BY row_id").fetchall() == before
         # The same rejected record in CANDIDATE emits a Verdict and succeeds without world writes.

@@ -17,7 +17,7 @@ def make_probes_app(
     status: Callable[[], dict[str, Any]],
     refresh_metrics: Callable[[], None] = lambda: None,
 ) -> FastAPI:
-    app = FastAPI(title="docproc", version="0.11.3")
+    app = FastAPI(title="docproc", version="0.11.4")
 
     @app.get("/health")
     def health() -> dict[str, str]:

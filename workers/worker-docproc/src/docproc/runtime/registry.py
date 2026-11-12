@@ -13,7 +13,7 @@ from typing import Any, Protocol
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
-from docproc.sdk.models import Annotation, Processor, Unit, Usage, WorkItem
+from docproc.sdk.models import Annotation, Processor, Source, Unit, Usage, WorkItem
 from docproc.sdk.pipeline import Manager
 
 
@@ -24,6 +24,9 @@ class RunContext:
     manifest: dict[str, Any]
     units: dict[int, Unit]
     annotations: list[Annotation]
+    # The sources of a whole-source step's units (document, subject, import, diff), from the same `GET
+    # /sources/{id}/units` reads that load their trees (T8f W5-4); a source an older store did not answer is absent.
+    sources: dict[int, Source] = field(default_factory=dict)
 
 
 @dataclass

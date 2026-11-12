@@ -22,13 +22,12 @@ from docproc.sdk.models import (
     Completion,
     CompletionStatus,
     InputSelector,
-    MetadataValue,
     RunVisibility,
     Unit,
     payload_text,
 )
 from tests.conftest import WORKER
-from tests.extraction import complete_subject
+from tests.extraction import complete_subject, split_source_metadata
 from tests.fakes import PACK, FakeWarehouse, PackManager
 from tests.fakes_lexmatcher import recorded_lexmatcher
 from tests.fakes_nlp import recorded_nlp
@@ -105,8 +104,8 @@ def test_frozen_px_deterministic_flow_reports_incomplete_records(
 ) -> None:
     runner, manager, wh = extraction
     units = units_of(doc)
-    registration = json.loads((PACK / "registrations" / (doc.rsplit(".", 1)[0] + ".json")).read_text())
-    units[0].metadata["subjectId"] = MetadataValue(single=registration["document"].get("subjectId"))
+    # the source as split loads it: the subject on Source.metadata, which the runner reads with the tree (T8f W5-4)
+    wh.source_metadata[units[0].source_id] = split_source_metadata(doc)
     wh.units = {u.id: u for u in units}
     wh.annotations = [
         Annotation(id=10 + n, unit_id=u.id, type="Section", payload_json=payload_text({"title": ""}))
@@ -138,7 +137,7 @@ def test_complete_statement_fixture_reaches_rows_with_resolvable_lineage(
 ) -> None:
     runner, manager, wh = extraction
     ctx, source = complete_subject(doc)
-    wh.units, wh.annotations = source.units, source.annotations
+    wh.units, wh.annotations, wh.source_metadata = source.units, source.annotations, source.source_metadata
     roots = [wh.units[uid] for uid in ctx.item.unit_ids]
     consolidated = dispatch(runner, manager, doc, "consolidate-review", roots)
     assert len([a for a in wh.annotations if a.id in consolidated.annotation_ids and a.type == "Record.review"]) == 2
@@ -148,7 +147,7 @@ def test_complete_statement_fixture_reaches_rows_with_resolvable_lineage(
     with psycopg.connect(world_db, row_factory=dict_row) as conn:
         rows = conn.execute("SELECT * FROM review ORDER BY rating").fetchall()
         expected = json.loads((PACK / "golden/mini-gold-v1/records/review.rows.json").read_text())["rows"]
-        subject = roots[0].metadata["subjectId"].single
+        subject = ctx.sources[roots[0].source_id].metadata["subjectId"].single
         expected = sorted([r for r in expected if r["subject"] == subject], key=lambda r: r["rating"])
         assert len(rows) == len(expected) == 2
         for actual, want in zip(rows, expected, strict=True):

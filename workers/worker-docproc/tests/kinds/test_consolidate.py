@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from docproc.kinds.consolidate import Consolidator
-from docproc.sdk.models import MetadataValue, payload_text
+from docproc.kinds.consolidate import Consolidator, subject_scope
+from docproc.runtime.registry import KindRefused
+from docproc.sdk.models import MetadataValue, Source, UnitKind, payload_text
 from tests.extraction import complete_subject, registry
 from tests.fakes import PACK
 
@@ -33,11 +34,17 @@ def test_complete_records_and_rerun_keys(doc: str) -> None:
 
 def test_subject_isolation_and_missing_record_fields() -> None:
     ctx, wh = complete_subject()
-    other = next(iter(ctx.units.values())).model_copy(deep=True)
-    other.id = 999
-    other.metadata["subjectId"] = MetadataValue(single="other")
-    with pytest.raises(ValueError, match="single-subject"):
-        Consolidator(wh, registry(), str(PACK)).consolidate(replace(ctx, units={**ctx.units, 999: other}))
+    root = next(u for u in ctx.units.values() if u.kind == UnitKind.DOCUMENT)
+    other = root.model_copy(update={"id": 999, "source_id": 101}, deep=True)
+    sources = {**ctx.sources, 101: Source(id=101, metadata={"subjectId": MetadataValue(single="other")})}
+    with pytest.raises(KindRefused, match="single-subject") as refused:
+        Consolidator(wh, registry(), str(PACK)).consolidate(
+            replace(ctx, units={**ctx.units, 999: other}, sources=sources)
+        )
+    assert refused.value.diagnostics == [
+        {"sourceId": root.source_id, "rule": "consolidate/subjects-differ"},
+        {"sourceId": 101, "rule": "consolidate/subjects-differ"},
+    ]
     a = ctx.annotations[0].model_copy(deep=True)
     payload = a.payload()
     del payload["attributes"]["sentiment"]
@@ -359,3 +366,61 @@ def test_two_modifiers_keep_both_values_and_their_lineage() -> None:
     assert decision.payload()["factors"]["conflicts"] == [
         {"attribute": "modifiers.temporal_context", "values": ["current", "past"], "annotationIds": [901, 902]}
     ]
+
+
+def test_the_subject_is_each_members_source_and_the_document_unit_carries_none() -> None:
+    """T8f W5-4: split writes `subjectId` on `Source.metadata`, and the DOCUMENT unit carries only `title` and `lang`.
+    The fixture is the producer's shape: no unit has a subject, and the subject comes from the member's Source."""
+    ctx, _ = complete_subject()
+    assert all("subjectId" not in u.metadata for u in ctx.units.values())
+    subject, roots = subject_scope(ctx)
+    assert subject == "HL-1001" and [r.kind for r in roots] == [UnitKind.DOCUMENT]
+
+
+def test_a_subject_on_the_document_unit_alone_is_refused_permanently() -> None:
+    """The old read: a subject on the DOCUMENT unit but not on its Source is no subject. An older store (no `source`
+    in the units answer) reads the same. Either is a `KindRefused`, so the step fails at once (no retries)."""
+    ctx, _ = complete_subject()
+    root = next(u for u in ctx.units.values() if u.kind == UnitKind.DOCUMENT)
+    on_unit = root.model_copy(deep=True)
+    on_unit.metadata["subjectId"] = MetadataValue(single="HL-1001")
+    no_subject = {
+        sid: s.model_copy(update={"metadata": {k: v for k, v in s.metadata.items() if k != "subjectId"}})
+        for sid, s in ctx.sources.items()
+    }
+    for case in (replace(ctx, units={**ctx.units, root.id: on_unit}, sources=no_subject), replace(ctx, sources={})):
+        with pytest.raises(KindRefused, match="consolidate/single-subject-required") as refused:
+            subject_scope(case)
+        assert refused.value.diagnostics == [{"sourceId": root.source_id, "rule": "consolidate/no-subject"}]
+
+
+def test_a_unit_outside_the_members_sources_is_refused() -> None:
+    ctx, _ = complete_subject()
+    stray = next(u for u in ctx.units.values() if u.kind != UnitKind.DOCUMENT).model_copy(
+        update={"id": 998, "source_id": 102}, deep=True
+    )
+    with pytest.raises(KindRefused, match="consolidate/unit-outside-subject") as refused:
+        subject_scope(replace(ctx, units={**ctx.units, 998: stray}))
+    assert refused.value.diagnostics == [{"unitId": 998}]
+
+
+def test_a_statement_without_recorded_at_takes_its_sources_never_the_document_units() -> None:
+    """The same W5-4 defect in `time_of`: split writes `recordedAt` on the Source too. The test pack's DOCUMENT unit
+    still carries one (`units_of`), and it is not read."""
+    ctx, wh = complete_subject()
+    statements = []
+    for a in ctx.annotations:
+        a = a.model_copy(deep=True)
+        payload = a.payload()
+        del payload["attributes"]["recorded_at"]
+        a.payload_json = payload_text(payload)
+        statements.append(a)
+    kind = Consolidator(wh, registry(), str(PACK))
+    kind.consolidate(replace(ctx, annotations=statements))
+    no_time = {
+        sid: s.model_copy(update={"metadata": {k: v for k, v in s.metadata.items() if k != "recordedAt"}})
+        for sid, s in ctx.sources.items()
+    }
+    assert all("recordedAt" in u.metadata for u in ctx.units.values() if u.kind == UnitKind.DOCUMENT)
+    with pytest.raises(ValueError, match="consolidate/evidence-time-invalid"):
+        kind.consolidate(replace(ctx, annotations=statements, sources=no_time))
