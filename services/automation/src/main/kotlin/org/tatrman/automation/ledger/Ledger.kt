@@ -1001,12 +1001,13 @@ class Ledger(
         }
     }
 
-    /** S2.3: a held row whose group is still undecided — `group_key` set, never sent, no decision recorded. */
+    /**
+     * S2.3: a held row whose group has no recorded decision — `group_key` set and no `decided` evidence, whatever its
+     * apply progress (review-258 B4): a commit interrupted after journaling its rows `applied` (or in flight) is still
+     * undecided, so another group's decision never closes the run without it (D-97).
+     */
     private fun undecidedHeld(r: org.jetbrains.exposed.v1.core.ResultRow): Boolean =
-        r[BatchRows.groupKey] != null &&
-            r[BatchRows.status] == "staged" &&
-            r[BatchRows.error] == null &&
-            (r[BatchRows.row] as? JsonObject)?.get(DECIDED) == null
+        r[BatchRows.groupKey] != null && (r[BatchRows.row] as? JsonObject)?.get(DECIDED) == null
 
     /**
      * S2.3: what a decision on one held group reads — the run (its pinned fps and names, for D-99), the batch, every

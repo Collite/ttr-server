@@ -6,9 +6,12 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.apply.ApplyRow
@@ -38,11 +41,19 @@ data class RevertResult(
  * time, for the rows that were `applied`:
  * - `update` → an `update` setting the prior values back;
  * - `transition` → the inverse transition (`from: [to]`, `to:` the prior state, with history). An obligation's transition
- *   reopens it this way (no signal, D-142). A prior that was null cannot be a transition target: that row is not reverted;
+ *   reopens it this way (no signal, D-142);
  * - a `writer` action's `insert` → a `delete` by the inserted row's primary key.
- * Verdict, detail and current rows, obligation inserts and the current deletes are never reverted. `role.ops` (the run's
- * world), its own budget, and the deferred context as for a held commit. An interrupted revert resumes its journaled
- * batch; a finished one leaves the original `reverted` (`409 batch-reverted` on a second call).
+ * Verdict, detail and current rows, obligation inserts and the current deletes are never reverted.
+ *
+ * review-258: an action's `set:` and its `transition` on one key were one compare-and-set, and their inverse is one
+ * again, guarded by the recorded `to` (B1: a row that moved on since is not touched at all). The units are undone in
+ * reverse effect order, so successive writes to one row unwind to the value before the batch (B2). A row whose outcome
+ * is unknown is re-read first ([Apply.reconcile]); one that stays unknown, or was applied with no recorded `prior`,
+ * refuses the revert before anything is written (`409 batch-not-committed`, reason `unresolved-outcome`), and a
+ * revert row whose own outcome stays unknown leaves the original `committed` until a retry settles it (B3).
+ *
+ * `role.ops` (the run's world), its own budget, and the deferred context as for a held commit. An interrupted revert
+ * resumes its journaled batch; a finished one leaves the original `reverted` (`409 batch-reverted` on a second call).
  */
 class Revert(
     private val ledger: Ledger,
@@ -59,35 +70,66 @@ class Revert(
     ): RevertResult =
         withContext(NonCancellable) {
             lock.withLock {
-                val state = io { ledger.revertState(run) }
+                var state = io { ledger.revertState(run) }
                 held.requireOps(by, state.names.deployment)
                 val context = contexts.resolve(run, state.names, by)
-                val rev = state.rev ?: io { ledger.beginRevert(run, state.batch, inverse(state, context.entities)) }
-                val id = UUID.fromString(rev.batch)
-                apply.apply(
-                    ApplyInput(
-                        run,
-                        context.world,
-                        context.identity,
-                        context.modelFp,
-                        clock.instant().plus(state.budget),
-                        rev.rows,
-                        emptyList(),
-                        context.source,
-                        context.entities,
-                        context.routes,
-                        rev.statuses.mapNotNull { it.recorded() }.associateBy { it.seq },
-                        inverse = true,
-                        revOf = state.batch,
-                    ),
-                    object : ApplyJournal {
-                        override fun begin(seqs: List<Int>) = ledger.beginApply(id, seqs)
+                val deadline = clock.instant().plus(state.budget)
 
-                        override fun release(seqs: List<Int>) = ledger.releaseApply(id, seqs)
-
-                        override fun record(outcomes: List<RowOutcome>) = ledger.recordApply(id, outcomes)
-                    },
+                fun input(
+                    rows: List<ApplyRow>,
+                    statuses: List<org.tatrman.automation.apply.BatchRowStatus>,
+                    units: List<List<Int>>,
+                    inverse: Boolean,
+                ) = ApplyInput(
+                    run,
+                    context.world,
+                    context.identity,
+                    context.modelFp,
+                    deadline,
+                    rows,
+                    if (inverse) emptyList() else state.actions,
+                    context.source,
+                    context.entities,
+                    context.routes,
+                    statuses.mapNotNull { it.recorded() }.associateBy { it.seq },
+                    inverse = inverse,
+                    revOf = state.batch.takeIf { inverse },
+                    units = units,
                 )
+                if (state.rev == null) {
+                    // B3: settle the original's unknown outcomes (of the rows a revert undoes) before deciding what to undo.
+                    val undone = writerRows(state)
+                    val settled =
+                        apply.reconcile(
+                            input(
+                                state.plan.rows.filter { invertible(it, undone) },
+                                state.plan.statuses,
+                                emptyList(),
+                                inverse = false,
+                            ),
+                            journal(state.batch),
+                            // The original is not re-applied: its history is not written after the fact.
+                            owesHistory = false,
+                        ) { RowOutcome(it, "skipped", RowOutcome.NOT_APPLIED) }
+                    if (settled.isNotEmpty()) state = io { ledger.revertState(run) }
+                }
+                val inverse = inverse(state, context.entities)
+                if (state.rev == null && inverse.unresolved.isNotEmpty()) {
+                    throw unresolved(state.batch, inverse.unresolved, "of the reverted batch")
+                }
+                val rev = state.rev ?: io { ledger.beginRevert(run, state.batch, inverse.rows) }
+
+                fun shape(rows: List<ApplyRow>) = rows.map { listOf(it.seq, it.entity, it.op, it.key) }
+                check(shape(rev.rows) == shape(inverse.rows)) {
+                    "the journaled revert batch differs from the inverse of its original"
+                }
+                val id = UUID.fromString(rev.batch)
+                val revInput = input(rev.rows, rev.statuses, inverse.units, inverse = true)
+                // B3: a resumed revert re-reads its own unknown rows; one that did not land is sent again (still guarded).
+                val settled = apply.reconcile(revInput, journal(id)) { RowOutcome(it, "staged") }
+                val outcomes = apply.apply(revInput.copy(recorded = revInput.recorded + settled), journal(id))
+                val open = rev.rows.map { it.seq }.filter { outcomes[it] == null || outcomes[it]?.status == "staged" }
+                if (open.isNotEmpty()) throw unresolved(id, open, "of the revert batch")
                 val done: RunBatchPlan = io { ledger.finishRevert(run, state.batch, id, by.principal) }
                 RevertResult(
                     done.batch,
@@ -98,6 +140,30 @@ class Revert(
                 )
             }
         }
+
+    private fun journal(batch: UUID) =
+        object : ApplyJournal {
+            override fun begin(seqs: List<Int>) = ledger.beginApply(batch, seqs)
+
+            override fun release(seqs: List<Int>) = ledger.releaseApply(batch, seqs)
+
+            override fun record(outcomes: List<RowOutcome>) = ledger.recordApply(batch, outcomes)
+        }
+
+    private fun unresolved(
+        batch: UUID,
+        seqs: List<Int>,
+        which: String,
+    ) = AutomationException(
+        ErrorCode.BATCH_NOT_COMMITTED,
+        "rows $seqs $which have no known outcome or prior (a lost acknowledgement the door could not settle); " +
+            "nothing is certified reverted — revert again to re-read them",
+        buildJsonObject {
+            put("reason", "unresolved-outcome")
+            put("batch", batch.toString())
+            put("rows", JsonArray(seqs.map(::JsonPrimitive)))
+        },
+    )
 
     private suspend fun <T> io(block: () -> T): T =
         withContext(Dispatchers.IO) {
@@ -110,50 +176,117 @@ class Revert(
             }
         }
 
+    /** A batch's inverse: its rows (numbered from 1), the seqs that are one write, and the rows it cannot undo. */
+    data class Inverse(
+        val rows: List<ApplyRow>,
+        val units: List<List<Int>>,
+        val unresolved: List<Int>,
+    )
+
     companion object {
-        /** The inverse rows of [state]'s applied rows, numbered from 1 in the original order. */
+        /**
+         * The inverse of [state]'s applied rows. The original's write units — an action's `update`/`transition` rows on
+         * one key, sent as one compare-and-set ([Apply]) — stay units, undone last-first (review-258 B1/B2). A unit with
+         * an unknown outcome, or applied with no `prior` for one of its `update`/`transition` rows, is unresolved.
+         */
         fun inverse(
             state: RevertState,
             entities: List<Entity>,
-        ): List<ApplyRow> {
+        ): Inverse {
             val statuses = state.plan.statuses.associateBy { it.seq }
-            val writerRows =
-                state.actions
-                    .filter { it.sink == "writer" }
-                    .flatMap { it.batchRows }
-                    .toSet()
-            val out = mutableListOf<ApplyRow>()
-            for (row in state.plan.rows) {
-                val status = statuses[row.seq] ?: continue
-                if (status.status != "applied") continue
-                val prior = status.prior
-                val inverse =
-                    when (row.op) {
-                        "update" -> {
-                            val set = requireNotNull(row.set)
-                            // read_before covers every `set:` column; an absent prior key was NULL in the row.
-                            prior?.let { p -> row.copy(set = JsonObject(set.keys.associateWith { p[it] ?: JsonNull })) }
-                        }
-                        "transition" -> {
-                            val back = prior?.get(requireNotNull(row.attribute))
-                            if (back == null || back == JsonNull || back == row.to) {
-                                null
-                            } else {
-                                row.copy(from = listOf((row.to as JsonPrimitive).content), to = back, history = true)
-                            }
-                        }
-                        "insert" ->
-                            if (row.seq in writerRows) {
-                                ApplyRow(1, row.entity, "delete", key(row, entities))
-                            } else {
-                                null
-                            }
-                        else -> null
-                    }
-                if (inverse != null) out += inverse.copy(seq = out.size + 1, group = null)
+            val bySeq = state.plan.rows.associateBy { it.seq }
+            val writerRows = writerRows(state)
+            val unitOf = mutableMapOf<Int, Int>()
+            for (action in state.actions) {
+                action.batchRows
+                    .mapNotNull { bySeq[it] }
+                    .filter { it.op == "update" || it.op == "transition" }
+                    .groupBy { it.entity to it.key }
+                    .values
+                    .filter { it.size > 1 }
+                    .forEach { members -> members.forEach { unitOf[it.seq] = members.minOf { m -> m.seq } } }
             }
-            return out
+            val units =
+                state.plan.rows
+                    .groupBy { unitOf[it.seq] ?: it.seq }
+                    .values
+            val rows = mutableListOf<ApplyRow>()
+            val writes = mutableListOf<List<Int>>()
+            val unresolved = mutableListOf<Int>()
+            for (unit in units.reversed()) {
+                val unknown =
+                    unit.filter {
+                        statuses[it.seq]?.status == "staged" &&
+                            statuses[it.seq]?.error.let { e -> e == RowOutcome.UNKNOWN || e == RowOutcome.IN_FLIGHT }
+                    }
+                val applied = unit.filter { statuses[it.seq]?.status == "applied" }
+                if (unknown.any { invertible(it, writerRows) }) {
+                    unresolved += unknown.map { it.seq }
+                    continue
+                }
+                val inverted = applied.map { invert(it, statuses[it.seq]?.prior, writerRows, entities) }
+                if (inverted.any { it == Unresolved }) {
+                    unresolved += applied.map { it.seq }
+                    continue
+                }
+                val emitted = inverted.filterIsInstance<Row>().map { it.row }
+                if (emitted.isEmpty()) continue
+                val seqs = emitted.indices.map { rows.size + it + 1 }
+                rows += emitted.mapIndexed { index, row -> row.copy(seq = seqs[index], group = null) }
+                if (seqs.size > 1) writes += seqs
+            }
+            return Inverse(rows, writes, unresolved.sorted())
         }
+
+        /** The rows a revert undoes: `update`, `transition` and a writer action's `insert`. */
+        fun invertible(
+            row: ApplyRow,
+            writerRows: Set<Int>,
+        ): Boolean = row.op == "update" || row.op == "transition" || row.op == "insert" && row.seq in writerRows
+
+        private fun writerRows(state: RevertState): Set<Int> =
+            state.actions
+                .filter { it.sink == "writer" }
+                .flatMap { it.batchRows }
+                .toSet()
+
+        private sealed interface Inverted
+
+        private data class Row(
+            val row: ApplyRow,
+        ) : Inverted
+
+        private data object Skip : Inverted
+
+        private data object Unresolved : Inverted
+
+        private fun invert(
+            row: ApplyRow,
+            prior: JsonObject?,
+            writerRows: Set<Int>,
+            entities: List<Entity>,
+        ): Inverted =
+            when (row.op) {
+                "update" -> {
+                    val set = requireNotNull(row.set)
+                    // read_before covers every `set:` column; an absent prior key was NULL in the row.
+                    prior?.let { p -> Row(row.copy(set = JsonObject(set.keys.associateWith { p[it] ?: JsonNull }))) }
+                        ?: Unresolved
+                }
+                "transition" -> {
+                    val to = (row.to as JsonPrimitive).content
+                    val back = prior?.get(requireNotNull(row.attribute))
+                    when {
+                        back == null || back == JsonNull -> Unresolved
+                        // A silent self-transition: no state to restore, but its CAS still guards the unit's `set:`.
+                        back == row.to -> Row(row.copy(from = listOf(to), to = row.to, history = false))
+                        else -> Row(row.copy(from = listOf(to), to = back, history = true))
+                    }
+                }
+                "insert" ->
+                    if (row.seq in writerRows) Row(ApplyRow(1, row.entity, "delete", key(row, entities))) else Skip
+                else -> Skip
+            }
 
         /** A writer insert's primary key, read from its own row (the target entity's key attributes). */
         private fun key(

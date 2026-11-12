@@ -61,7 +61,7 @@ class Held(
         decide(run, group, by) { held ->
             superseded(held)?.let { throw it }
             val context = contexts.resolve(run, held.names, by)
-            apply.apply(
+            val input =
                 ApplyInput(
                     run,
                     context.world,
@@ -74,9 +74,24 @@ class Held(
                     context.entities,
                     context.routes,
                     held.statuses.mapNotNull { it.recorded() }.associateBy { it.seq },
-                ),
-                journal(held.batch),
-            )
+                )
+            // review-258 B3: a retried commit re-reads the rows an earlier attempt lost the answer to; one that did not
+            // land is sent again (a transition still under its compare-and-set), one that did is never resent.
+            val settled = apply.reconcile(input, journal(held.batch)) { RowOutcome(it, "staged") }
+            val outcomes = apply.apply(input.copy(recorded = input.recorded + settled), journal(held.batch))
+            val open = held.rows.map { it.seq }.filter { outcomes[it] == null || outcomes[it]?.status == "staged" }
+            if (open.isNotEmpty()) {
+                // No decision over an unknown outcome: the group stays held and the run waiting (D-97).
+                throw AutomationException(
+                    ErrorCode.CLOSE_NOT_READY,
+                    "rows $open of the held group have no known outcome; the group stays undecided — commit it " +
+                        "again to re-read them",
+                    buildJsonObject {
+                        put("reason", "unresolved-outcome")
+                        put("rows", JsonArray(open.map(::JsonPrimitive)))
+                    },
+                )
+            }
             io { ledger.decideHeld(run, group, "commit", by.principal) }
         }
 
@@ -84,7 +99,22 @@ class Held(
         run: UUID,
         group: JsonObject,
         by: Caller,
-    ): HeldDecision = decide(run, group, by) { io { ledger.decideHeld(run, group, "reject", by.principal) } }
+    ): HeldDecision =
+        decide(run, group, by) { held ->
+            // review-258 B3: a commit that already sent rows cannot be rejected; only a commit can finish it.
+            val sent = held.statuses.filter { it.status == "applied" || it.status == "staged" && it.error != null }
+            if (sent.isNotEmpty()) {
+                throw AutomationException(
+                    ErrorCode.CLOSE_NOT_READY,
+                    "a commit of this group already sent rows ${sent.map { it.seq }}; commit it again to finish",
+                    buildJsonObject {
+                        put("reason", "commit-started")
+                        put("rows", JsonArray(sent.map { JsonPrimitive(it.seq) }))
+                    },
+                )
+            }
+            io { ledger.decideHeld(run, group, "reject", by.principal) }
+        }
 
     private suspend fun decide(
         run: UUID,

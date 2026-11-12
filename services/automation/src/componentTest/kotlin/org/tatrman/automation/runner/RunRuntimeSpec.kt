@@ -1569,6 +1569,104 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        "review-258 B3/B4: an interrupted held commit keeps the run waiting; its retry re-reads, never resends" {
+            val (f, fake, _) = wetFixture(keys = listOf("4711", "4712"), wire = "release_confirmed", initial = "placed")
+            sqlAuto("INSERT INTO erp_runtime.sales_order VALUES ('4712', 'placed', NULL)")
+            val runtime = f.start()
+            try {
+                val id =
+                    UUID.fromString(
+                        runtime.sessions
+                            .open(
+                                "release_order",
+                                f.request.copy(
+                                    dryRun = null,
+                                    port =
+                                        buildJsonObject {
+                                            put("keys", JsonArray(listOf(JsonPrimitive("4711"), JsonPrimitive("4712"))))
+                                        },
+                                ),
+                                f.caller,
+                            ).response.runId,
+                    )
+                runtime.sessions.evaluate(id, f.caller)
+                val pinned = requireNotNull(runtime.sessions.pinned(id))
+                runtime.closer.close(id, f.caller).status shouldBe "waiting"
+                val door =
+                    QueryDoor(
+                        fake,
+                        emptyMap(),
+                        ServiceTokens(emptyMap(), { error("unused") }),
+                        mapOf("demo/erp_db" to "w-erp", "demo/automation_db" to "w-auto"),
+                    )
+                val decider =
+                    org.tatrman.automation.writer.Held(
+                        f.ledger,
+                        org.tatrman.automation.writer
+                            .Apply(door, f.clock),
+                        org.tatrman.automation.writer
+                            .BundleDeferredContexts(
+                                { null },
+                                ServiceTokens(emptyMap(), { error("unused") }),
+                            ) { pinned },
+                        { f.served },
+                        f.clock,
+                    )
+                val ops = Caller("sub-olga", "olga", emptySet(), TokenKind.PERSON, "t", groups = setOf("hartland-ops"))
+                val k4711 = buildJsonObject { put("order_number", "4711") }
+                val k4712 = buildJsonObject { put("order_number", "4712") }
+
+                // A's transition commits in the ERP, but the answer is lost: no decision is recorded over it.
+                fake.loseCommit = { it.world == "w-erp" }
+                val lost = shouldThrow<AutomationException> { decider.commitHeld(id, k4711, ops) }
+                fake.loseCommit = { false }
+                lost.code shouldBe ErrorCode.CLOSE_NOT_READY
+                lost.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
+                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                    listOf(listOf("released"))
+                f.ledger.findRun(id)!!.status shouldBe RunStatus.WAITING
+                // A commit that already sent rows cannot be rejected.
+                shouldThrow<AutomationException> {
+                    decider.rejectHeld(
+                        id,
+                        k4711,
+                        ops,
+                    )
+                }.detail!!.jsonObject["reason"] shouldBe
+                    JsonPrimitive("commit-started")
+
+                // B4: deciding B while A has no decision does not close the run.
+                decider.rejectHeld(id, k4712, ops).runStatus shouldBe "waiting"
+                f.ledger.findRun(id)!!.status shouldBe RunStatus.WAITING
+                transaction {
+                    Batches.selectAll().where { Batches.run eq id }.single()[Batches.state] shouldBe "held"
+                }
+
+                // A's retry re-reads the ERP row (one probe, nothing written), finds the transition there, does not
+                // resend it, records A's decision, and that last decision closes the run.
+                val erpBefore = fake.writes.filter { it.world == "w-erp" }.map { it.context.correlationId }
+                val committed = decider.commitHeld(id, k4711, ops)
+                val erpAfter = fake.writes.filter { it.world == "w-erp" }.map { it.context.correlationId }
+                (erpAfter - erpBefore.toSet()).map { it.substringAfter('/').substringBefore('/') } shouldBe
+                    listOf("reconcile")
+                committed.applied shouldBe 1
+                committed.runStatus shouldBe "closed"
+                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                    listOf(listOf("released"))
+                f.ledger.findRun(id)!!.status shouldBe RunStatus.CLOSED
+                f.ledger
+                    .readRunBatch(id, f.caller.sub)
+                    .statuses
+                    .filter { it.decided != null }
+                    .map { (it.decided!!["decision"] as JsonPrimitive).content }
+                    .sorted() shouldBe listOf("commit", "reject")
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWet()
+            }
+        }
+
         "an auto close after its executor is gone refuses instead of re-resolving a newer bundle" {
             val (f, fake, _) = wetFixture()
             val runtime = f.start()

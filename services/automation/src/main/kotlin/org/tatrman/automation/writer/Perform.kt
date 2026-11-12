@@ -133,8 +133,9 @@ class Perform(
             for (a in selected) {
                 val reason =
                     when {
-                        a in held -> "held"
+                        // §1.2 (2026-11-12, R254-C): a dry run answers every selected key `dry-run`, a held one too.
                         state.dryRun -> "dry-run"
+                        a in held -> "held"
                         a.batchRows.any { statuses[it]?.status == "failed" } -> "failed"
                         a.batchRows.any { statuses[it]?.status == "staged" } -> "not-applied"
                         else -> null

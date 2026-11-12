@@ -61,6 +61,12 @@ data class RowOutcome(
          */
         const val HISTORY_PENDING = "pending"
 
+        /** review-258 B3: an unknown outcome a re-read found applied ([Apply.reconcile]). */
+        const val RECONCILED = "reconciled"
+
+        /** review-258 B3: an unknown outcome a re-read found not applied (a revert's original: nothing to undo). */
+        const val NOT_APPLIED = "reconciled-not-applied"
+
         /** The `state_history` sub-outcomes: `pending` → `applied` | `failed` | `unknown` (a lost commit; not resent). */
         val HISTORY_STATES = setOf(HISTORY_PENDING, "applied", "failed", "unknown")
     }
@@ -99,6 +105,11 @@ data class ApplyInput(
      * column in the stdlib (⚑ Found 2026-11-12); the revert's protocol entry carries it.
      */
     val revOf: UUID? = null,
+    /**
+     * review-258 B1: seqs that are one write beside [actions]' (an action's `set:` and `transition` on one key are one
+     * compare-and-set). A revert batch has no actions; its inverse units keep the original pairing ([Revert.inverse]).
+     */
+    val units: List<List<Int>> = emptyList(),
 )
 
 /**
@@ -140,7 +151,7 @@ class Apply(
             journal.record(lost)
             lost.forEach { outcomes[it.seq] = it }
         }
-        val partners = partners(input.rows, input.actions)
+        val partners = partners(input.rows, input.actions, input.units)
         for (group in ApplyPlanner.groups(input.rows, input.source)) {
             // A transition an earlier attempt applied whose history is unanswered: send that request alone.
             val owed =
@@ -200,18 +211,7 @@ class Apply(
         val consumed = mutableSetOf<Int>()
         for (row in rows) {
             if (row.seq in consumed) continue
-            val members =
-                if (row.op == "update" || row.op == "transition") {
-                    rows
-                        .filter {
-                            it.seq == row.seq ||
-                                partners[it.seq] == partners[row.seq] &&
-                                partners[row.seq] != null
-                        }.filter { it.op == "update" || it.op == "transition" }
-                        .filter { it.entity == row.entity && it.key == row.key }
-                } else {
-                    listOf(row)
-                }
+            val members = members(row, rows, partners)
             consumed += members.map { it.seq }
             try {
                 when (row.op) {
@@ -459,21 +459,202 @@ class Apply(
         return left
     }
 
-    /** seq → the index of the action whose `batchRows` hold it: an action's `set:` and `transition` are one CAS. */
+    /**
+     * seq → the index of the action (or the [units] entry) whose rows hold it: an action's `set:` and `transition` are
+     * one CAS.
+     */
     private fun partners(
         rows: List<ApplyRow>,
         actions: List<DryRunAction>,
+        units: List<List<Int>> = emptyList(),
     ): Map<Int, Int> {
         val bySeq = rows.associateBy { it.seq }
         return buildMap {
-            actions.forEachIndexed { index, action ->
+            (actions.map { it.batchRows } + units).forEachIndexed { index, seqs ->
                 val members =
-                    action.batchRows.mapNotNull { bySeq[it] }.filter {
+                    seqs.mapNotNull { bySeq[it] }.filter {
                         it.op == "update" ||
                             it.op == "transition"
                     }
                 if (members.size > 1) members.forEach { put(it.seq, index) }
             }
+        }
+    }
+
+    /** The rows of [rows] that went in one write with [row] (see [partners]). */
+    private fun members(
+        row: ApplyRow,
+        rows: List<ApplyRow>,
+        partners: Map<Int, Int>,
+    ): List<ApplyRow> =
+        if (row.op == "update" || row.op == "transition") {
+            rows
+                .filter {
+                    it.seq == row.seq ||
+                        partners[it.seq] == partners[row.seq] &&
+                        partners[row.seq] != null
+                }.filter { it.op == "update" || it.op == "transition" }
+                .filter { it.entity == row.entity && it.key == row.key }
+        } else {
+            listOf(row)
+        }
+
+    /**
+     * review-258 B3 (Amendment 2026-11-11: an unknown outcome is re-read before any retry or revert). The rows of
+     * [input] whose recorded outcome is unknown — `staged` with `unknown-outcome`, or a crash's `in-flight` marker —
+     * are re-read through [RowWrites.probe], which writes nothing (one request per storage and entity group), and
+     * compared with what they write:
+     * - the effect is there (every `set:` value and the transition's `to`; an inserted key exists) → `applied`, error
+     *   [RowOutcome.RECONCILED]. Its `prior` only where the row itself determines it (a transition alone, from exactly
+     *   one state; then, when [owesHistory], its history is owed, stamped with the re-read's time). Otherwise the
+     *   prior is unknown, and a revert refuses the row rather than guess;
+     * - the effect is not there, or no row has the key → [notApplied]: sendable again for a held commit (a transition
+     *   stays guarded by its compare-and-set), nothing to undo for a revert's original.
+     *
+     * An idempotent row (a delete, an `if_absent` obligation insert) is [notApplied] without a re-read: resending it
+     * changes nothing more. A re-read the door refuses or loses leaves its rows unknown. Answers what it recorded.
+     */
+    suspend fun reconcile(
+        input: ApplyInput,
+        journal: ApplyJournal,
+        owesHistory: Boolean = true,
+        notApplied: (Int) -> RowOutcome,
+    ): Map<Int, RowOutcome> {
+        val unknown =
+            input.recorded.values
+                .filter {
+                    it.status == "staged" && (it.error == RowOutcome.UNKNOWN || it.error == RowOutcome.IN_FLIGHT)
+                }.map { it.seq }
+                .toSet()
+        val rows = input.rows.filter { it.seq in unknown }
+        if (rows.isEmpty()) return emptyMap()
+        val partners = partners(input.rows, input.actions, input.units)
+        val out = linkedMapOf<Int, RowOutcome>()
+
+        fun done(list: List<RowOutcome>) {
+            if (list.isEmpty()) return
+            journal.record(list)
+            list.forEach { out[it.seq] = it }
+        }
+        for (group in ApplyPlanner.groups(rows, input.source)) {
+            val lowering = RowWrites(input.entities, input.routes, input.inverse)
+            val probes = mutableListOf<Pair<List<ApplyRow>, org.tatrman.plan.v1.RowWrite>>()
+            val resend = mutableListOf<RowOutcome>()
+            val consumed = mutableSetOf<Int>()
+            for (row in group.rows) {
+                if (row.seq in consumed) continue
+                val members = members(row, group.rows, partners)
+                consumed += members.map { it.seq }
+                if (row.op == "delete" || row.op == "insert" && row.entity == OBLIGATION) {
+                    resend += members.map { notApplied(it.seq) }
+                    continue
+                }
+                try {
+                    probes +=
+                        members to
+                        if (row.op == "insert") {
+                            val values = requireNotNull(row.row)
+                            val names = lowering.keyNames(row.entity)
+                            if (names.isEmpty() || names.any { values[it] == null || values[it] == JsonNull }) {
+                                throw RowRefusal("row_writes_key", "${row.entity} has no key to re-read by")
+                            }
+                            lowering.probe(row.entity, JsonObject(names.associateWith { values.getValue(it) }), names)
+                        } else {
+                            val attributes =
+                                members.flatMap {
+                                    if (it.op == "transition") {
+                                        listOf(requireNotNull(it.attribute))
+                                    } else {
+                                        requireNotNull(it.set).keys.toList()
+                                    }
+                                }
+                            lowering.probe(row.entity, requireNotNull(row.key), attributes.distinct())
+                        }
+                } catch (_: RowRefusal) {
+                    // No re-read is possible: the rows stay unknown.
+                }
+            }
+            done(resend)
+            if (probes.isEmpty()) continue
+            val answer =
+                try {
+                    door.write(
+                        DoorWrite(
+                            input.run,
+                            "reconcile/${group.storage}/${probes.first().first.first().seq}",
+                            input.world,
+                            group.storage,
+                            RowWritesProto.newBuilder().addAllRows(probes.map { it.second }).build(),
+                            lowering.parameters,
+                            input.identity,
+                            input.modelFp,
+                            remaining(input),
+                        ),
+                    )
+                } catch (_: DoorWriteFailure) {
+                    continue
+                }
+            val now = clock.instant()
+            done(
+                probes.withIndex().flatMap { (index, probe) ->
+                    val (members, _) = probe
+                    val current = answer.prior.getOrNull(index)
+                    if (current != null &&
+                        present(members, current)
+                    ) {
+                        applied(members, now, owesHistory)
+                    } else {
+                        members.map { notApplied(it.seq) }
+                    }
+                },
+            )
+        }
+        return out
+    }
+
+    /** Whether [current] (a probe's `prior`) shows every effect of [members]. */
+    private fun present(
+        members: List<ApplyRow>,
+        current: JsonObject,
+    ): Boolean =
+        members.all { m ->
+            when (m.op) {
+                "insert" -> true
+                "update" -> requireNotNull(m.set).all { (name, value) -> same(current[name], value) }
+                "transition" -> same(current[requireNotNull(m.attribute)], m.to)
+                else -> false
+            }
+        }
+
+    private fun same(
+        a: kotlinx.serialization.json.JsonElement?,
+        b: kotlinx.serialization.json.JsonElement?,
+    ): Boolean {
+        val left = a ?: JsonNull
+        val right = b ?: JsonNull
+        if (left is JsonNull || right is JsonNull) return left is JsonNull && right is JsonNull
+        return (left as? JsonPrimitive)?.content == (right as? JsonPrimitive)?.content
+    }
+
+    /** A re-read found [members] applied: `reconciled`, with a prior only where the rows themselves determine it. */
+    private fun applied(
+        members: List<ApplyRow>,
+        now: Instant,
+        owesHistory: Boolean,
+    ): List<RowOutcome> {
+        val transition = members.singleOrNull()?.takeIf { it.op == "transition" && it.from.size == 1 }
+        val from = transition?.from?.single()
+        val prior = transition?.let { JsonObject(mapOf(requireNotNull(it.attribute) to JsonPrimitive(from))) }
+        val owed = owesHistory && transition?.history == true && from != (transition.to as? JsonPrimitive)?.content
+        return members.map {
+            RowOutcome(
+                it.seq,
+                "applied",
+                RowOutcome.RECONCILED,
+                prior,
+                RowOutcome.HISTORY_PENDING.takeIf { owed },
+                now.takeIf { owed },
+            )
         }
     }
 
