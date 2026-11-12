@@ -23,12 +23,18 @@ import org.tatrman.automation.runner.Door
 import org.tatrman.automation.runner.DoorRead
 import org.tatrman.automation.runner.DoorWrite
 import org.tatrman.automation.runner.EvaluationResult
+import org.tatrman.automation.runner.RunCloser
+import org.tatrman.automation.runner.RunContext
 import org.tatrman.automation.runner.QueryDoor
 import org.tatrman.automation.runner.RouteSummary
 import org.tatrman.automation.runner.VerdictSummary
 import org.tatrman.automation.runner.WriteResult
 import java.time.Duration
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.UUID
 
 /**
@@ -313,6 +319,7 @@ class ApplyComponentSpec :
         suspend fun applyOnce(
             id: UUID,
             door: Door = door(),
+            afterBegin: () -> Unit = {},
             after: (List<RowOutcome>) -> Unit = {},
         ) {
             val state = ledger.applyState(id, subject)
@@ -331,7 +338,12 @@ class ApplyComponentSpec :
                     state.recorded,
                 ),
                 object : ApplyJournal {
-                    override fun begin(seqs: List<Int>) = ledger.beginApply(state.batch, seqs)
+                    override fun begin(seqs: List<Int>) {
+                        ledger.beginApply(state.batch, seqs)
+                        afterBegin()
+                    }
+
+                    override fun release(seqs: List<Int>) = ledger.releaseApply(state.batch, seqs)
 
                     override fun record(outcomes: List<RowOutcome>) {
                         ledger.recordApply(state.batch, outcomes)
@@ -825,6 +837,8 @@ class ApplyComponentSpec :
                 object : ApplyJournal {
                     override fun begin(seqs: List<Int>) = ledger.beginApply(state.batch, seqs)
 
+                    override fun release(seqs: List<Int>) = ledger.releaseApply(state.batch, seqs)
+
                     override fun record(outcomes: List<RowOutcome>) = ledger.recordApply(state.batch, outcomes)
                 },
             )
@@ -909,6 +923,19 @@ class ApplyComponentSpec :
             val transition = ledger.readRunBatch(id, subject).of("er.entity.order", "transition").single()
             Triple(transition.status, transition.error?.substringBefore(":"), transition.history) shouldBe
                 Triple("applied", "history-unknown-outcome", "unknown")
+            val history =
+                buildJsonObject {
+                    put("applied", 0)
+                    put("failed", 0)
+                    put("unknown", 1)
+                }
+            writesEntry(id)["history"] shouldBe history
+            writesEntry(id)
+                .getValue("entities")
+                .jsonObject
+                .getValue("er.entity.order")
+                .jsonObject["history"] shouldBe
+                history
         }
 
         "B2: the original deadline holds through a multi-group apply; nothing leaves after it" {
@@ -966,6 +993,159 @@ class ApplyComponentSpec :
                 .of("er.entity.order", "transition")
                 .single()
                 .history shouldBe "pending"
+        }
+
+        "B2-r: a four-second journal write leaves only six seconds for the door" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            clock.now = ledger.applyState(id, subject).deadline.minusSeconds(10)
+            val timeouts = mutableListOf<Duration>()
+            val inner = door()
+            val recording =
+                object : Door {
+                    override suspend fun read(read: DoorRead) = inner.read(read)
+
+                    override suspend fun write(write: DoorWrite): WriteResult {
+                        timeouts += write.timeout
+                        return inner.write(write)
+                    }
+                }
+            applyOnce(id, recording, afterBegin = { clock.now = clock.now.plusSeconds(4) })
+            timeouts shouldBe listOf(Duration.ofSeconds(6), Duration.ofSeconds(6))
+            ledger.closeCommitted(id, subject).status shouldBe "closed"
+            writesEntry(id)["history"] shouldBe
+                buildJsonObject {
+                    put("applied", 1)
+                    put("failed", 0)
+                    put("unknown", 0)
+                }
+        }
+
+        for ((name, delay) in listOf(
+            "expired" to Duration.ofSeconds(11),
+            "sub-millisecond" to Duration.ofNanos(9_999_600_000),
+        )) {
+            "B2-r G1: a $name budget after journaling releases unsent rows without unknown outcomes" {
+                val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+                val deadline = ledger.applyState(id, subject).deadline
+                clock.now = deadline.minusSeconds(10)
+                shouldThrow<AutomationException> {
+                    applyOnce(id, afterBegin = { clock.now = clock.now.plus(delay) })
+                }.code shouldBe ErrorCode.CLOSE_DEADLINE_EXCEEDED
+                fake.writes.size shouldBe 0
+                ledger.readRunBatch(id, subject).let { batch ->
+                    batch.mode shouldBe "preview"
+                    batch.statuses.map { it.status to it.error } shouldBe listOf("staged" to null, "staged" to null)
+                }
+                // An expired retry refuses before the lost-marker sweep, and no false unknown is stored.
+                clock.now = deadline
+                shouldThrow<AutomationException> { applyOnce(id) }.code shouldBe ErrorCode.CLOSE_DEADLINE_EXCEEDED
+                ledger.readRunBatch(id, subject).statuses.map { it.error } shouldBe listOf(null, null)
+                rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                    listOf(listOf("placed"))
+            }
+        }
+
+        "G1: four hundred microseconds left refuses before marking or sending a group" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            clock.now = ledger.applyState(id, subject).deadline.minusNanos(400_000)
+            var begins = 0
+            shouldThrow<AutomationException> { applyOnce(id, afterBegin = { begins++ }) }.code shouldBe
+                ErrorCode.CLOSE_DEADLINE_EXCEEDED
+            begins shouldBe 0
+            fake.writes.size shouldBe 0
+            ledger.readRunBatch(id, subject).statuses.map { it.status to it.error } shouldBe
+                listOf("staged" to null, "staged" to null)
+        }
+
+        "G2: RunCloser carries the deadline recorded at open even when pin lookup finishes after expiry" {
+            val openedAt = clock.now
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            val context =
+                RunContext(
+                    id,
+                    bundle.recipes.getValue("release_order"),
+                    "demo",
+                    "model-fp",
+                    identity,
+                    emptyMap(),
+                    startedAt = openedAt,
+                    previewMetadata = PreviewMetadata(emptyMap(), bundle.entities, planSource = source),
+                    dryRun = false,
+                )
+            clock.now = openedAt.plus(Duration.ofMinutes(30)).minusSeconds(1)
+            val closer =
+                RunCloser(ledger, Apply(door(), clock), pinned = { _, _ ->
+                    clock.now = openedAt.plus(Duration.ofMinutes(30)).plusSeconds(1)
+                    context
+                })
+            shouldThrow<AutomationException> { closer.close(id, identity.caller) }.code shouldBe
+                ErrorCode.CLOSE_DEADLINE_EXCEEDED
+            fake.writes.size shouldBe 0
+            ledger.readRunBatch(id, subject).statuses.map { it.status to it.error } shouldBe
+                listOf("staged" to null, "staged" to null)
+        }
+
+        "G2: applyState refuses an expired retry with close-deadline-exceeded rather than budget" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            val deadline = ledger.applyState(id, subject).deadline
+            applyOnce(id)
+            clock.now = deadline
+            shouldThrow<AutomationException> { ledger.applyState(id, subject) }.code shouldBe
+                ErrorCode.CLOSE_DEADLINE_EXCEEDED
+            fake.writes.size shouldBe 2
+            ledger.readRunBatch(id, subject).mode shouldBe "preview"
+        }
+
+        "G2: expiry during wet sealing rolls back the writes entry, batch commit and seal" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            applyOnce(id)
+            val deadline = ledger.applyState(id, subject).deadline
+            val before = ledger.readProtocol(id, subject)
+            val calls = AtomicInteger()
+            val ticking =
+                object : Clock() {
+                    override fun getZone(): ZoneId = ZoneOffset.UTC
+
+                    override fun withZone(zone: ZoneId): Clock = this
+
+                    override fun instant(): Instant = if (calls.incrementAndGet() >= 3) deadline else clock.now
+                }
+            shouldThrow<AutomationException> {
+                Ledger(Duration.ofMinutes(30), ticking).closeCommitted(id, subject)
+            }.code shouldBe ErrorCode.CLOSE_DEADLINE_EXCEEDED
+            calls.get() shouldBe 3
+            ledger.readProtocol(id, subject) shouldBe before
+            ledger.readRunBatch(id, subject).mode shouldBe "preview"
+            ledger.findRun(id)?.status shouldBe RunStatus.EVALUATED
+            ledger.readRunProgress(id, subject).endedAt shouldBe null
+            ledger.closeCommitted(id, subject).status shouldBe "closed"
+        }
+
+        "G2 G3: failed history is final across retry and visible in the sealed writes entry" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            fake.refuse = { if (it.world == "w-auto") "connector-unavailable" else null }
+            applyOnce(id)
+            val failed = ledger.readRunBatch(id, subject).of("er.entity.order", "transition").single()
+            Triple(failed.status, failed.error, failed.history) shouldBe
+                Triple("applied", "history-failed: connector-unavailable", "failed")
+            fake.refuse = { null }
+            applyOnce(id)
+            fake.writes.map { it.world } shouldBe listOf("w-erp", "w-auto")
+            ledger.readRunBatch(id, subject).of("er.entity.order", "transition").single() shouldBe failed
+            ledger.closeCommitted(id, subject).status shouldBe "closed"
+            val history =
+                buildJsonObject {
+                    put("applied", 0)
+                    put("failed", 1)
+                    put("unknown", 0)
+                }
+            writesEntry(id)["history"] shouldBe history
+            writesEntry(id)
+                .getValue("entities")
+                .jsonObject
+                .getValue("er.entity.order")
+                .jsonObject["history"] shouldBe
+                history
         }
 
         "B2: an apply that finished just inside the deadline still cannot commit after it" {

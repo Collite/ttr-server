@@ -65,6 +65,9 @@ data class RowOutcome(
 interface ApplyJournal {
     fun begin(seqs: List<Int>)
 
+    /** The request never left: clear only these rows' in-flight marks, preserving any settled outcomes. */
+    fun release(seqs: List<Int>)
+
     fun record(outcomes: List<RowOutcome>)
 }
 
@@ -218,8 +221,16 @@ class Apply(
         if (failed.isNotEmpty()) done(failed)
         if (units.isEmpty()) return out
         val seqs = units.flatMap { it.seqs }.distinct()
-        val timeout = remaining(input)
+        remaining(input)
         journal.begin(seqs)
+        val timeout =
+            try {
+                // begin is blocking IO: its transaction may have consumed the rest of the run's budget.
+                remaining(input)
+            } catch (e: AutomationException) {
+                journal.release(seqs)
+                throw e
+            }
         val answer =
             try {
                 door.write(
@@ -416,7 +427,7 @@ class Apply(
     /** The time left before the run's original deadline; none left → `close-deadline-exceeded`, nothing is sent. */
     private fun remaining(input: ApplyInput): Duration {
         val left = Duration.between(clock.instant(), input.deadline)
-        if (left.isNegative || left.isZero) {
+        if (left.toMillis() <= 0) {
             throw AutomationException(
                 ErrorCode.CLOSE_DEADLINE_EXCEEDED,
                 "the run's original deadline passed during its apply; no further request is sent",

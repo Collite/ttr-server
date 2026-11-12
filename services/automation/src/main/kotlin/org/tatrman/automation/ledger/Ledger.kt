@@ -562,6 +562,20 @@ class Ledger(
         }
     }
 
+    /** Undo only the in-flight marks of a request that never left because its journal write used up the budget. */
+    fun releaseApply(
+        batch: UUID,
+        seqs: List<Int>,
+    ) {
+        outermost("releaseApply")
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            BatchRows.update({
+                (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged") and
+                    (BatchRows.error eq org.tatrman.automation.writer.RowOutcome.IN_FLIGHT)
+            }) { it[error] = null }
+        }
+    }
+
     /**
      * Per-row outcomes as the door answered them; an `update`/`transition` keeps its `prior`, and a transition its
      * history sub-outcome (as `history_outcome`: the payload's own `history` is the §4 flag), in `batch_rows.row`.
@@ -713,8 +727,10 @@ class Ledger(
 
     /**
      * S2.2 close of an `auto` run, after its rows were applied: the batch becomes `committed` (by the run's `run_as`),
-     * the final `writes` entry counts each entity's applied/failed/skipped/unknown rows and the `stale-state` ones, and
-     * the protocol is sealed with CLOSED in one locked transaction. A row still pristine `staged`, or a transition still
+     * the final `writes` entry counts each entity's applied/failed/skipped/unknown rows and the `stale-state` ones;
+     * both `writes.history` and `writes.entities[entity].history` count final `{applied, failed, unknown}` history
+     * sub-outcomes separately from the row counts (D-180, contracts §5). Failed/unknown history remains final on retry.
+     * The protocol is sealed with CLOSED in one locked transaction. A row still pristine `staged`, or a transition still
      * `history: pending`, refuses: the apply did not finish. Like the preview close, it is fenced by the run's original
      * deadline before and after the evidence is written (`close-deadline-exceeded`; the batch stays `preview`). A committed batch with failures is still `committed` (the verdict stands, D-67).
      */
@@ -771,6 +787,22 @@ class Ledger(
             fun bucket(r: org.jetbrains.exposed.v1.core.ResultRow) =
                 if (r[BatchRows.status] == "staged") "unknown" else r[BatchRows.status]
             val counts = rows.groupingBy(::bucket).eachCount()
+
+            fun historyCounts(list: List<org.jetbrains.exposed.v1.core.ResultRow>): JsonObject {
+                val histories =
+                    list
+                        .mapNotNull {
+                            ((it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) as? JsonPrimitive)?.content
+                        }.groupingBy { it }
+                        .eachCount()
+                return JsonObject(
+                    listOf("applied", "failed", "unknown").associateWith {
+                        JsonPrimitive(
+                            histories[it] ?: 0,
+                        )
+                    },
+                )
+            }
             val writes =
                 kotlinx.serialization.json.buildJsonObject {
                     put("event", JsonPrimitive("closed"))
@@ -786,6 +818,7 @@ class Ledger(
                         )
                     }
                     put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == "stale-state" }))
+                    put("history", historyCounts(rows))
                     put(
                         "entities",
                         JsonObject(
@@ -796,7 +829,7 @@ class Ledger(
                                         JsonPrimitive(
                                             c[it] ?: 0,
                                         )
-                                    },
+                                    } + ("history" to historyCounts(list)),
                                 )
                             },
                         ),

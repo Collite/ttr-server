@@ -92,7 +92,7 @@ class RunCloser(
                     context.identity,
                     context.modelFp,
                     // One absolute deadline: the run's original one, as pinned at Open and as the ledger holds it.
-                    minOf(context.startedAt.plus(context.timeout), state.deadline),
+                    state.deadline,
                     state.plan.rows,
                     state.actions,
                     requireNotNull(metadata.planSource) { "apply placement was not pinned at open" },
@@ -105,6 +105,8 @@ class RunCloser(
                 ),
                 object : ApplyJournal {
                     override fun begin(seqs: List<Int>) = ledger.beginApply(state.batch, seqs)
+
+                    override fun release(seqs: List<Int>) = ledger.releaseApply(state.batch, seqs)
 
                     override fun record(outcomes: List<RowOutcome>) = ledger.recordApply(state.batch, outcomes)
                 },

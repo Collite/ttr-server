@@ -160,6 +160,8 @@ class RowWritesSpec :
                 object : ApplyJournal {
                     override fun begin(seqs: List<Int>) = Unit
 
+                    override fun release(seqs: List<Int>) = Unit
+
                     override fun record(outcomes: List<RowOutcome>) {
                         recorded += outcomes
                     }
