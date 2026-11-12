@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from docproc._generated.org.tatrman.fuzzy.v1 import fuzzy_pb2 as pb
 from docproc.kinds.common import annotation
 from docproc.runtime.registry import KindResult, RunContext
 from docproc.sdk.lexmatcher import LexMatcher
-from docproc.sdk.models import Annotation
+from docproc.sdk.models import Annotation, ContextChunk, Page, Source
 from docproc.sdk.store import Warehouse
 
 
@@ -32,9 +33,54 @@ def sentence(ctx: RunContext, mention: Annotation) -> str:
     return unit.content_text[left : end + right.start() + 1 if right else len(unit.content_text)]
 
 
+@dataclass
+class _Reads:
+    """One run's store reads, made once: the document's source marts (`GET /sources`), each distinct sentence's kNN in
+    its mart (`POST /findSimilar`: two mentions in one sentence ask once, review-244 F7) and each page
+    (`GET /pages/{id}`, k is small)."""
+
+    marts: dict[int, str] | None = None
+    similar: dict[tuple[str, str], list[ContextChunk]] = field(default_factory=dict)
+    pages: dict[int, Page] = field(default_factory=dict)
+
+
 class Link:
     def __init__(self, lexmatcher: LexMatcher, warehouse: Warehouse) -> None:
         self.lexmatcher, self.warehouse = lexmatcher, warehouse
+
+    def _knn(
+        self, ctx: RunContext, mention: Annotation, k: int, floor: float, reads: _Reads
+    ) -> list[tuple[Page, float]]:
+        """The concept pages similar to the mention's sentence, inside the mart of the mention's source (✅W5-2: the
+        kNN never leaves it — a page of another mart is not this document's to propose). No concept page yet answers
+        nothing (S3.3: absent pages = no kNN candidates, never an error); a source with no single mart is an error,
+        never a silent "no candidates". Each hit's score is its cosine to the sentence (docwh-store ≥ 0.11.13,
+        contracts §1.4), never normalized to the best hit's, so `abstain_below` and `margin` gate it absolutely. A hit
+        below [floor] (`abstain_below`) is not evidence (✅R244-E): it is dropped here, and its page is never read. A
+        store whose vector recall failed answers 503 `retrieval/vector-unavailable` (docwh-store ≥ 0.11.13, review-244
+        R1), never an empty answer: transient, so the runner redelivers (F4)."""
+        if reads.marts is None:
+            reads.marts = {}
+            for raw in self.warehouse.sources_of_document(ctx.item.document_id):
+                source = Source.model_validate(raw)
+                reads.marts[source.id] = source.notebook_id
+        source_id = ctx.units[mention.unit_id].source_id
+        mart = reads.marts.get(source_id, "")
+        if not mart:
+            raise ValueError(f"link/no-mart: source {source_id} of {ctx.item.document_id} has no single mart")
+        query = sentence(ctx, mention)
+        if (mart, query) not in reads.similar:
+            reads.similar[(mart, query)] = self.warehouse.find_similar(mart, query, ["page"], k).chunks
+        out = []
+        for hit in reads.similar[(mart, query)]:
+            if hit.page_id is None:  # asked for pages only: a chunk proposes no concept
+                continue
+            if not math.isfinite(hit.score) or hit.score < floor:
+                continue
+            if hit.page_id not in reads.pages:
+                reads.pages[hit.page_id] = self.warehouse.page(hit.page_id, mart)
+            out.append((reads.pages[hit.page_id], hit.score))
+        return out
 
     def run(self, ctx: RunContext) -> KindResult:
         engine = ctx.manifest["engine"]
@@ -49,6 +95,8 @@ class Link:
         if k < 1:
             raise ValueError("link/invalid-k")
         sources = engine.get("candidates", ["lexicon", "knn"])
+        target_concepts = set(engine.get("targets", {}).values())
+        abstain_below = float(engine.get("abstain_below", 0.6))
         if set(sources) - {"lexicon", "knn"}:
             raise ValueError("link/unknown-candidate-source")
         queries = [
@@ -70,6 +118,7 @@ class Link:
         result = KindResult()
         unmapped = linked = 0
         candidate_log = []
+        reads = _Reads()
         for n, mention in enumerate(mentions):
             options: dict[tuple[str, str], dict[str, Any]] = {}
             for hit in lex.get(n, pb.FuzzyMatchResponse()).matches:
@@ -104,30 +153,29 @@ class Link:
                 if math.isfinite(hit.score) and (key not in options or hit.score > options[key]["score"]):
                     options[key] = row
             if "knn" in sources:
-                reply = self.warehouse.find_similar({"text": sentence(ctx, mention), "nodeKinds": ["page"], "k": k})
-                for hit in reply.get("hits", []):
-                    page = hit.get("page", hit)
-                    ref = page.get("conceptRef", {})
-                    concept = ref.get("metadataQname", "") if isinstance(ref, dict) else ""
-                    if concept not in set(engine.get("targets", {}).values()) or mention.payload().get(
-                        "concept"
-                    ) not in (None, "", concept):
+                for page, score in self._knn(ctx, mention, k, abstain_below, reads):
+                    concept = page.concept_ref.metadata_qname if page.concept_ref else ""
+                    if concept not in target_concepts or mention.payload().get("concept") not in (None, "", concept):
                         continue
-                    score = float(hit.get("score", 0))
-                    if not math.isfinite(score):
-                        continue
-                    # Concept pages can support an existing member candidate; they do not manufacture a member.
-                    keys = [key for key in options if key[0] == concept] or [(concept, "")]
-                    for key in keys:
+                    # Evidence is a page at a cosine ≥ `abstain_below` (`_knn` drops the rest, ✅R244-E). It
+                    # corroborates its concept's member candidates (scores untouched: "concept-page scores never
+                    # increase member identity scores") and then leaves the concept-only candidate alone, so it never
+                    # lifts that one over a member of its own concept (review-244 F2). With no member candidate it
+                    # lifts, or proposes, the concept itself. It never manufactures a member. `both` means the lexicon
+                    # proposed the option and a page corroborated it: a second page on a `knn` option only raises its
+                    # score (✅R244-E).
+                    members = [key for key in options if key[0] == concept and key[1]]
+                    for key in members or [(concept, "")]:
                         if key in options:
-                            options[key]["source"] = "both"
+                            if options[key]["source"] in ("lexicon", "both"):
+                                options[key]["source"] = "both"
                             if not key[1]:
                                 options[key]["score"] = max(options[key]["score"], score)
                         else:
                             options[key] = {
                                 "system": concept,
                                 "code": concept,
-                                "label": page.get("title", concept),
+                                "label": page.title or concept,
                                 "score": score,
                                 "source": "knn",
                                 "_member": None,
@@ -139,7 +187,7 @@ class Link:
             margin = top["score"] - ranked[1]["score"] if top is not None and len(ranked) > 1 else None
             choose = (
                 top is not None
-                and top["score"] >= float(engine.get("abstain_below", 0.6))
+                and top["score"] >= abstain_below
                 and (margin is None or margin + 1e-12 >= float(engine.get("margin", 0.05)))
             )
             decision = {

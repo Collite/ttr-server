@@ -16,14 +16,18 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
+from pydantic import ValidationError
 
 from docproc.sdk.models import (
     Annotation,
+    ContextResult,
     GetUnitResponse,
     ListAnnotationsPage,
     ListAnnotationsRequest,
     LoadAnnotationsRequest,
     LoadAnnotationsResponse,
+    Page,
+    SimilarRequest,
     Unit,
 )
 
@@ -46,6 +50,27 @@ class RunConflict(StoreError):
 
 class SchemaRejected(StoreError):
     """422 `annotation/schema` — a payload did not validate against its type's JSON Schema."""
+
+
+class PaginationLoop(StoreError):
+    """The store repeated an annotation page token: a loop the client detected itself. It is deterministic, so it is
+    never transient (`runtime/failures.py`), although it keeps its `502 pagination/loop` so logs read as before: every
+    redelivery would loop again and end as "retries exhausted", the cause lost (review-244 R3)."""
+
+
+#: How many failing fields a shape error names.
+_SHAPE_ERRORS = 5
+
+
+def _shape(r: httpx.Response, code: str, exc: ValidationError) -> StoreError:
+    """A 2xx answer of a drifted shape: the failing fields' locations and error types only, e.g. `chunks.0.pageId:
+    missing`. Never pydantic's own text: its `input_value` is a slice of the store's body, i.e. document text, and
+    diagnostics never include bodies (`runtime/failures.py`)."""
+    errors = exc.errors(include_url=False, include_context=False, include_input=False)
+    where = [f"{'.'.join(map(str, e['loc'])) or '<root>'}: {e['type']}" for e in errors[:_SHAPE_ERRORS]]
+    if len(errors) > _SHAPE_ERRORS:
+        where.append(f"(+{len(errors) - _SHAPE_ERRORS} more)")
+    return StoreError(r.status_code, code, "; ".join(where))
 
 
 def _error(r: httpx.Response) -> StoreError:
@@ -112,7 +137,7 @@ class StoreClient:
             if not page.next_page_token:
                 return
             if page.next_page_token in seen:
-                raise StoreError(502, "pagination/loop", "repeated annotation page token")
+                raise PaginationLoop(502, "pagination/loop", "repeated annotation page token")
             seen.add(page.next_page_token)
             req = req.model_copy(update={"page_token": page.next_page_token})
 
@@ -123,15 +148,39 @@ class StoreClient:
     def load_lemmas(self, run_id: str, lemmas: list[dict[str, Any]]) -> None:
         self._ok(self._http.post("/load/lemmas", json={"runId": run_id, "lemmas": lemmas}))
 
-    def find_similar(self, request: dict[str, Any]) -> dict[str, Any]:
-        result: dict[str, Any] = self._ok(self._http.post("/findSimilar", json=request))
-        return result
+    def find_similar(self, notebook_id: str, query: str, node_kinds: list[str], k: int) -> ContextResult:
+        """`POST /findSimilar` — vector similarity inside ONE mart (docwh-store `FindSimilarRequestDto`: `notebookId`
+        and `query` required, no defaults). Answers `ContextResult`; a page hit carries `pageId` and its cosine as
+        `score`, the page's concept is on `GET /pages/{id}` ([page]). A blank mart or query is refused here, before
+        the wire: the DX dump would drop it and the route answer a bare `400` (review-244 F5). An answer of a drifted
+        shape (no `chunks`, a hit without `pageId` or `score`) is `store/find-similar-shape` (review-244 F3, R2)."""
+        if not notebook_id.strip() or not query.strip():
+            raise ValueError("store/find-similar-blank: notebookId and query are required")
+        body = SimilarRequest(notebook_id=notebook_id, query=query, node_kinds=node_kinds, k=k).dump()
+        r = self._http.post("/findSimilar", json=body)
+        try:
+            return ContextResult.model_validate(self._ok(r))
+        except ValidationError as exc:
+            raise _shape(r, "store/find-similar-shape", exc) from None
+
+    def page(self, page_id: int, notebook_id: str) -> Page:
+        """`GET /pages/{id}?notebookId=` — proto `Page`; a page outside the mart is a 404, as a missing one. A page
+        other than the one asked for is refused, as `get_unit` refuses another unit (review-244 F3); one that does
+        not decode is `store/page-shape` (R2)."""
+        r = self._http.get(f"/pages/{page_id}", params={"notebookId": notebook_id})
+        try:
+            page = Page.model_validate(self._ok(r))
+        except ValidationError as exc:
+            raise _shape(r, "store/page-shape", exc) from None
+        if page.id != page_id:
+            raise StoreError(r.status_code, "store/page-mismatch", f"GET /pages/{page_id} answered page {page.id}")
+        return page
 
     def sources_of_document(self, document_id: str) -> list[dict[str, Any]]:
-        result: list[dict[str, Any]] = self._ok(self._http.get("/sources", params={"documentId": document_id}))[
-            "sources"
-        ]
-        return result
+        """`GET /sources?documentId=` as the service identity: every version, each with its mart (`notebookId`, see
+        `models.Source`). No source is `{}` on the wire, so the list is read with a default."""
+        body = self._ok(self._http.get("/sources", params={"documentId": document_id}))
+        return list(body.get("sources", []))
 
 
 class Warehouse(Protocol):
@@ -141,5 +190,6 @@ class Warehouse(Protocol):
     def iter_annotations(self, req: ListAnnotationsRequest) -> Iterator[Annotation]: ...
     def load_annotations(self, req: LoadAnnotationsRequest) -> LoadAnnotationsResponse: ...
     def load_lemmas(self, run_id: str, lemmas: list[dict[str, Any]]) -> None: ...
-    def find_similar(self, request: dict[str, Any]) -> dict[str, Any]: ...
+    def find_similar(self, notebook_id: str, query: str, node_kinds: list[str], k: int) -> ContextResult: ...
+    def page(self, page_id: int, notebook_id: str) -> Page: ...
     def sources_of_document(self, document_id: str) -> list[dict[str, Any]]: ...

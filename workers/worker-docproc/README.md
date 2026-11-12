@@ -21,6 +21,12 @@ protocol artefact, completion, the staged row's delete and queue acknowledgement
 commit in one pipeline-DB transaction. A unique artefact
 row also suppresses duplicate completions for duplicate deliveries of a run.
 
+`link`'s kNN (0.11.3, ✅W5-2) asks `POST /findSimilar` for pages inside the mention's source mart only: the mart
+is the source's `notebookId` from `GET /sources?documentId=` (docwh-store ≥ 0.11.13), and a source with no single
+mart fails the run `link/no-mart` rather than linking without kNN. Each hit page's concept is read from
+`GET /pages/{id}?notebookId=` (`conceptRef.metadataQname`, compile's), once per page per run. No concept page yet
+answers nothing, and the links are `lexicon` (S3.3).
+
 Kinds run synchronously on the main thread on Linux/macOS. A POSIX interval timer
 interrupts a timed-out kind; no executor thread continues writing afterward.
 Heartbeat renewal runs separately. SIGTERM stops fetches and finishes the current

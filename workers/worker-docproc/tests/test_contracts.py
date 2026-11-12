@@ -16,10 +16,16 @@ from docproc.sdk.models import (
     Annotation,
     AnnotationTier,
     AnnotationType,
+    ContextResult,
+    GetPageRequest,
     ListAnnotationsPage,
     ListAnnotationsRequest,
+    ListSourcesRequest,
+    ListSourcesResponse,
     LoadAnnotationsRequest,
     LoadAnnotationsResponse,
+    Page,
+    SimilarRequest,
     Unit,
     UnitKind,
     canonical,
@@ -38,6 +44,9 @@ SINGLE: list[tuple[str, type[BaseModel]]] = [
 PAIRS: list[tuple[str, type[BaseModel], type[BaseModel]]] = [
     ("loadAnnotations.json", LoadAnnotationsRequest, LoadAnnotationsResponse),
     ("listAnnotations.json", ListAnnotationsRequest, ListAnnotationsPage),
+    # ✅W5-2: the reads docproc's `link` makes (the store's specs print both files)
+    ("listSources.json", ListSourcesRequest, ListSourcesResponse),
+    ("page.json", GetPageRequest, Page),
 ]
 
 
@@ -114,3 +123,12 @@ def test_list_request_query_string() -> None:
         ("activeOnly", "true"),
         ("pageSize", "50"),
     ]
+
+
+def test_find_similar_fixture_decodes_strictly() -> None:
+    """findSimilar.json is the v1 route's wire, ktor-printed (every field written, `null`s included), so it is no
+    canonical proto pair: it decodes STRICTLY (no key the models lack), and its request is the canonical body sent."""
+    o = json.loads((CONTRACTS / "findSimilar.json").read_text(encoding="utf-8"))
+    assert dump(SimilarRequest.strict(o["request"])) == o["request"]
+    result = ContextResult.strict(o["response"])
+    assert [c.page_id for c in result.chunks] == [9001]

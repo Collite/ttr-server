@@ -128,18 +128,141 @@ def test_remaining_reads_and_lemma_sink() -> None:
         return_value=httpx.Response(200, json={"units": [fixture("unit.json")]})
     )
     lemmas = respx.post(f"{BASE}/load/lemmas").mock(return_value=httpx.Response(200, json={}))
-    similar = respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json={"hits": []}))
-    sources = respx.get(f"{BASE}/sources", params={"documentId": "document"}).mock(
-        return_value=httpx.Response(200, json={"sources": [{"id": 7}]})
-    )
     client = StoreClient(BASE)
     assert client.units_of_source(7)[0].id == 101 and tree.called
     entry = {"unitId": 101, "contentLemmas": "recenze", "lang": "cs", "lemmatizer": "test"}
     client.load_lemmas("r/1", [entry])
     assert json.loads(lemmas.calls.last.request.content) == {"runId": "r/1", "lemmas": [entry]}
-    assert client.find_similar({"text": "x", "nodeKinds": ["unit"]}) == {"hits": []}
-    assert json.loads(similar.calls.last.request.content)["nodeKinds"] == ["unit"]
-    assert client.sources_of_document("document") == [{"id": 7}] and sources.called
+
+
+@respx.mock
+def test_link_reads_speak_the_store_wire() -> None:
+    """✅W5-2: `/findSimilar`, `GET /pages/{id}` and `GET /sources` against the fixtures docwh-store's own specs print
+    (RetrievalRoutesSpec, UnitRoutesSpec): the request is the store DTO's, the answers are read as the routes write."""
+    f = fixture("findSimilar.json")
+    similar = respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json=f["response"]))
+    client = StoreClient(BASE)
+    req: dict[str, object] = f["request"]  # type: ignore[assignment]
+    got = client.find_similar(
+        str(req["notebookId"]),
+        str(req["query"]),
+        list(req["nodeKinds"]),  # type: ignore[call-overload]
+        int(req["k"]),  # type: ignore[call-overload]
+    )
+    assert json.loads(similar.calls.last.request.content) == req  # FindSimilarRequestDto: notebookId + query required
+    hit = got.chunks[0]
+    assert hit.page_id is not None and hit.chunk_id is None and hit.span is None
+
+    p = fixture("page.json")
+    preq: dict[str, object] = p["request"]  # type: ignore[assignment]
+    page = respx.get(f"{BASE}/pages/{preq['pageId']}", params={"notebookId": preq["notebookId"]}).mock(
+        return_value=httpx.Response(200, json=p["response"])
+    )
+    read = client.page(int(preq["pageId"]), str(preq["notebookId"]))  # type: ignore[call-overload]
+    assert page.called and read.id == preq["pageId"] and read.concept_ref is not None
+    assert read.concept_ref.metadata_qname.startswith("cn.")
+
+    s = fixture("listSources.json")
+    sreq: dict[str, object] = s["request"]  # type: ignore[assignment]
+    sources = respx.get(f"{BASE}/sources", params=sreq).mock(return_value=httpx.Response(200, json=s["response"]))
+    listed = client.sources_of_document(str(sreq["documentId"]))
+    assert sources.called and [x["notebookId"] for x in listed] == ["hartland-reviews"]
+
+
+@respx.mock
+def test_no_sources_is_an_empty_list() -> None:
+    # the DX JSON drops an empty list: a document with no source (or none in a mart) answers `{}`
+    respx.get(f"{BASE}/sources", params={"documentId": "none"}).mock(return_value=httpx.Response(200, json={}))
+    assert StoreClient(BASE).sources_of_document("none") == []
+
+
+@respx.mock
+@pytest.mark.parametrize("mart,query", [("", "x"), ("  ", "x"), ("hartland-public", ""), ("hartland-public", " ")])
+def test_a_blank_mart_or_query_is_refused_before_the_wire(mart: str, query: str) -> None:
+    """review-244 F5: the DX dump drops a blank `notebookId`/`query`, and the route then fails `call.receive` with a bare
+    400 — never its `notebook_id required`. So the client refuses it itself, and nothing is sent."""
+    route = respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json={"chunks": []}))
+    with pytest.raises(ValueError, match="store/find-similar-blank"):
+        StoreClient(BASE).find_similar(mart, query, ["page"], 5)
+    assert not route.called
+
+
+@respx.mock
+def test_the_routes_answer_to_a_missing_key_is_a_bare_400() -> None:
+    """What docwh-store answers a body without `notebookId` or `query` (ktor `call.receive`, W5-2's own `400 ''`): an
+    error with no code. The client never sends one; this is how it reads it if a proxy or an older client did."""
+    respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(400, text=""))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).find_similar("hartland-public", "x", ["page"], 5)
+    assert e.value.status == 400 and e.value.code == ""
+
+
+@respx.mock
+@pytest.mark.parametrize("body", [{"hits": []}, {"hits": [{"page": {"id": 9001}}]}, {}, {"grounded": False}])
+def test_a_find_similar_answer_without_chunks_is_refused_not_read_as_no_candidates(body: dict[str, object]) -> None:
+    """review-244 F3: the old invented `{"hits": …}` (or any answer without `chunks`) is a drifted shape. Read leniently
+    it was `chunks=[]`, a silent "no kNN"; `chunks` is required, so it fails loudly, as `store/find-similar-shape`
+    with the field's location only (R2)."""
+    respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).find_similar("hartland-public", "x", ["page"], 5)
+    assert (e.value.status, e.value.code, e.value.message) == (200, "store/find-similar-shape", "chunks: missing")
+    assert "input_value" not in str(e.value)
+
+
+@respx.mock
+def test_a_hit_whose_keys_drifted_is_refused_not_read_as_a_chunk_at_score_0() -> None:
+    """review-244 R2: a hit's `pageId` and `score` are required (`pageId` may be `null`). A renamed one used to decode
+    as `page_id=None, score=0.0`, which link skips as a chunk hit: a silent lexicon-only run."""
+    body = {"chunks": [{"nodeId": 9001, "similarity": 0.9}], "grounded": True}
+    respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).find_similar("hartland-public", "x", ["page"], 5)
+    assert e.value.code == "store/find-similar-shape"
+    assert e.value.message == "chunks.0.pageId: missing; chunks.0.score: missing"
+
+
+@respx.mock
+def test_a_shape_error_carries_no_part_of_the_body() -> None:
+    """review-244 R2: pydantic's own text quotes the input (`input_value=…`, here document text). The shape error
+    names the field and the error type only, so no body reaches `Completion.error`."""
+    hit = {"pageId": 9001, "score": "The Aurora Desk Lamp hums"}
+    respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json={"chunks": [hit]}))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).find_similar("hartland-public", "x", ["page"], 5)
+    assert e.value.message == "chunks.0.score: float_parsing"
+    assert "Aurora" not in str(e.value) and "input_value" not in str(e.value)
+
+
+@respx.mock
+def test_a_page_that_does_not_decode_is_a_page_shape_error() -> None:
+    """review-244 R2: `GET /pages/{id}` answering a drifted page is `store/page-shape`, with locations only."""
+    body = {"id": 9001, "kind": "CONCEPT", "conceptRef": "Item: a product the shop sells"}
+    respx.get(f"{BASE}/pages/9001").mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).page(9001, "hartland-public")
+    assert (e.value.status, e.value.code, e.value.message) == (200, "store/page-shape", "conceptRef: model_type")
+    assert "product" not in str(e.value) and "input_value" not in str(e.value)
+
+
+@respx.mock
+def test_a_find_similar_answer_may_grow_fields() -> None:
+    """Required `chunks`, not `strict()`: the route's additive fields never break docproc."""
+    respx.post(f"{BASE}/findSimilar").mock(
+        return_value=httpx.Response(200, json={"chunks": [], "grounded": False, "x": 1})
+    )
+    assert StoreClient(BASE).find_similar("hartland-public", "x", ["page"], 5).chunks == []
+
+
+@respx.mock
+@pytest.mark.parametrize("body", [{"page": {"id": 9001}}, {"id": 9002, "kind": "CONCEPT"}])
+def test_a_page_other_than_the_one_asked_for_is_refused(body: dict[str, object]) -> None:
+    """review-244 F3: `GET /pages/9001` answering another page — or a wrapped one, read leniently as page 0 — is
+    `store/page-mismatch`, as `get_unit` refuses another unit; never a page without a concept."""
+    respx.get(f"{BASE}/pages/9001").mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).page(9001, "hartland-public")
+    assert e.value.code == "store/page-mismatch" and "answered page" in e.value.message
 
 
 @respx.mock

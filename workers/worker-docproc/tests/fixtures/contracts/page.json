@@ -1,0 +1,22 @@
+{
+  "request": {
+    "notebookId": "hartland-public",
+    "pageId": 9001
+  },
+  "response": {
+    "conceptRef": {
+      "displayLabel": "Item",
+      "entityId": "cn.Item",
+      "entityType": "concept",
+      "metadataQname": "cn.Item"
+    },
+    "contentMd": "A product Hartland sells.",
+    "derivedFromParts": [
+      101
+    ],
+    "id": 9001,
+    "kind": "CONCEPT",
+    "title": "Item",
+    "updatedAt": "2026-11-11T09:30:00.123456Z"
+  }
+}
