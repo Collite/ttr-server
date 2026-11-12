@@ -56,7 +56,9 @@ class Link:
         nothing (S3.3: absent pages = no kNN candidates, never an error); a source with no single mart is an error,
         never a silent "no candidates". Each hit's score is its cosine to the sentence (docwh-store ≥ 0.11.13,
         contracts §1.4), never normalized to the best hit's, so `abstain_below` and `margin` gate it absolutely. A hit
-        below [floor] (`abstain_below`) is not evidence (✅R244-E): it is dropped here, and its page is never read."""
+        below [floor] (`abstain_below`) is not evidence (✅R244-E): it is dropped here, and its page is never read. A
+        store whose vector recall failed answers 503 `retrieval/vector-unavailable` (docwh-store ≥ 0.11.13, review-244
+        R1), never an empty answer: transient, so the runner redelivers (F4)."""
         if reads.marts is None:
             reads.marts = {}
             for raw in self.warehouse.sources_of_document(ctx.item.document_id):

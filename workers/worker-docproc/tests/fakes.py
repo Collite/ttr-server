@@ -58,7 +58,8 @@ def concept_page(page_id: int, qname: str, title: str = "Item") -> dict[str, Any
 
 class FakeWarehouse:
     """The store as the kinds see it. The retrieval reads answer the routes' own shapes (✅W5-2-C): `/findSimilar`
-    refuses a blank mart as the route does (400) and answers `ContextResult` built from [similar] (page hits, see
+    refuses a blank mart or query before the wire, as `StoreClient.find_similar` does (`ValueError
+    store/find-similar-blank`, review-244 F5/N2), and answers `ContextResult` built from [similar] (page hits, see
     `page_hit`); `GET /pages/{id}` answers [pages] (see `concept_page`), 404 outside them; `GET /sources` lists one
     source per source id of [units], in mart [mart], unless a test sets [sources]."""
 

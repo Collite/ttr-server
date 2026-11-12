@@ -95,6 +95,34 @@ def test_two_versions_align_modify_add_remove_and_hash_fallback() -> None:
     assert_golden("diff-v2", doc, result.annotations, {u.id: u for u in current})
 
 
+def test_an_unlisted_source_compares_the_listed_versions_with_its_roots_recorded_at() -> None:
+    """review-244 R5: the store does not list this source (20), but it lists the document's other versions, 10
+    (2026-10-26) and 30 (2026-10-28). The fallback compares those with the root's `recordedAt` (2026-10-27): 10 is the
+    previous version, 30 a later one, and the sections align against 10's units."""
+    from tests.pack import metadata
+
+    doc = "claim-002.en.md"
+    old = units_of(doc, source_id=10)
+    current = units_of(doc, source_id=20)
+    assert current[0].kind == UnitKind.DOCUMENT
+    current[0].metadata["recordedAt"] = metadata(recordedAt="2026-10-27T00:00:00Z")["recordedAt"]
+    later = units_of(doc, source_id=30)
+    warehouse = FakeWarehouse(old + current + later)
+    document_id = current[0].metadata["documentId"].single
+    warehouse.sources = [
+        {"id": i, "metadata": {"documentId": {"single": document_id}, "recordedAt": {"single": at}}}
+        for i, at in [(30, "2026-10-28T00:00:00Z"), (10, "2026-10-26T00:00:00Z")]
+    ]
+    ctx = new_context(context(doc, "classify-sections", units=current), kind="diff", engine={})
+    ctx = replace(ctx, units={u.id: u for u in current})
+    result = Diff(warehouse).run(ctx)
+    assert result.sections["decisions"] == {"previousSourceId": 10, "removedUnitIds": []}
+    old_sections = [u.id for u in old if u.kind == UnitKind.SECTION]
+    assert [a.payload() for a in result.annotations] == [
+        {"status": "identical", "previousUnitId": uid} for uid in old_sections
+    ]
+
+
 def test_diff_times_are_utc_and_leaf_versions_match() -> None:
     from dataclasses import replace
 
