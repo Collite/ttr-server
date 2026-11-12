@@ -12,7 +12,6 @@ import org.tatrman.chrono.recognize.PeriodUnit
 import org.tatrman.chrono.recognize.PeriodWords
 import org.tatrman.chrono.recognize.SpanReading
 import org.tatrman.chrono.recognize.WindowPeriods
-import org.tatrman.chrono.recognize.YearRanges
 import org.tatrman.grounding.lexicon.GroundingSlice
 import org.tatrman.text.Normalization
 import java.time.LocalDate
@@ -95,52 +94,50 @@ class SpanScanner(
         val tokens = tokens(working)
         if (tokens.isEmpty()) return emptyList()
         val words = tokens.map { Normalization.fold(working.substring(it.first, it.last + 1)) }
-        val timeWords = words.indices.map { timeWord(words, it, working, tokens) }
         val context = listOf(text) + priorQuestions
         val anchored =
             tokens.indices.map {
                 anchor(words[it], working.substring(tokens[it].first, tokens[it].last + 1), triggers)
             }
+
+        fun readWindow(
+            w: Window,
+            questions: List<String> = context,
+        ): SpanReading? =
+            recognizer.readSpan(
+                textOf(working, tokens, w),
+                reference,
+                triggers,
+                questions,
+                before = working.substring(0, tokens[w.first].first),
+                after = working.substring(tokens[w.last].last + 1),
+            )
         val read = mutableMapOf<Window, SpanReading>()
         for (first in tokens.indices) {
             for (last in first until minOf(tokens.size, first + MAX_WINDOW)) {
                 // No rule reads a window without one anchor word: the rest would only read as nothing.
                 if ((first..last).none { anchored[it] }) continue
                 val w = Window(first, last)
-                val phrase = textOf(working, tokens, w)
-                val rangeBoundary =
-                    YearRanges.isPhrase(Normalization.fold(phrase)) &&
-                        !YearRanges.guarded(working, tokens[first].first, tokens[last].last + 1)
-                val reading =
-                    if (rangeBoundary) {
-                        SpanReading.NoOnePeriod
-                    } else {
-                        recognizer.readSpan(
-                            phrase,
-                            reference,
-                            triggers,
-                            context,
-                        )
-                    }
-                reading?.let { read[w] = it }
+                readWindow(w)?.let { read[w] = it }
             }
         }
+        val timeWords =
+            words.indices.map { i ->
+                (read[Window(i, i)] as? SpanReading.Read)?.completeYearRange == true ||
+                    timeWord(words, i, working, tokens)
+            }
         val textOfWindow = { w: Window -> textOf(working, tokens, w) }
         val candidates =
             read.mapNotNull { (w, r) ->
                 val reading = (r as? SpanReading.Read)?.reading ?: return@mapNotNull null
                 val confidence = confidenceOf(reading) ?: return@mapNotNull null
                 when {
-                    !phraseWords(
-                        w,
-                        words,
-                        timeWords,
-                    ) &&
-                        !YearRanges.isPhrase(Normalization.fold(textOfWindow(w))) -> null
+                    !phraseWords(w, words, timeWords) && !r.completeYearRange -> null
                     bareCode(working, tokens, w) -> null
                     amount(working, tokens, w, reading) -> null
                     // A year no word places is a span only as the bare number (§3.4): "last year for 2000" is not 2000.
                     w.size > 1 &&
+                        !r.completeYearRange &&
                         unplacedNumber(r, textOfWindow(w)) &&
                         PeriodWords.findAll(Normalization.fold(textOfWindow(w)), PeriodUnit.YEAR).isNotEmpty() -> null
                     within(w, read).any { (inner, r2) ->
@@ -160,14 +157,14 @@ class SpanScanner(
             val crossing = (w.first..w.last).flatMap { candidatesAt[it] }.distinct().filter { !w.contains(it.window) }
             if (crossing.isEmpty()) {
                 return w to
-                    (read[w] ?: recognizer.readSpan(textOfWindow(w), reference, triggers, context))
+                    (read[w] ?: readWindow(w))
             }
             val u =
                 Window(
                     minOf(w.first, crossing.minOf { it.window.first }),
                     maxOf(w.last, crossing.maxOf { it.window.last }),
                 )
-            return u to (read[u] ?: recognizer.readSpan(textOfWindow(u), reference, triggers, context))
+            return u to (read[u] ?: readWindow(u))
         }
 
         // Only the phrases a linking word connects can change or suppress one another.
@@ -226,12 +223,7 @@ class SpanScanner(
             val alone =
                 parts.all { p ->
                     val own =
-                        recognizer.readSpan(
-                            textOfWindow(p.window),
-                            reference,
-                            triggers,
-                            listOf("") + priorQuestions,
-                        )
+                        readWindow(p.window, listOf("") + priorQuestions)
                     own != null && sameReading(own, p.reading)
                 }
             if (r == SpanReading.NoOnePeriod ||
@@ -282,7 +274,7 @@ class SpanScanner(
     ): Boolean {
         if (inner == w || !w.contains(inner) || !sameReading(innerReading, reading)) return false
         // od/from belongs to the authored range, even though the endpoints alone compute the same bounds.
-        if (YearRanges.isPhrase(Normalization.fold(textOf(w)))) return false
+        if ((read[w] as? SpanReading.Read)?.completeYearRange == true) return false
         val prefix = w.first until inner.first
         val suffix = inner.last + 1..w.last
         val extra = { i: Int -> i < inner.first || i > inner.last }
@@ -449,8 +441,7 @@ class SpanScanner(
                     (next.isEmpty() || WindowPeriods.timeWordRe.matches(next))
             return monthBeside || ordinal || numericDate || count || shortYear
         }
-        return YearRanges.isPhrase(w) ||
-            WindowPeriods.timeWordRe.matches(w) ||
+        return WindowPeriods.timeWordRe.matches(w) ||
             phraseWord(w) ||
             Months.ofWord(w, withYear = true) != null ||
             MonthWords.find(w).isNotEmpty() ||

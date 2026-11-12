@@ -90,5 +90,22 @@
   {"round": 244, "text": "📈 sales from 2024 to 2025 by region", "reference": "2026-11-01", "prior": [], "spans": [{"text": "from 2024 to 2025", "reading": "2024-01-01/2026-01-01"}]},
   {"round": 244, "text": "tržby 2025-2024", "reference": "2026-11-01", "prior": [], "spans": []},
   {"round": 244, "text": "tržby 2024-25", "reference": "2026-11-01", "prior": [], "spans": []},
-  {"round": 244, "text": "doklad 120250", "reference": "2026-11-01", "prior": [], "spans": []}
+  {"round": 244, "text": "doklad 120250", "reference": "2026-11-01", "prior": [], "spans": []},
+  {"round": 248, "text": "tržby v letech 2024–2025 pro Brno", "reference": "2026-11-01", "prior": [], "spans": [{"text": "v letech 2024–2025", "reading": "2024-01-01/2026-01-01"}]},
+  {"round": 248, "text": "for the years 2024 to 2025", "reference": "2026-11-01", "prior": [], "spans": [{"text": "for the years 2024 to 2025", "reading": "2024-01-01/2026-01-01"}]},
+  {"round": 248, "text": "od roku 2024 do 2025", "reference": "2026-11-01", "prior": [], "spans": [{"text": "od roku 2024 do 2025", "reading": "2024-01-01/2026-01-01"}]},
+  {"round": 248, "text": "od 1.1.2024 do 31.12.2025", "reference": "2026-11-01", "prior": [], "spans": [{"text": "1.1.2024", "reading": "2024-01-01/2024-01-02"}, {"text": "31.12.2025", "reading": "2025-12-31/2026-01-01"}]},
+  {"round": 248, "text": "15/3/2025 - 20/3/2025", "reference": "2026-11-01", "prior": [], "spans": [{"text": "15/3/2025", "reading": "2025-03-15/2025-03-16"}, {"text": "20/3/2025", "reading": "2025-03-20/2025-03-21"}]},
+  {"round": 248, "text": "tržby 2025 do 100 tisíc", "reference": "2026-11-01", "prior": [], "spans": [{"text": "2025", "reading": "2025-01-01/2026-01-01"}]},
+  {"round": 248, "text": "orders 2025 to 50 customers", "reference": "2026-11-01", "prior": [], "spans": [{"text": "2025", "reading": "2025-01-01/2026-01-01"}]},
+  {"round": 248, "text": "2024-2025 vs loni", "reference": "2026-11-01", "prior": [], "spans": [{"text": "2024-2025", "reading": "2024-01-01/2026-01-01"}, {"text": "loni", "reading": "2025-01-01/2026-01-01"}]},
+  {"round": 248, "text": "2024-2025 vs 2022-2023", "reference": "2026-11-01", "prior": [], "spans": [{"text": "2024-2025", "reading": "2024-01-01/2026-01-01"}, {"text": "2022-2023", "reading": "2022-01-01/2024-01-01"}]},
+  {"round": 248, "text": "od 2024 do 2025 a 2026", "reference": "2026-11-01", "prior": [], "spans": [{"text": "od 2024 do 2025", "reading": "2024-01-01/2026-01-01"}, {"text": "2026", "reading": "2026-01-01/2027-01-01"}]},
+  {"round": 248, "text": "since 2024 to 2025", "reference": "2026-11-01", "prior": [], "spans": [{"text": "2024", "reading": "2024-01-01/2025-01-01"}, {"text": "2025", "reading": "2025-01-01/2026-01-01"}]},
+  {"round": 248, "text": "Tržby 2024-2025.", "reference": "2026-11-01", "prior": [], "spans": [{"text": "2024-2025", "reading": "2024-01-01/2026-01-01"}]},
+  {"round": 248, "text": "Sales for 2024-2025, by region", "reference": "2026-11-01", "prior": [], "spans": [{"text": "2024-2025", "reading": "2024-01-01/2026-01-01"}]},
+  {"round": 248, "text": "fiscal year 2024-2025", "reference": "2026-11-01", "prior": [], "spans": []},
+  {"round": 248, "text": "FY 2024-2025", "reference": "2026-11-01", "prior": [], "spans": []},
+  {"round": 248, "text": "fiskální rok 2024–2025", "reference": "2026-11-01", "prior": [], "spans": []},
+  {"round": 248, "text": "sezóna 2024-2025", "reference": "2026-11-01", "prior": [], "spans": []}
 ]

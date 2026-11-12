@@ -39,6 +39,12 @@ class YearRangesSpec :
                 "2024 until 2025",
                 "2024 through 2025",
                 "from 2024 to 2025",
+                "v letech 2024–2025",
+                "roky 2024-2025",
+                "rok 2024-2025",
+                "in years 2024-2025",
+                "for the years 2024 to 2025",
+                "od roku 2024 do 2025",
             )
         for (phrase in forms) {
             "inclusive endpoint years: $phrase" {
@@ -85,18 +91,21 @@ class YearRangesSpec :
             "12024-2025",
             "2024-20250",
             "doklad 120250",
-            ".2024-2025",
-            ",2024-2025",
             "/2024-2025",
             "-2024-2025",
-            "2024-2025.",
-            "2024-2025,",
             "2024-2025/",
             "2024-2025-",
-            "2024 - 2025.0",
-            "0.2024 - 2025",
             "2024-2025-2026",
             "fiscal year 2024/2025",
+            "fiscal year 2024-2025",
+            "FY 2024-2025",
+            "fiskální rok 2024–2025",
+            "hospodářský rok 2024–2025",
+            "season 2024-2025",
+            "sezóna 2024-2025",
+            "1.2024-2025",
+            "2024-2025.5",
+            "2024-2025,3",
             "Q2 2024-2025",
             "H1 2024-2025",
             "March 2024-2025",
@@ -130,6 +139,49 @@ class YearRangesSpec :
             scanner.scan("2024-12", reference) shouldBe emptyList()
         }
 
+        for ((text, expected) in listOf(
+            "tržby v letech 2024–2025 pro Brno" to listOf("v letech 2024–2025"),
+            "for the years 2024 to 2025" to listOf("for the years 2024 to 2025"),
+            "od 1.1.2024 do 31.12.2025" to listOf("1.1.2024", "31.12.2025"),
+            "15/3/2025 - 20/3/2025" to listOf("15/3/2025", "20/3/2025"),
+            "tržby 2025 do 100 tisíc" to listOf("2025"),
+            "orders 2025 to 50 customers" to listOf("2025"),
+            "orders 2025 to 2000 units" to listOf("2025"),
+            "orders 2025 to 3000 units" to listOf("2025"),
+            "orders 2025 to 10000 customers" to listOf("2025"),
+            "orders 12024 to 2025" to listOf("2025"),
+            "2024-2025 vs loni" to listOf("2024-2025", "loni"),
+            "od 2024 do 2025 a 2026" to listOf("od 2024 do 2025", "2026"),
+            "2024-2025 vs 2022-2023" to listOf("2024-2025", "2022-2023"),
+            "since 2024 to 2025" to listOf("2024", "2025"),
+            "Tržby 2024-2025." to listOf("2024-2025"),
+            "Sales for 2024-2025, by region" to listOf("2024-2025"),
+        )) {
+            "R248 Scan regression: $text" {
+                val found = scanner.scan(text, reference)
+                found.map { it.text } shouldBe expected
+                found.forEach { text.substring(it.start, it.end) shouldBe it.text }
+            }
+        }
+        for (text in listOf("Tržby 2024-2025.", "Sales for 2024-2025, by region", ".2024-2025", ",2024-2025")) {
+            "R248 punctuation is not a numeric continuation: $text" {
+                val r = recognizer.recognize(text, reference).shouldNotBeNull()
+                r.startIso shouldBe "2024-01-01"
+                r.endIso shouldBe "2026-01-01"
+            }
+        }
+
+        // R248 S2/C: guarded numeric continuations fall through to master, not a blanket range refusal.
+        for ((phrase, expected) in listOf(
+            "2024 - 2025.0" to listOf("2024"),
+            "0.2024 - 2025" to listOf("2025"),
+        )) {
+            "master's isolated year outside numeric continuation: $phrase" {
+                recognizer.read(phrase, reference).shouldBeNull()
+                scanner.scan("Tržby $phrase pro Brno", reference).map { it.text } shouldBe expected
+            }
+        }
+
         val context =
             GroundingContext
                 .newBuilder()
@@ -137,6 +189,27 @@ class YearRangesSpec :
                 .setTimezone("Europe/Prague")
                 .setLocale("cs-CZ")
                 .build()
+        "Ground retains fiscal and season qualifiers outside the NER-sized numeric span" {
+            val service = ChronoGroundingService(FakeMetadataClient(emptyList()), llmFallback = null)
+            for (qualified in listOf(
+                "FY 2024-2025",
+                "fiscal year 2024-2025",
+                "fiskální rok 2024-2025",
+                "sezóna 2024-2025",
+            )) {
+                val request =
+                    GroundRequest
+                        .newBuilder()
+                        .setSpanText("2024-2025")
+                        .setQuestionText("Tržby za $qualified pro Brno")
+                        .setKind(EntityKind.DATE_TIME)
+                        .setPackage("cnc")
+                        .setContext(context)
+                        .build()
+                service.ground(request).status shouldBe GroundResponse.Status.UNGROUNDABLE
+            }
+        }
+
         for ((name, metadata, application) in listOf(
             Triple("no date role", FakeMetadataClient(emptyList()), GroundingResult.ApplicationCase.VALUES),
             Triple("period table", FakeMetadataClient.accounting("cnc"), GroundingResult.ApplicationCase.FILTER),

@@ -59,12 +59,13 @@ def test_bulk_cases_well_formed() -> None:
         if exp["status"] == "OK":
             if "application" in exp:
                 assert exp["application"] in _APPLICATIONS
-            if "interval_start" in exp:
-                assert _ISO_DATE.match(exp["interval_start"]), f"{c['id']}: interval_start is not YYYY-MM-DD"
+            for bound in ("interval_start", "interval_end"):
+                if bound in exp:
+                    assert _ISO_DATE.match(exp[bound]), f"{c['id']}: {bound} is not YYYY-MM-DD"
         else:
             # a non-OK case must not assert recipe facets
             assert not any(
-                k in exp for k in ("application", "source", "period_code", "sql_contains", "interval_start")
+                k in exp for k in ("application", "source", "period_code", "sql_contains", "interval_start", "interval_end")
             ), c["id"]
         # only a clarification has options to name
         if "option_ids" in exp:
@@ -101,3 +102,11 @@ def test_e2e_size_and_shape() -> None:
         assert c["turns"], f"{c['id']}: no turns"
         for t in c["turns"]:
             assert "user_text" in t or "resume_selects" in t, c["id"]
+
+
+def test_year_range_corpus_preserves_both_bounds() -> None:
+    cases = [c for c in _bulk() if c["id"].startswith("chrono/year-range") and c["expect"]["status"] == "OK"]
+    assert cases
+    for case in cases:
+        assert case["expect"]["interval_start"] == "2024-01-01"
+        assert case["expect"]["interval_end"] == "2026-01-01"

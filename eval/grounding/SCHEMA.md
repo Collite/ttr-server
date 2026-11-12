@@ -38,6 +38,7 @@ default `2026-05-15T12:00:00+02:00` (Europe/Prague noon), matching the Kotlin co
     "source": "RULES",               // RULES | LLM | NONE      (optional)
     "period_code": "202605",         // chrono `p` param value (optional)
     "sql_contains": ["t.\"date\" >= {start}"],  // fragments that must appear in sql_preview
+    "interval_end": "2026-01-01",    // exclusive end date (optional, OK only)
     "interval_start": "2024-01-01",  // the date the normalized interval starts on (optional, OK only)
     "option_ids": ["2025", "2024"]   // the clarification's option ids, in order (optional, AWAITING only)
   }

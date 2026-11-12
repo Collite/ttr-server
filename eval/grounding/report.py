@@ -76,10 +76,12 @@ def evaluate_bulk_case(case: dict[str, Any], actual: dict[str, Any]) -> dict[str
         for frag in exp.get("sql_contains") or []:
             if frag not in preview:
                 failures.append(f"sql_contains: {frag!r} not in sql_preview {preview!r}")
-        if exp.get("interval_start"):
-            start = ((result.get("normalized") or {}).get("interval") or {}).get("start") or ""
-            if not start.startswith(exp["interval_start"]):
-                failures.append(f"interval_start: expected {exp['interval_start']!r}, got {start!r}")
+        interval = ((result.get("normalized") or {}).get("interval") or {})
+        for bound in ("start", "end"):
+            expected = exp.get(f"interval_{bound}")
+            actual_bound = interval.get(bound) or ""
+            if expected and not actual_bound.startswith(expected):
+                failures.append(f"interval_{bound}: expected {expected!r}, got {actual_bound!r}")
     if exp["status"] == "AWAITING_CLARIFICATION" and status == "AWAITING_CLARIFICATION" and exp.get("option_ids"):
         ids = [o.get("id") or "" for o in actual.get("options") or []]
         if ids != exp["option_ids"]:

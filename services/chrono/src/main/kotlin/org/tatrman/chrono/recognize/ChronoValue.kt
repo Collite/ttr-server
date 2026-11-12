@@ -18,8 +18,8 @@ enum class ChronoKind {
     FISCAL_YEAR,
 
     /**
-     * A bare calendar year ("2025", "v roce 2025") — January 1st through December 31st, with no
-     * fiscal adjective and no month.
+     * Whole calendar years ("2025", "v roce 2025", "2024-2025") — January 1st of the first year
+     * through December 31st of the last, with no fiscal qualifier or period code.
      *
      * Deliberately NOT folded into one of the four above. It is not [ABSOLUTE] (that is a single
      * day), not [RELATIVE] (it names the year outright rather than leaning on the reference), not
@@ -113,6 +113,8 @@ sealed interface ChronoReading {
 internal sealed interface SpanReading {
     data class Read(
         val reading: ChronoReading,
+        /** The rule consumed the whole window as a calendar range, including its authored framing words. */
+        val completeYearRange: Boolean = false,
     ) : SpanReading
 
     /**

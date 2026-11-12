@@ -2344,6 +2344,7 @@
       "application": "FILTER",
       "source": "RULES",
       "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01",
       "sql_contains": [
         "t.\"date\" >= {start}",
         "t.\"date\" < {end}"
@@ -2363,6 +2364,25 @@
     "here": null,
     "expect": {
       "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/year-range-clause-comma",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Sales for 2024-2025, by region",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01"
     }
   },
   {
@@ -2411,10 +2431,41 @@
       "application": "FILTER",
       "source": "RULES",
       "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01",
       "sql_contains": [
         "t.\"date\" >= {start}",
         "t.\"date\" < {end}"
       ]
+    }
+  },
+  {
+    "id": "chrono/year-range-fiscal-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "fiskální rok 2024–2025",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/year-range-fiscal-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "fiscal year 2024-2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
     }
   },
   {
@@ -2433,10 +2484,42 @@
       "application": "FILTER",
       "source": "RULES",
       "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01",
       "sql_contains": [
         "t.\"date\" >= {start}",
         "t.\"date\" < {end}"
       ]
+    }
+  },
+  {
+    "id": "chrono/year-range-fy-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "FY 2024-2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/year-range-fy-question",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2024-2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "no-date-role",
+    "here": null,
+    "question_text": "Tržby za FY 2024-2025 pro Brno",
+    "expect": {
+      "status": "UNGROUNDABLE"
     }
   },
   {
@@ -2454,7 +2537,38 @@
       "status": "OK",
       "application": "VALUES",
       "source": "RULES",
-      "interval_start": "2024-01-01"
+      "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/year-range-numeric-prefix",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "1.2024-2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/year-range-numeric-suffix",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2024-2025.5",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
     }
   },
   {
@@ -2473,10 +2587,121 @@
       "application": "FILTER",
       "source": "RULES",
       "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01",
       "sql_contains": [
         "t.\"date\" >= {start}",
         "t.\"date\" < {end}"
       ]
+    }
+  },
+  {
+    "id": "chrono/year-range-od-roku-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "od roku 2024 do 2025",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/year-range-rok-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "rok 2024-2025",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/year-range-season-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "sezóna 2024-2025",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/year-range-sentence-end",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "Tržby 2024-2025.",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/year-range-years-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "v letech 2024–2025",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01"
+    }
+  },
+  {
+    "id": "chrono/year-range-years-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "for the years 2024 to 2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "interval_end": "2026-01-01"
     }
   },
   {

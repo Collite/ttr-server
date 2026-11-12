@@ -61,6 +61,7 @@ def _expect(raw: dict[str, Any]) -> dict[str, Any]:
         ("source", "source"),
         ("periodCode", "period_code"),
         ("intervalStart", "interval_start"),
+        ("intervalEnd", "interval_end"),
     ):
         if exp.get(src) is not None:
             out[dst] = exp[src]

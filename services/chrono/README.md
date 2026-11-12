@@ -67,11 +67,16 @@ A one- or two-digit number after a yearless period is ambiguous: *Q2 25* and *Q2
 chrono does not decide whether it is a short year or a count.
 
 Calendar-year ranges accept hyphen, en dash and em dash with optional spaces, or *do/až/az/to/until/through*.
-Both endpoints must be in 1900–2999 and the final year cannot precede the first. A digit, dot, comma, slash or
-hyphen immediately outside the range makes it unread. Descending or abbreviated ranges (*2025-2024*, *2024-25*)
-give no partial year through Scan. *2024 and 2025* / *2024 a 2025* remain two independent year spans. Fiscal slash
-years (*fiscal year 2024/2025*) and a quarter of a year range (*Q2 2024-2025*) remain unread.
-Scan keeps a supported range as one phrase, including its *od/from*. Ground uses datetime bounds with a date
+Both endpoints must be in 1900–2999 and the final year cannot precede the first. A digit, slash or hyphen
+immediately outside the range guards it; a dot or comma does so only with a digit on its far side. Sentence-final
+punctuation and clause commas are allowed. A date's day/year joined to another date or an amount is not a year-range
+candidate: Scan keeps the original dates/years. Only an exactly two-digit endpoint after a dash is an abbreviated
+year refusal. Descending or abbreviated ranges (*2025-2024*, *2024-25*) give no partial year through Scan.
+*2024 and 2025* / *2024 a 2025* remain two independent year spans; a range beside another independent period keeps
+both spans. Fiscal and season-qualified ranges (*fiscal year 2024-2025*, *FY 2024-2025*, *sezóna 2024-2025*), fiscal
+slash years and a quarter of a year range (*Q2 2024-2025*) remain unread.
+Scan consumes the recognizer's range verdict and keeps the phrase's *od/from* and calendar-year noun frames:
+*v letech 2024–2025*, *od roku 2024 do 2025*, *for the years 2024 to 2025*. Ground uses datetime bounds with a date
 column (even with a period table), or `values {start, end}` and blank SQL without one; it never binds one `p` code.
 
 ## Outcomes of `Ground`
