@@ -11,6 +11,11 @@ data class DoorConfig(
     val sidecarUrl: String?,
     /** Exact logical world/storage → Query world (also configured in Query's QUERY_WORLDS). */
     val routes: Map<String, String> = emptyMap(),
+    /**
+     * AUTOMATION_DOOR_WRITE_ROUTES (amendment 2026-11-03): `world/storage` → the Query world alias the writer's
+     * `row_writes` go to. Never falls back to [routes] or a default: an unrouted storage fails `storage-unmapped`.
+     */
+    val writeRoutes: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -193,6 +198,10 @@ data class AutomationConfig(
                         metadataUrl = c.getString("door.metadataUrl"),
                         sidecarUrl = c.optString("door.sidecarUrl"),
                         routes = doorRoutes(c.optString("door.routes")),
+                        writeRoutes =
+                            doorRoutes(
+                                env["AUTOMATION_DOOR_WRITE_ROUTES"] ?: c.optString("door.writeRoutes"),
+                            ),
                     ),
                 auth =
                     AuthConfig(

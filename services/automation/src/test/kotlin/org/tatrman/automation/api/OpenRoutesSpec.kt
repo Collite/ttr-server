@@ -98,7 +98,7 @@ class OpenRoutesSpec :
                 created.headers[HttpHeaders.Location] shouldBe "/automation/runs/$id"
                 val json = Json.parseToJsonElement(created.bodyAsText()).jsonObject
                 json["replayed"] shouldBe JsonPrimitive(false)
-                recorded!!.dryRun shouldBe true
+                recorded!!.dryRun shouldBe false // S2.2: `dryRun: false` on a wet deployment is an auto run
                 recorded!!.caller shouldBe "maya"
                 contexts.size shouldBe 1
                 claim = Claim.Running(id, RunStatus.RUNNING)

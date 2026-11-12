@@ -32,6 +32,7 @@ import org.tatrman.automation.runner.RunFingerprints
 import org.tatrman.automation.runner.RunBatch
 import org.tatrman.automation.runner.CloseResult
 import org.tatrman.automation.apply.*
+import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_OUTCOME
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
 import org.tatrman.automation.protocol.ProtocolEntry
@@ -136,6 +137,11 @@ class IllegalRunTransition(
     val from: RunStatus,
     val to: RunStatus,
 ) : RuntimeException("run `$runId` cannot move from ${from.wire} to ${to.wire}")
+
+/** The run is wet (`auto`): its close applies the batch first (S2.2), so the preview close does not take it. */
+class WetRunClose(
+    val runId: UUID,
+) : RuntimeException("run $runId is an auto run")
 
 class ProtocolSealed(
     val runId: UUID,
@@ -354,7 +360,8 @@ class Ledger(
         preview: PreviewPlan,
     ) {
         val runRow = Runs.selectAll().where { Runs.id eq runId }.single()
-        check(runRow[Runs.dryRun] && runRow[Runs.batchId] == null) { "a preview requires an unbatched dry run" }
+        // S2.2: a wet run journals the same staged plan; its close applies it (contracts §4 `auto`).
+        check(runRow[Runs.batchId] == null) { "a preview requires an unbatched run" }
         check(Batches.selectAll().where { Batches.run eq runId }.empty()) { "a run already has a batch" }
         val id = UUID.fromString(preview.batch)
         Batches.insert {
@@ -456,9 +463,21 @@ class Ledger(
         id: UUID,
     ): RunBatchPlan {
         val batch = Batches.selectAll().where { (Batches.id eq id) and (Batches.run eq runId) }.single()
-        check(batch[Batches.state] == "preview") { "only preview batch reads are implemented in P1" }
+        val mode =
+            when (batch[Batches.state]) {
+                "preview" -> "preview"
+                "committed" -> "auto"
+                else -> error("only preview and committed batch reads are implemented in S2.2")
+            }
+        val stored =
+            BatchRows
+                .selectAll()
+                .where { BatchRows.batch eq id }
+                .orderBy(
+                    BatchRows.seq to SortOrder.ASC,
+                ).toList()
         val rows =
-            BatchRows.selectAll().where { BatchRows.batch eq id }.orderBy(BatchRows.seq to SortOrder.ASC).map {
+            stored.map {
                 ApplyRow.restore(
                     it[BatchRows.seq],
                     it[BatchRows.entity],
@@ -470,7 +489,123 @@ class Ledger(
             }
         check(rows.size == batch[Batches.rows]) { "batch row count differs from its header" }
         check(rows.map { it.seq } == (1..rows.size).toList()) { "batch sequence is not contiguous" }
-        return RunBatchPlan(id.toString(), runId.toString(), rows, batch[Batches.state])
+        val statuses =
+            stored.map {
+                BatchRowStatus(
+                    it[BatchRows.seq],
+                    it[BatchRows.status],
+                    it[BatchRows.error],
+                    (it[BatchRows.row] as? JsonObject)?.get("prior") as? JsonObject,
+                    ((it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) as? JsonPrimitive)?.content,
+                )
+            }
+        return RunBatchPlan(id.toString(), runId.toString(), rows, mode, statuses)
+    }
+
+    /**
+     * S2.2: what the close of an `auto` run applies — the journaled plan, its action evidence (an action's `set:` and
+     * `transition` are one compare-and-set) and every outcome an earlier close attempt recorded. The run must still be
+     * within its budget before any row leaves; a closed run answers its committed state for an idempotent retry.
+     * [ApplyState.deadline] is the original absolute deadline: every request of the apply is bounded by what remains.
+     */
+    fun applyState(
+        runId: UUID,
+        subject: String,
+    ): ApplyState {
+        require(subject.isNotBlank())
+        outermost("applyState")
+        return transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            val row =
+                Runs
+                    .selectAll()
+                    .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
+                    .firstOrNull() ?: throw NoSuchRun(runId)
+            val status = RunStatus.of(row[Runs.status])
+            if (status !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED)) {
+                throw IllegalRunTransition(runId, status, RunStatus.CLOSED)
+            }
+            val batchId = row[Runs.batchId] ?: throw NoRunBatch(runId)
+            if (status == RunStatus.EVALUATED && !row[Runs.dryRun]) {
+                if (isSealed(runId)) throw ProtocolSealed(runId)
+                ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
+            }
+            val plan = batchPlan(runId, batchId)
+            ApplyState(
+                batchId,
+                row[Runs.runAs].orEmpty(),
+                status,
+                row[Runs.dryRun],
+                plan,
+                previewActions(runId),
+                plan.statuses
+                    .filter { it.status != "staged" || it.error != null }
+                    .associate {
+                        it.seq to
+                            org.tatrman.automation.writer
+                                .RowOutcome(it.seq, it.status, it.error, it.prior, it.history)
+                    },
+                runDeadline(runId, defaultBudget),
+            )
+        }
+    }
+
+    /** The durable in-flight marker, set before a request leaves: a retried close reads it as an unknown outcome. */
+    fun beginApply(
+        batch: UUID,
+        seqs: List<Int>,
+    ) {
+        outermost("beginApply")
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            BatchRows.update({
+                (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged")
+            }) { it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT }
+        }
+    }
+
+    /** Undo only the in-flight marks of a request that never left because its journal write used up the budget. */
+    fun releaseApply(
+        batch: UUID,
+        seqs: List<Int>,
+    ) {
+        outermost("releaseApply")
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            BatchRows.update({
+                (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged") and
+                    (BatchRows.error eq org.tatrman.automation.writer.RowOutcome.IN_FLIGHT)
+            }) { it[error] = null }
+        }
+    }
+
+    /**
+     * Per-row outcomes as the door answered them; an `update`/`transition` keeps its `prior`, and a transition its
+     * history sub-outcome (as `history_outcome`: the payload's own `history` is the §4 flag), in `batch_rows.row`.
+     */
+    fun recordApply(
+        batch: UUID,
+        outcomes: List<org.tatrman.automation.writer.RowOutcome>,
+    ) {
+        outermost("recordApply")
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            for (outcome in outcomes) {
+                val stored =
+                    BatchRows
+                        .select(BatchRows.row)
+                        .where { (BatchRows.batch eq batch) and (BatchRows.seq eq outcome.seq) }
+                        .single()[BatchRows.row]
+                BatchRows.update({ (BatchRows.batch eq batch) and (BatchRows.seq eq outcome.seq) }) {
+                    it[status] = outcome.status
+                    it[error] = outcome.error
+                    if (stored is JsonObject && (outcome.prior != null || outcome.history != null)) {
+                        val evidence =
+                            listOfNotNull(
+                                outcome.prior?.let { p -> "prior" to p },
+                                outcome.history?.let { h -> HISTORY_OUTCOME to JsonPrimitive(h) },
+                            )
+                        it[row] = JsonObject(stored + evidence)
+                    }
+                }
+            }
+        }
     }
 
     fun readRunBatch(
@@ -546,7 +681,7 @@ class Ledger(
             if (from !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED)) {
                 throw IllegalRunTransition(runId, from, RunStatus.CLOSED)
             }
-            check(row[Runs.dryRun]) { "P1 close requires a dry run" }
+            if (!row[Runs.dryRun]) throw WetRunClose(runId)
             val batchId = row[Runs.batchId] ?: throw NoRunBatch(runId)
             val batch = Batches.selectAll().where { (Batches.id eq batchId) and (Batches.run eq runId) }.single()
             check(batch[Batches.state] == "preview") { "P1 close requires a preview batch" }
@@ -580,29 +715,199 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            val closure =
-                kotlinx.serialization.json.buildJsonObject {
-                    put("event", JsonPrimitive("closed"))
-                    put("status", JsonPrimitive("closed"))
-                    put("dryRun", JsonPrimitive(true))
-                    put("batch", JsonPrimitive(batchId.toString()))
-                }
-            val sequence = nextSeq(runId, ProtocolSection.AUTOMATION)
-            listOf(closure, SEALED).forEachIndexed { index, evidence ->
-                RunProtocol.insert {
-                    it[run] = runId
-                    it[section] = ProtocolSection.AUTOMATION.wire
-                    it[seq] = sequence + index
-                    it[payload] = evidence
-                    it[at] = now
-                }
-            }
+            seal(runId, batchId, dryRun = true, now)
             ensureRunBudget(runId, defaultBudget, clock)
             Runs.update({ Runs.id eq runId }) {
                 it[status] = RunStatus.CLOSED.wire
                 it[endedAt] = now
             }
             result
+        }
+    }
+
+    /**
+     * S2.2 close of an `auto` run, after its rows were applied: the batch becomes `committed` (by the run's `run_as`),
+     * the final `writes` entry counts each entity's applied/failed/skipped/unknown rows and the `stale-state` ones;
+     * both `writes.history` and `writes.entities[entity].history` count final `{applied, failed, unknown}` history
+     * sub-outcomes separately from the row counts (D-180, contracts §5). Failed/unknown history remains final on retry.
+     * The protocol is sealed with CLOSED in one locked transaction. A row still pristine `staged`, or a transition still
+     * `history: pending`, refuses: the apply did not finish. Like the preview close, it is fenced by the run's original
+     * deadline before and after the evidence is written (`close-deadline-exceeded`; the batch stays `preview`). A committed batch with failures is still `committed` (the verdict stands, D-67).
+     */
+    fun closeCommitted(
+        runId: UUID,
+        subject: String,
+    ): CloseResult {
+        require(subject.isNotBlank())
+        outermost("closeCommitted")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            val row =
+                Runs
+                    .selectAll()
+                    .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
+                    .forUpdate()
+                    .firstOrNull() ?: throw NoSuchRun(runId)
+            val from = RunStatus.of(row[Runs.status])
+            if (from !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED)) {
+                throw IllegalRunTransition(runId, from, RunStatus.CLOSED)
+            }
+            check(!row[Runs.dryRun]) { "a committed close requires a wet run" }
+            val batchId = row[Runs.batchId] ?: throw NoRunBatch(runId)
+            val batch = Batches.selectAll().where { (Batches.id eq batchId) and (Batches.run eq runId) }.single()
+            val protocolRef = row[Runs.protocolRef] ?: "/automation/runs/$runId/protocol"
+            if (from == RunStatus.CLOSED) {
+                check(isSealed(runId) && row[Runs.endedAt] != null) { "closed run is missing its seal/end time" }
+                check(batch[Batches.state] == "committed") { "a closed wet run has an uncommitted batch" }
+                return@transaction CloseResult(
+                    RunStatus.CLOSED.wire,
+                    RunBatch(batchId.toString(), "committed", batch[Batches.rows]),
+                    protocolRef,
+                )
+            }
+            if (isSealed(runId)) throw ProtocolSealed(runId)
+            check(batch[Batches.state] == "preview") { "the run's batch was already committed" }
+            ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
+            val rows = BatchRows.selectAll().where { BatchRows.batch eq batchId }.toList()
+            check(rows.none { it[BatchRows.status] == "staged" && it[BatchRows.error] == null }) {
+                "the apply did not finish: a row was never sent"
+            }
+            check(
+                rows.none {
+                    (it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) ==
+                        JsonPrimitive(org.tatrman.automation.writer.RowOutcome.HISTORY_PENDING)
+                },
+            ) { "the apply did not finish: a transition's history request is unanswered" }
+            val now = clock.instant().utc()
+            Batches.update({ Batches.id eq batchId }) {
+                it[state] = "committed"
+                it[committedBy] = row[Runs.runAs]
+                it[committedAt] = now
+            }
+
+            fun bucket(r: org.jetbrains.exposed.v1.core.ResultRow) =
+                if (r[BatchRows.status] == "staged") "unknown" else r[BatchRows.status]
+            val counts = rows.groupingBy(::bucket).eachCount()
+
+            fun historyCounts(list: List<org.jetbrains.exposed.v1.core.ResultRow>): JsonObject {
+                val histories =
+                    list
+                        .mapNotNull {
+                            ((it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) as? JsonPrimitive)?.content
+                        }.groupingBy { it }
+                        .eachCount()
+                return JsonObject(
+                    listOf("applied", "failed", "unknown").associateWith {
+                        JsonPrimitive(
+                            histories[it] ?: 0,
+                        )
+                    },
+                )
+            }
+            val writes =
+                kotlinx.serialization.json.buildJsonObject {
+                    put("event", JsonPrimitive("closed"))
+                    put("batch", JsonPrimitive(batchId.toString()))
+                    put("state", JsonPrimitive("committed"))
+                    put("rows", JsonPrimitive(rows.size))
+                    for (name in listOf("applied", "failed", "skipped", "unknown")) {
+                        put(
+                            name,
+                            JsonPrimitive(
+                                counts[name] ?: 0,
+                            ),
+                        )
+                    }
+                    put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == "stale-state" }))
+                    put("history", historyCounts(rows))
+                    put(
+                        "entities",
+                        JsonObject(
+                            rows.groupBy { it[BatchRows.entity] }.toSortedMap().mapValues { (_, list) ->
+                                val c = list.groupingBy(::bucket).eachCount()
+                                JsonObject(
+                                    listOf("applied", "failed", "skipped", "unknown").associateWith {
+                                        JsonPrimitive(
+                                            c[it] ?: 0,
+                                        )
+                                    } + ("history" to historyCounts(list)),
+                                )
+                            },
+                        ),
+                    )
+                }
+            RunProtocol.insert {
+                it[run] = runId
+                it[section] = ProtocolSection.WRITES.wire
+                it[seq] = nextSeq(runId, ProtocolSection.WRITES)
+                it[payload] = writes
+                it[at] = now
+            }
+            seal(runId, batchId, dryRun = false, now)
+            ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
+            Runs.update({ Runs.id eq runId }) {
+                it[status] = RunStatus.CLOSED.wire
+                it[endedAt] = now
+            }
+            CloseResult(RunStatus.CLOSED.wire, RunBatch(batchId.toString(), "committed", rows.size), protocolRef)
+        }
+    }
+
+    /**
+     * The closure entry and the seal. Then D-80: a program with `protocol: on_route` whose run fired no non-`none`
+     * route keeps no protocol document — every entry but the seal is removed (the D-73 retention opt-in, in this
+     * transaction). The `runs` row and the batch stay: the ledger still knows the run, the 400-day record is omitted.
+     */
+    private fun seal(
+        runId: UUID,
+        batchId: UUID,
+        dryRun: Boolean,
+        now: OffsetDateTime,
+    ) {
+        val closure =
+            kotlinx.serialization.json.buildJsonObject {
+                put("event", JsonPrimitive("closed"))
+                put("status", JsonPrimitive("closed"))
+                put("dryRun", JsonPrimitive(dryRun))
+                put("batch", JsonPrimitive(batchId.toString()))
+            }
+        val sequence = nextSeq(runId, ProtocolSection.AUTOMATION)
+        listOf(closure, SEALED).forEachIndexed { index, evidence ->
+            RunProtocol.insert {
+                it[run] = runId
+                it[section] = ProtocolSection.AUTOMATION.wire
+                it[seq] = sequence + index
+                it[payload] = evidence
+                it[at] = now
+            }
+        }
+        if (onRouteSilent(runId)) {
+            val exec = TransactionManager.current()
+            exec.exec("SET LOCAL automation.retention = 'on'")
+            exec.exec(
+                "DELETE FROM automation.run_protocol WHERE run = '$runId'::uuid " +
+                    "AND NOT (section = 'automation' AND seq = ${sequence + 1})",
+            )
+            exec.exec("SET LOCAL automation.retention = 'off'")
+        }
+    }
+
+    private fun onRouteSilent(runId: UUID): Boolean {
+        fun entry(
+            section: ProtocolSection,
+            seq: Int,
+        ) = RunProtocol
+            .select(RunProtocol.payload)
+            .where { (RunProtocol.run eq runId) and (RunProtocol.section eq section.wire) and (RunProtocol.seq eq seq) }
+            .firstOrNull()
+            ?.get(RunProtocol.payload) as? JsonObject
+        val policy = (entry(ProtocolSection.AUTOMATION, 1)?.get("protocol") as? JsonPrimitive)?.content
+        if (policy != "on_route" && policy != "on-route") return false
+        val routes =
+            ((entry(ProtocolSection.DECISION, 1)?.get("verdict") as? JsonObject)?.get("routes") as? JsonObject)
+                ?: return false
+        return routes.none { (name, summary) ->
+            name != "none" &&
+                (((summary as? JsonObject)?.get("rowCount") as? JsonPrimitive)?.content?.toLongOrNull() ?: 1L) > 0
         }
     }
 

@@ -163,7 +163,8 @@ class CloseLedgerSpec :
             shouldThrow<NoRunBatch> { ledger.closePreview(noBatch, "owner") }
             val wet = open(dry = false)
             ledger.completeEvaluation(wet, decision)
-            shouldThrow<IllegalStateException> { ledger.closePreview(wet, "owner") }
+            // S2.2: an auto run is the committed close's (RunCloser applies first); the preview close hands it back.
+            shouldThrow<WetRunClose> { ledger.closePreview(wet, "owner") }
         }
 
         "seal fences every execution publication, while durable reads and repeated close remain available" {

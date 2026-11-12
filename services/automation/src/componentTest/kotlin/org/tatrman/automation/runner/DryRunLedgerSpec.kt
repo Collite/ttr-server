@@ -141,7 +141,9 @@ class DryRunLedgerSpec :
             val preview = plan(id)
             ledger.completeEvaluation(id, result, preview)
             val batch = ledger.readRunBatch(id, "subject-1")
-            batch shouldBe RunBatchPlan(preview.batch, preview.run, preview.rows, "preview")
+            batch.copy(statuses = emptyList()) shouldBe
+                RunBatchPlan(preview.batch, preview.run, preview.rows, "preview")
+            batch.statuses.map { it.status }.toSet() shouldBe setOf("staged")
             Json.encodeToString(batch).contains("\"amount\":12345678901234567890.123456789") shouldBe true
             transaction {
                 exec("SELECT row->>'amount' FROM automation.batch_rows WHERE seq = 1") { rs ->
@@ -402,7 +404,17 @@ class DryRunLedgerSpec :
             unchanged()
         }
 
-        "seals, terminal states, wet runs, wrong run ids and outer transactions refuse new previews" {
+        "S2.2: a wet run journals the same staged plan at evaluate; its close (not the preview close) applies it" {
+            val wet = open(dry = false)
+            ledger.completeEvaluation(wet, result, plan(wet))
+            val batch = ledger.readRunBatch(wet, "subject-1")
+            batch.mode shouldBe "preview"
+            batch.statuses.map { it.status }.toSet() shouldBe setOf("staged")
+            shouldThrow<WetRunClose> { ledger.closePreview(wet, "subject-1") }
+            unchanged()
+        }
+
+        "seals, terminal states, wrong run ids and outer transactions refuse new previews" {
             val sealed = open()
             ledger.sealProtocol(sealed)
             shouldThrow<ProtocolSealed> { ledger.completeEvaluation(sealed, result, plan(sealed)) }
@@ -411,8 +423,6 @@ class DryRunLedgerSpec :
                 ledger.markStatus(id, state)
                 shouldThrow<IllegalRunTransition> { ledger.completeEvaluation(id, result, plan(id)) }
             }
-            val wet = open(dry = false)
-            shouldThrow<IllegalStateException> { ledger.completeEvaluation(wet, result, plan(wet)) }
             val id = open()
             shouldThrow<IllegalArgumentException> { ledger.completeEvaluation(id, result, plan(UUID.randomUUID())) }
             transaction { shouldThrow<IllegalStateException> { ledger.completeEvaluation(id, result, plan(id)) } }

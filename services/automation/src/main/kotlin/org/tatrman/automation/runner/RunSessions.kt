@@ -298,6 +298,15 @@ class RunSessions(
         }
     }
 
+    /** The pinned context of a live run this caller owns; null once its executor is gone. Never starts work. */
+    suspend fun context(
+        id: UUID,
+        caller: Caller,
+    ): RunContext? {
+        val session = lock.withLock { if (stopped) null else sessions[id]?.takeUnless { it.closing } } ?: return null
+        return session.runner.context.takeIf { it.identity.caller.sub == caller.sub }
+    }
+
     suspend fun release(id: UUID) {
         withContext(NonCancellable) {
             val (session, owner, completion) =

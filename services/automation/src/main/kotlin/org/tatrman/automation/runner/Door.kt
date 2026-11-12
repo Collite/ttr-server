@@ -9,7 +9,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
@@ -19,6 +22,8 @@ import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.common.v1.Severity
 import org.tatrman.plan.v1.ParameterBinding
 import org.tatrman.plan.v1.PipelineContext
+import org.tatrman.plan.v1.PlanNode
+import org.tatrman.plan.v1.RowWrites
 import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.Value
 import org.tatrman.query.v1.CompileResponse
@@ -52,8 +57,59 @@ data class ReadResult(
     val warnings: Set<String> = emptySet(),
 )
 
+/**
+ * One `row_writes` request (D-163): the rows of one (storage, entity group), sent in one transaction. [rows]
+ * targets ER entities; Query lowers them. [parameters] bind every value (never interpolated).
+ */
+data class DoorWrite(
+    val run: UUID,
+    val label: String,
+    val world: String,
+    val storage: String,
+    val rows: RowWrites,
+    val parameters: List<ParameterBinding>,
+    val identity: RunIdentity,
+    val modelFp: String,
+    val timeout: Duration,
+)
+
+/** One answer per `RowWrite`, in order: `rows_affected` and `prior` (the `read_before` values; null = none read). */
+data class WriteResult(
+    val rowsAffected: List<Long>,
+    val prior: List<JsonObject?>,
+)
+
+/**
+ * Why a write request did not answer. [Refused]: nothing ran (identity, policy, route, a read-only connection).
+ * [RowFailed]: a statement failed and the worker rolled the whole request back. [Unknown]: the request may have
+ * committed (the commit or the connection was lost) — the writer must never resend it as if it had failed.
+ */
+sealed class DoorWriteFailure(
+    val code: String,
+    message: String,
+) : Exception(message) {
+    class Refused(
+        code: String,
+        message: String,
+    ) : DoorWriteFailure(code, message)
+
+    class RowFailed(
+        val seq: Int,
+        code: String,
+        message: String,
+    ) : DoorWriteFailure(code, message)
+
+    class Unknown(
+        code: String,
+        message: String,
+    ) : DoorWriteFailure(code, message)
+}
+
 fun interface Door {
     suspend fun read(read: DoorRead): ReadResult
+
+    suspend fun write(write: DoorWrite): WriteResult =
+        throw DoorWriteFailure.Refused("storage-unmapped", "this door has no write path")
 }
 
 /** Test seam at the gRPC stub boundary, not a second SQL execution road. */
@@ -72,29 +128,31 @@ class QueryDoor(
     private val query: QueryRun,
     private val routes: Map<String, String>,
     private val tokens: ServiceTokens,
+    /** AUTOMATION_DOOR_WRITE_ROUTES: never [routes], never a default (amendment 2026-11-03). */
+    private val writeRoutes: Map<String, String> = emptyMap(),
 ) : Door {
+    /** Claims of a token obtained from the configured IdP, never the initiating caller's roles. */
+    private suspend fun roles(identity: RunIdentity): List<String> {
+        if (identity.credential == null) return identity.caller.roles.toList()
+        val decoded = JWT.decode(tokens.token(identity.credential))
+        val principal =
+            org.tatrman.automation.identity.Caller
+                .of(decoded.token, decoded)
+                ?: refuse("identity-unmapped", "the run identity's token names nobody")
+        if (principal.principal !=
+            identity.principal
+        ) {
+            refuse("identity-mismatch", "the IdP returned another run identity")
+        }
+        return principal.roles.toList()
+    }
+
     override suspend fun read(read: DoorRead): ReadResult {
         try {
             val world =
                 routes["${read.world}/${read.storage}"]
                     ?: refuse("storage-unmapped", "no door route for ${read.world}/${read.storage}")
-            val roles =
-                if (read.identity.credential == null) {
-                    read.identity.caller.roles
-                } else {
-                    // Claims of a token obtained from the configured IdP, never the initiating caller's roles.
-                    val decoded = JWT.decode(tokens.token(read.identity.credential))
-                    val principal =
-                        org.tatrman.automation.identity.Caller
-                            .of(decoded.token, decoded)
-                            ?: refuse("identity-unmapped", "the run identity's token names nobody")
-                    if (principal.principal !=
-                        read.identity.principal
-                    ) {
-                        refuse("identity-mismatch", "the IdP returned another run identity")
-                    }
-                    principal.roles
-                }
+            val roles = roles(read.identity)
             val context =
                 PipelineContext
                     .newBuilder()
@@ -169,6 +227,104 @@ class QueryDoor(
         }
     }
 
+    /**
+     * D-163: `RunRequest { REL_NODE, PlanNode{row_writes} }` under `run_as`'s context, no read scope (a read
+     * scope never grants a write, D-172). Refusals before the worker ran are [DoorWriteFailure.Refused]; the
+     * worker's `row_writes seq N` is [DoorWriteFailure.RowFailed]; a lost commit, a broken stream or a timeout
+     * after the request left is [DoorWriteFailure.Unknown].
+     */
+    override suspend fun write(write: DoorWrite): WriteResult {
+        val world =
+            writeRoutes["${write.world}/${write.storage}"]
+                ?: throw DoorWriteFailure.Refused(
+                    "storage-unmapped",
+                    "no door write route for ${write.world}/${write.storage}",
+                )
+        val count = write.rows.rowsCount
+        require(count > 0) { "an empty row_writes request" }
+        val request =
+            try {
+                val context =
+                    PipelineContext
+                        .newBuilder()
+                        .setCorrelationId("${write.run}/${write.label}")
+                        .setUserId(write.identity.principal)
+                        .addAllAuthRoles(roles(write.identity))
+                        .setModelVersion(write.modelFp)
+                        .addAllParameters(write.parameters)
+                        .build()
+                RunRequest
+                    .newBuilder()
+                    .setSource(
+                        PlanNode
+                            .newBuilder()
+                            .setRowWrites(write.rows)
+                            .build()
+                            .toByteArray()
+                            .toString(Charsets.ISO_8859_1),
+                    ).setSourceLanguage(Language.REL_NODE)
+                    .setSourceSchema(SchemaCode.ER)
+                    .setContext(context)
+                    .setWorld(world)
+                    .build()
+            } catch (e: AutomationException) {
+                throw DoorWriteFailure.Refused("identity", e.message ?: "the run identity has no token")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw DoorWriteFailure.Refused("identity", "the run identity's token could not be read")
+            }
+        val streams = mutableListOf<ByteArray>()
+        try {
+            kotlinx.coroutines.withTimeout(write.timeout.toMillis()) {
+                query.run(request).collect { batch ->
+                    batch.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let { throw failure(it) }
+                    if (!batch.arrowIpc.isEmpty) streams += batch.arrowIpc.toByteArray()
+                }
+            }
+        } catch (e: DoorWriteFailure) {
+            throw e
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            throw DoorWriteFailure.Unknown("deadline-exceeded", "the door write exceeded the run budget")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: StatusException) {
+            throw DoorWriteFailure.Unknown(e.status.code.name, e.status.description ?: "the door call failed")
+        } catch (e: StatusRuntimeException) {
+            throw DoorWriteFailure.Unknown(e.status.code.name, e.status.description ?: "the door call failed")
+        } catch (e: Exception) {
+            throw DoorWriteFailure.Unknown("door-transport", "the door call failed after the request was sent")
+        }
+        val answers =
+            try {
+                ArrowTables.decode(streams, WRITE_ANSWER).rows
+            } catch (e: Exception) {
+                throw DoorWriteFailure.Unknown("invalid-result", "the door answer could not be read")
+            }
+        if (answers.size != count || answers.withIndex().any { (i, row) -> (row[0] as? Number)?.toInt() != i }) {
+            throw DoorWriteFailure.Unknown("invalid-result", "the door answered ${answers.size} rows for $count")
+        }
+        return WriteResult(
+            answers.map { requireNotNull(it[1] as? Number).toLong() },
+            answers.map { row ->
+                (row[2] as? String)?.let {
+                    runCatching { Json.parseToJsonElement(it).jsonObject }.getOrElse {
+                        throw DoorWriteFailure.Unknown("invalid-result", "the door answered a prior that is not JSON")
+                    }
+                }
+            },
+        )
+    }
+
+    private fun failure(message: org.tatrman.common.v1.ResponseMessage): DoorWriteFailure {
+        val text = message.humanMessage
+        ROW_FAILURE.find(text)?.let {
+            return DoorWriteFailure.RowFailed(it.groupValues[1].toInt(), message.code, text)
+        }
+        if (text.startsWith("row_writes commit")) return DoorWriteFailure.Unknown(message.code, text)
+        return DoorWriteFailure.Refused(message.code, text)
+    }
+
     private fun scopeRefusal(island: String): Nothing =
         throw AutomationException(
             ErrorCode.OUT_OF_SCOPE_READ,
@@ -220,6 +376,10 @@ class QueryDoor(
             buildJsonObject { put("code", code) },
         )
 }
+
+private val ROW_FAILURE = Regex("^row_writes seq (\\d+): ")
+private val WRITE_ANSWER =
+    listOf(ManifestColumn("seq", "int"), ManifestColumn("rows_affected", "bigint"), ManifestColumn("prior", "text"))
 
 class GrpcQueryRun(
     target: String,
