@@ -54,20 +54,7 @@ class BundleDeferredContexts(
         names: RunNames,
         decider: Caller,
     ): ApplyContext {
-        live(run)?.let { context ->
-            val metadata = context.previewMetadata ?: notReady("preview metadata was not pinned at open")
-            return ApplyContext(
-                context.world,
-                context.identity,
-                context.modelFp,
-                metadata.planSource ?: notReady("apply placement was not pinned at open"),
-                metadata.entities,
-                context.recipe.recipe.roles
-                    ?.routes
-                    .orEmpty()
-                    .map { it.name },
-            )
-        }
+        live(run)?.let { return it.applyContext() }
         val bundle = served() ?: notReady("no bundle is served")
         if (names.bundle != bundle.id) {
             notReady(
@@ -100,6 +87,25 @@ class BundleDeferredContexts(
     }
 
     private fun notReady(message: String): Nothing = throw AutomationException(ErrorCode.CLOSE_NOT_READY, message)
+}
+
+/** The [ApplyContext] of a context pinned at Open. */
+fun RunContext.applyContext(): ApplyContext {
+    val metadata =
+        previewMetadata
+            ?: throw AutomationException(ErrorCode.CLOSE_NOT_READY, "preview metadata was not pinned at open")
+    return ApplyContext(
+        world,
+        identity,
+        modelFp,
+        metadata.planSource
+            ?: throw AutomationException(ErrorCode.CLOSE_NOT_READY, "apply placement was not pinned at open"),
+        metadata.entities,
+        recipe.recipe.roles
+            ?.routes
+            .orEmpty()
+            .map { it.name },
+    )
 }
 
 /** A row's journaled outcome as [Apply] reads it; a pristine `staged` row has none. */

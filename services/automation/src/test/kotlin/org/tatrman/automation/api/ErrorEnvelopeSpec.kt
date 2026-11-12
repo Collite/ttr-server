@@ -169,11 +169,8 @@ class ErrorEnvelopeSpec :
                 ErrorCode.OUT_OF_SCOPE_READ,
                 ErrorCode.DUPLICATE_KEY,
                 ErrorCode.BUDGET,
-                // S2.3 (approvals, D-89)
-                ErrorCode.GOLDEN_REQUIRED,
-                ErrorCode.SUPERSEDED,
             )
-        val DELIVERED = setOf("S0.1", "S0.2", "S0.3")
+        val DELIVERED = setOf("S0.1", "S0.2", "S0.3", "S2.3")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")
     }
 }

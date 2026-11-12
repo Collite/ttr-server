@@ -169,6 +169,18 @@ data class HeldGroup(
     val budget: Duration,
 )
 
+/** S2.3: what a revert reads (see [Ledger.revertState]). */
+data class RevertState(
+    val run: UUID,
+    val batch: UUID,
+    val names: RunNames,
+    val plan: RunBatchPlan,
+    val actions: List<DryRunAction>,
+    /** A revert batch an interrupted attempt already journaled. */
+    val rev: RunBatchPlan?,
+    val budget: Duration,
+)
+
 /** S2.3: the names a run pinned at Open — what a deferred apply re-resolves and D-99 compares. */
 data class RunNames(
     val recipe: String,
@@ -1146,6 +1158,156 @@ class Ledger(
                 if (last) RunStatus.CLOSED.wire else RunStatus.of(run[Runs.status]).wire,
             )
         }
+    }
+
+    /**
+     * S2.3 `-rev`: what a revert reads — the run's batch (it must be `committed`: `409 batch-not-committed`; a batch
+     * already `reverted` is `409 batch-reverted`), its rows with their recorded outcomes and `prior`, the action
+     * evidence, and a revert batch an interrupted attempt already journaled (`rev_of` = this batch). Not owner-filtered:
+     * the reverter is an operator.
+     */
+    fun revertState(runId: UUID): RevertState {
+        outermost("revertState")
+        return transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            val run = Runs.selectAll().where { Runs.id eq runId }.firstOrNull() ?: throw NoSuchRun(runId)
+            val batchId = run[Runs.batchId] ?: throw NoRunBatch(runId)
+            when (Batches.selectAll().where { Batches.id eq batchId }.single()[Batches.state]) {
+                "committed" -> Unit
+                "reverted" -> throw AutomationException(
+                    ErrorCode.BATCH_REVERTED,
+                    "the run's batch was already reverted",
+                )
+                else -> throw AutomationException(
+                    ErrorCode.BATCH_NOT_COMMITTED,
+                    "only a committed batch can be reverted",
+                )
+            }
+            val rev =
+                Batches
+                    .select(Batches.id)
+                    .where { Batches.revOf eq batchId }
+                    .firstOrNull()
+                    ?.get(Batches.id)
+            RevertState(
+                runId,
+                batchId,
+                RunNames(run[Runs.recipe], run[Runs.program], run[Runs.deployment], run[Runs.bundle], run[Runs.runAs]),
+                batchPlan(runId, batchId),
+                previewActions(runId),
+                rev?.let { batchPlan(runId, it) },
+                run[Runs.budgetBatch]?.let(Duration::ofMillis) ?: run[Runs.budgetSync]?.let(Duration::ofMillis)
+                    ?: defaultBudget,
+            )
+        }
+    }
+
+    /** Journals the revert batch (`preview`, `rev_of` = [original], rows `staged`) once; a retry answers the same one. */
+    fun beginRevert(
+        runId: UUID,
+        original: UUID,
+        rows: List<ApplyRow>,
+    ): RunBatchPlan {
+        outermost("beginRevert")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val existing =
+                Batches
+                    .select(Batches.id)
+                    .where { Batches.revOf eq original }
+                    .firstOrNull()
+                    ?.get(Batches.id)
+            if (existing != null) return@transaction batchPlan(runId, existing)
+            val id = UUID.randomUUID()
+            Batches.insert {
+                it[Batches.id] = id
+                it[run] = runId
+                it[state] = "preview"
+                it[Batches.rows] = rows.size
+                it[revOf] = original
+            }
+            BatchRows.batchInsert(rows, shouldReturnGeneratedValues = false) { item ->
+                this[BatchRows.batch] = id
+                this[BatchRows.seq] = item.seq
+                this[BatchRows.entity] = item.entity
+                this[BatchRows.op] = item.op
+                this[BatchRows.key] = item.key
+                this[BatchRows.row] = item.storedRow()
+                this[BatchRows.groupKey] = null
+                this[BatchRows.status] = "staged"
+            }
+            batchPlan(runId, id)
+        }
+    }
+
+    /**
+     * Ends a revert: the revert batch is `committed` by [by], the original `reverted`, and a `writes` entry is appended
+     * after the seal (`after_seal: true`; D-110). Answers the revert batch's row counts.
+     */
+    fun finishRevert(
+        runId: UUID,
+        original: UUID,
+        rev: UUID,
+        by: String,
+    ): RunBatchPlan {
+        outermost("finishRevert")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val now = clock.instant().utc()
+            val rows = BatchRows.selectAll().where { BatchRows.batch eq rev }.toList()
+            val counts =
+                rows
+                    .groupingBy {
+                        if (it[BatchRows.status] ==
+                            "staged"
+                        ) {
+                            "unknown"
+                        } else {
+                            it[BatchRows.status]
+                        }
+                    }.eachCount()
+            Batches.update({ Batches.id eq rev }) {
+                it[state] = "committed"
+                it[committedBy] = by
+                it[committedAt] = now
+            }
+            Batches.update({ Batches.id eq original }) { it[state] = "reverted" }
+            RunProtocol.insert {
+                it[RunProtocol.run] = runId
+                it[section] = ProtocolSection.WRITES.wire
+                it[seq] = nextSeq(runId, ProtocolSection.WRITES)
+                it[payload] =
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("event", JsonPrimitive("revert"))
+                        put("batch", JsonPrimitive(rev.toString()))
+                        put("rev_of", JsonPrimitive(original.toString()))
+                        put("by", JsonPrimitive(by))
+                        put("rows", JsonPrimitive(rows.size))
+                        for (name in listOf("applied", "failed", "skipped", "unknown")) {
+                            put(name, JsonPrimitive(counts[name] ?: 0))
+                        }
+                        put("after_seal", JsonPrimitive(isSealed(runId)))
+                    }
+                it[at] = now
+            }
+            batchPlan(runId, rev)
+        }
+    }
+
+    /**
+     * S2.3 `outcome` (Amendment 2026-11-03): appended to the `actions` section; no `deliveries` row. A sealed protocol
+     * refuses (`ProtocolSealed`), as every other append does.
+     */
+    fun appendOutcome(
+        runId: UUID,
+        subject: String,
+        payload: JsonObject,
+    ): Int {
+        require(subject.isNotBlank())
+        transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            Runs.select(Runs.id).where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }.firstOrNull()
+                ?: throw NoSuchRun(runId)
+        }
+        return appendProtocol(runId, ProtocolSection.ACTIONS, payload)
     }
 
     /** Durable owner/seal fence before touching a local executor, including after resource release/restart. */

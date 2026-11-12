@@ -270,12 +270,16 @@ class ApplyComponentSpec :
         )
 
         /** Claim a wet run and journal plan() at evaluate; answers the run, ready for its close. */
-        fun prepare(build: (UUID) -> Planned): UUID {
+        fun prepare(
+            build: (UUID) -> Planned,
+            deployment: String? = null,
+        ): UUID {
             val id =
                 ledger
                     .claimRun(
                         RunOpen(
                             "release_order",
+                            deployment = deployment,
                             runAs = principal,
                             dryRun = false,
                             callerSubject = subject,
@@ -909,6 +913,168 @@ class ApplyComponentSpec :
             rows("SELECT to_char(at, 'YYYY-MM-DD\"T\"HH24:MI:SS') FROM wet_fixture.state_history") shouldBe
                 listOf(listOf("2026-11-11T10:00:00"))
             committedAt shouldBe Instant.parse("2026-11-11T10:00:00Z")
+        }
+
+        // ---- S2.3 T3: revert · perform ----
+
+        val ops = Caller("sub-ops", "olga", emptySet(), TokenKind.PERSON, "t", groups = setOf("hartland-ops"))
+        val contexts =
+            DeferredContexts { _, _, _ -> ApplyContext("demo", identity, "model-fp", source, bundle.entities, routes) }
+
+        fun obligationFulfil() =
+            ApplyRow(
+                1,
+                "er.entity.obligation",
+                "transition",
+                buildJsonObject { put("id", "ob-1") },
+                attribute = "state",
+                to = JsonPrimitive("fulfilled"),
+                history = true,
+            )
+
+        "S2.3 T3: revert applies the inverse of the recorded prior as a rev_of batch; verdicts stay; twice is 409" {
+            sql(
+                "INSERT INTO wet_fixture.obligation " +
+                    "(id, recipe, run, entity, key, kind, due, state, created_at) VALUES " +
+                    "('ob-1', 'release_order', 'r0', 'er.entity.order', '{\"order_number\":\"4711\"}', 'confirm', " +
+                    "'2026-11-25', 'open', '2026-11-01')",
+            )
+            val id =
+                prepare(
+                    { run ->
+                        planned(
+                            listOf(verdict(run, "4711", "hold_sales")) + hold("4711") + listOf(obligationFulfil()),
+                            actions = listOf(listOf(1, 2)),
+                            keys = listOf("4711"),
+                        )
+                    },
+                    deployment = "release_native_event",
+                )
+            applyOnce(id)
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("held", "Sales"))
+            val held = Held(ledger, Apply(door(), clock), contexts, { bundle }, clock)
+            val revert = Revert(ledger, Apply(door(), clock), contexts, held, clock)
+            val maya = Caller("sub-maya", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "t")
+            shouldThrow<AutomationException> { revert.revert(id, maya) }.code shouldBe ErrorCode.IDENTITY
+            clock.now = clock.now.plusSeconds(3600)
+            val original = ledger.readRunBatch(id, subject).batch
+            val result = revert.revert(id, ops)
+            result.revOf shouldBe original
+            result.rows shouldBe 3
+            result.applied shouldBe 3
+            // The prior values are back; the obligation is reopened by an inverse transition with history.
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("placed", null))
+            rows("SELECT state FROM wet_fixture.obligation WHERE id = 'ob-1'") shouldBe listOf(listOf("open"))
+            rows("SELECT entity, from_state, to_state FROM wet_fixture.state_history ORDER BY at, entity") shouldBe
+                listOf(
+                    listOf("er.entity.obligation", "open", "fulfilled"),
+                    listOf("er.entity.order", "placed", "held"),
+                    listOf("er.entity.obligation", "fulfilled", "open"),
+                    listOf("er.entity.order", "held", "placed"),
+                )
+            // Verdicts are never reverted.
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE run = '$id'") shouldBe
+                listOf(listOf("1"))
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE run = '$id' AND state = 'reverted'",
+            ) shouldBe
+                1L
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE rev_of = '$original' AND state = 'committed'",
+            ) shouldBe 1L
+            writesEntry(id).let {
+                it["event"] shouldBe JsonPrimitive("revert")
+                it["after_seal"] shouldBe JsonPrimitive(true)
+                it["rev_of"] shouldBe JsonPrimitive(original)
+                it["by"] shouldBe JsonPrimitive("olga")
+            }
+            shouldThrow<AutomationException> { revert.revert(id, ops) }.code shouldBe ErrorCode.BATCH_REVERTED
+            // A batch that never committed cannot be reverted.
+            val open = prepare({ run -> planned(listOf(verdict(run, "4712", "release"))) }, "release_native_event")
+            shouldThrow<AutomationException> { revert.revert(open, ops) }.code shouldBe ErrorCode.BATCH_NOT_COMMITTED
+        }
+
+        "S2.3 T3: perform {keys} applies only those keys' rows of the action; an identical call answers the first" {
+            val id =
+                prepare({ run ->
+                    planned(
+                        listOf(verdict(run, "4711", "hold_sales"), verdict(run, "4712", "hold_sales")) +
+                            hold("4711") + hold("4712"),
+                        actions = listOf(listOf(2, 3), listOf(4, 5)),
+                    )
+                })
+            val perform =
+                Perform(
+                    ledger,
+                    Apply(door(), clock),
+                    { _, _ -> contexts.resolve(id, RunNames("", null, null, null, null), identity.caller) },
+                    { _, b -> b() },
+                )
+            val first = perform.perform(id, "hold", PerformRequest(keys = listOf(key("4711"))), identity.caller)
+            first.performed.map { it.key } shouldBe listOf(key("4711"))
+            first.skipped shouldBe emptyList()
+            rows(
+                "SELECT order_number, state FROM erp_fixture.sales_order WHERE order_number IN ('4711','4712') ORDER BY 1",
+            ) shouldBe
+                listOf(listOf("4711", "held"), listOf("4712", "placed"))
+            val sent = fake.writes.size
+            perform.perform(id, "hold", PerformRequest(keys = listOf(key("4711"))), identity.caller) shouldBe first
+            fake.writes.size shouldBe sent
+            // The close applies the rest and never resends the performed key's rows.
+            applyOnce(id)
+            ledger.closeCommitted(id, subject).status shouldBe "closed"
+            fake.writes.count { it.world == "w-erp" } shouldBe 2
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4712'") shouldBe
+                listOf(listOf("held"))
+            // outcome appends to the actions section of an open protocol only; the sealed one refuses.
+            shouldThrow<AutomationException> {
+                perform.outcome(
+                    id,
+                    "hold",
+                    OutcomeRequest(listOf(OutcomeItem(key("4711"), "delivered", "2026-11-11T10:05:00Z"))),
+                    identity.caller,
+                )
+            }.code shouldBe ErrorCode.RUN_CLOSED
+        }
+
+        "S2.3 T3: outcome appends the engine's per-key outcomes to the actions section; bad keys/status refuse" {
+            val id =
+                prepare({ run ->
+                    planned(listOf(verdict(run, "4711", "hold_sales")) + hold("4711"), actions = listOf(listOf(1, 2)))
+                })
+            val perform = Perform(ledger, Apply(door(), clock), { _, _ -> null }, { _, b -> b() })
+            perform.outcome(
+                id,
+                "hold",
+                OutcomeRequest(listOf(OutcomeItem(key("4711"), "delivered", "2026-11-11T10:05:00Z"))),
+                identity.caller,
+            )["outcomes"] shouldBe JsonPrimitive(1)
+            ledger
+                .readProtocol(id, subject)
+                .sections
+                .getValue("actions")
+                .last()
+                .payload
+                .jsonObject["event"] shouldBe JsonPrimitive("outcome")
+            shouldThrow<AutomationException> {
+                perform.outcome(
+                    id,
+                    "hold",
+                    OutcomeRequest(listOf(OutcomeItem(key("4799"), "delivered", "x"))),
+                    identity.caller,
+                )
+            }.code shouldBe ErrorCode.BAD_REQUEST
+            shouldThrow<AutomationException> {
+                perform.outcome(
+                    id,
+                    "hold",
+                    OutcomeRequest(listOf(OutcomeItem(key("4711"), "sent", "x"))),
+                    identity.caller,
+                )
+            }.code shouldBe ErrorCode.BAD_REQUEST
         }
 
         "B1: a history row that landed unacknowledged is found by the retry's re-read, not inserted again" {

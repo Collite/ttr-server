@@ -19,7 +19,11 @@ import org.tatrman.automation.writer.Held
  * key's canonical JSON, URL-encoded; `role.ops` is checked against the run's world (Held). Answers `{ batch, group, applied }` or `{ batch, group, discarded }`; `409
  * superseded` when the run's fingerprints moved (D-99).
  */
-fun Route.devRoutes(held: Held) {
+fun Route.devRoutes(
+    enabled: Boolean,
+    held: Held,
+) {
+    if (!enabled) return
     post("/automation/dev/runs/{id}/held/{group}/commit") {
         val caller = call.caller()
         call.respond(held.commitHeld(call.runId(), call.group(), caller).wire("applied") { it.applied })

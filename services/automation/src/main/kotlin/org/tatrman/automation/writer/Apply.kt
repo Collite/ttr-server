@@ -91,6 +91,8 @@ data class ApplyInput(
     val routes: List<String>,
     /** Outcomes a previous close attempt recorded; their rows are never sent again. */
     val recorded: Map<Int, RowOutcome> = emptyMap(),
+    /** S2.3: a revert batch — its inverse transitions are not checked against the declared graph ([RowWrites]). */
+    val inverse: Boolean = false,
 )
 
 /**
@@ -168,7 +170,7 @@ class Apply(
         journal: ApplyJournal,
     ): Map<Int, RowOutcome> {
         val out = linkedMapOf<Int, RowOutcome>()
-        val lowering = RowWrites(input.entities, input.routes)
+        val lowering = RowWrites(input.entities, input.routes, input.inverse)
 
         fun done(list: List<RowOutcome>) {
             list.forEach { out[it.seq] = it }
@@ -365,7 +367,7 @@ class Apply(
 
         fun failed(code: String) = settle("failed", "history-failed: $code")
         val storage = input.source.historyStorage ?: return failed("storage-unmapped")
-        val lowering = RowWrites(input.entities, input.routes)
+        val lowering = RowWrites(input.entities, input.routes, input.inverse)
         val now = clock.instant()
         val rows =
             try {

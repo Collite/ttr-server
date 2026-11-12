@@ -65,6 +65,23 @@ class RunCloser(
             result
         }
 
+    /**
+     * S2.3: runs [block] under the same per-run gate as a close, so a `perform` and a close of one run never apply the
+     * same rows at once.
+     */
+    suspend fun <T> exclusive(
+        id: UUID,
+        block: suspend () -> T,
+    ): T =
+        withContext(NonCancellable) {
+            val gate = registry.withLock { gates.getOrPut(id) { Gate() }.also { it.users++ } }
+            try {
+                gate.mutex.withLock { block() }
+            } finally {
+                registry.withLock { if (--gate.users == 0) gates.remove(id) }
+            }
+        }
+
     private suspend fun closeOnce(
         id: UUID,
         caller: Caller,

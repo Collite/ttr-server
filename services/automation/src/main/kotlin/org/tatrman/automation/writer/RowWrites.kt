@@ -53,6 +53,12 @@ class RowWrites(
     private val entities: List<Entity>,
     /** The recipe's declared routes: the `_current` delete covers each of them (D-105, R217-C). */
     private val routes: List<String>,
+    /**
+     * S2.3 `-rev`: an inverse transition restores a recorded prior state, which the authored `transitions:` graph
+     * usually does not lead to (placed → held has no held → placed). Its compare-and-set on the recorded `to` still
+     * guards it; the declared graph is not consulted (⚑ Found while doing, 2026-11-12).
+     */
+    private val inverse: Boolean = false,
 ) {
     private var next = 0
     private val bindings = mutableListOf<ParameterBinding>()
@@ -217,6 +223,7 @@ class RowWrites(
     ): List<String>? {
         val attribute = attribute(entity, requireNotNull(transition.attribute))
         if (attribute.states.isNotEmpty() && to !in attribute.states) bad(transition, to)
+        if (inverse) return transition.from.ifEmpty { null }
         val graph = attribute.transitions
         if (graph.isEmpty()) {
             return transition.from.ifEmpty { null }
