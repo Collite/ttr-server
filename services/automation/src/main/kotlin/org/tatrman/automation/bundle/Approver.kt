@@ -36,6 +36,8 @@ data class ApprovalRecord(
     val status: String = "approved",
     /** False when an identical `approved` row already existed and was answered instead of a new one. */
     val created: Boolean = true,
+    /** D-185 (V9): the served toolchain the object was approved under; null when none is known. */
+    val toolchain: String? = null,
 )
 
 /** The ledger's side of [Approver]: one transaction, serialized per (kind, object). */
@@ -50,8 +52,8 @@ fun interface ApprovalBook {
 /**
  * D-60 / D-13 / D-89 — the writes behind staleness. An approval is of what is served now: the object must be served,
  * and the fingerprint supplied must be its current one (else the kind's `409 *-stale`, nothing written). A `recipe`
- * approval needs at least one golden case (`tests/`, the manifest's `recipe.tests`; D-89, 16 §2.9) — `422
- * golden-required`. The `values` kind does not (12 §E: the lighter approval). Re-approving the same fingerprint is
+ * approval needs at least one golden case (`tests/`, the manifest's `recipe.tests`; D-89, 16 §2.9) — `409
+ * golden-required` ( per the Amendment 2026-11-12). The `values` kind does not (12 §E: the lighter approval). Re-approving the same fingerprint is
  * idempotent; approving a new one supersedes the old rows of that kind and object.
  */
 class Approver(
@@ -130,8 +132,27 @@ class Approver(
                 by,
                 now().toString(),
                 note?.ifBlank { null },
+                toolchain = toolchain(bundle, objectKind, obj),
             ),
         )
+    }
+
+    /**
+     * D-185: the toolchain a recipe (or a program's / deployment's recipe) was compiled with, from its served manifest.
+     * Only a recipe's `text` is judged by it (`rebuild`); the others record it for the history.
+     */
+    private fun toolchain(
+        bundle: Bundle,
+        objectKind: String,
+        obj: String,
+    ): String? {
+        val recipe =
+            when (objectKind) {
+                "recipe" -> obj
+                "program" -> bundle.programs[obj]?.recipe
+                else -> bundle.deployments[obj]?.let { bundle.programs[it.program]?.recipe }
+            }
+        return recipe?.let { bundle.recipes[it]?.manifest?.toolchain }?.ifBlank { null }
     }
 
     private fun bad(message: String): Nothing = throw AutomationException(ErrorCode.BAD_REQUEST, message)

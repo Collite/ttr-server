@@ -15,7 +15,7 @@ import org.tatrman.automation.ledger.RunNames
 import java.util.UUID
 
 /**
- * S2.3's interim deferred context (⚑ Found 2026-11-12): without the pinned executor, a held commit or a revert rebuilds
+ * D-186 (Amendment 2026-11-12): without the pinned executor, a held commit or a revert rebuilds
  * its apply context only from the run's own served bundle and only as a declared identity with a configured credential.
  */
 class DeferredContextsSpec :
@@ -38,15 +38,20 @@ class DeferredContextsSpec :
             context.modelFp shouldBe bundle.modelFp
         }
 
-        "another served bundle, a caller run_as or an unmapped credential is 409 close-not-ready" {
+        "another served bundle or an unmapped credential is 409 close-not-ready" {
             for ((n, t) in listOf(
                 names(bundleId = "served:master@other") to tokens,
-                names(runAs = "maya") to tokens,
                 names() to ServiceTokens(emptyMap(), fetch = { "" }),
             )) {
                 shouldThrow<AutomationException> {
                     BundleDeferredContexts({ bundle }, t).resolve(UUID.randomUUID(), n, ops)
                 }.code shouldBe ErrorCode.CLOSE_NOT_READY
             }
+        }
+
+        "a run that ran as its caller is 409 identity-not-resumable (D-186)" {
+            shouldThrow<AutomationException> {
+                BundleDeferredContexts({ bundle }, tokens).resolve(UUID.randomUUID(), names(runAs = "maya"), ops)
+            }.code shouldBe ErrorCode.IDENTITY_NOT_RESUMABLE
         }
     })

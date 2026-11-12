@@ -151,7 +151,20 @@ class Open(
                     val (approvalKind, obj) = objects.getValue(kind)
                     !snapshot.approved(approvalKind, obj, current.getValue(kind))
                 }
-            stale(current, missing, objects.mapValues { (_, pair) -> snapshot.latestApproved(pair.first, pair.second) })
+            // D-185 / D-137: a text fp moved only by a toolchain bump is a rebuild, not a new approval — the latest
+            // approved text row was given under another (recorded) toolchain and the current values are approved.
+            val served = recipe.manifest.toolchain
+            val rebuild =
+                "text" in missing &&
+                    "values" !in missing &&
+                    served.isNotBlank() &&
+                    snapshot.latestToolchain("recipe", recipeName).let { it != null && it != served }
+            stale(
+                current,
+                missing,
+                objects.mapValues { (_, pair) -> snapshot.latestApproved(pair.first, pair.second) },
+                if (rebuild) listOf("text") else emptyList(),
+            )
         }
         val port = OpenPort.resolve(bundle, recipe, program, request.port)
         val dry = request.dryRun == true || d.dryRun
@@ -395,6 +408,7 @@ class Open(
         current: Map<String, String>,
         differs: List<String>,
         approved: Map<String, String?>,
+        rebuild: List<String> = emptyList(),
     ) {
         if (differs.isEmpty()) return
         val recipeDiff = differs.filter { it == "text" || it == "values" }
@@ -417,6 +431,7 @@ class Open(
                 put("differs", JsonArray(group.map(::JsonPrimitive)))
                 put("approved", JsonObject(group.associateWith { approved[it]?.let(::JsonPrimitive) ?: JsonNull }))
                 put("current", JsonObject(group.associateWith { JsonPrimitive(current.getValue(it)) }))
+                if (rebuild.isNotEmpty()) put("rebuild", JsonArray(rebuild.map(::JsonPrimitive)))
             }
         if (recipeDiff.isNotEmpty()) {
             throw AutomationException(

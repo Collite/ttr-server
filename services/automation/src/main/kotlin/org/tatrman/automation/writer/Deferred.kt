@@ -37,12 +37,12 @@ fun interface DeferredContexts {
 }
 
 /**
- * S2.3's interim (Found while doing, 2026-11-12 — ⚑ for the planner): a held commit or a revert happens after the run's
- * close has released its executor. The context pinned at Open is used while it is still held; otherwise it is rebuilt
- * from the served bundle **only when that is the run's own bundle** (`runs.bundle`), so the placement, entities and
- * model are those the run planned with. The identity is the run's `run_as` `def identity` and its configured credential;
- * a run that ran as its caller (or its author's person) has no credential the Server holds, and refuses. Every refusal
- * is `409 close-not-ready`, as an `auto` close without its pinned context is (Amendment 2026-11-11).
+ * D-186 (Amendment 2026-11-12, ⚑AU-P2-9): a held commit or a revert happens after the run's close has released its
+ * executor. The context pinned at Open is used while it is still held; otherwise it is rebuilt from the served bundle
+ * **only when that is the run's own bundle** (`runs.bundle`), so the placement, entities and model are those the run
+ * planned with — else `409 close-not-ready`. The identity is the run's `run_as` `def identity` and its configured
+ * credential; a run that ran as its caller (or its author's person) has no credential the Server holds and refuses
+ * `409 identity-not-resumable`.
  */
 class BundleDeferredContexts(
     private val served: () -> Bundle?,
@@ -67,7 +67,8 @@ class BundleDeferredContexts(
         val recipe = bundle.recipes[names.recipe] ?: notReady("the run's recipe is no longer served")
         val declared =
             world.identities.firstOrNull { it.principal == names.runAs }
-                ?: notReady(
+                ?: throw AutomationException(
+                    ErrorCode.IDENTITY_NOT_RESUMABLE,
                     "the run ran as ${names.runAs}, which is not a declared identity; an apply after close needs a " +
                         "service identity's credential",
                 )

@@ -44,6 +44,8 @@ class RunRuntime(
     store: StagingStore,
     queue: RunWorkQueue = RunQueue(clock = clock, defaultBudget = config.budgets.batchDefault),
     retention: StagingRetention = StagingRetention(config.retention, clock),
+    /** D-184: the approvals writer behind the dev seeding route; the ledger's reader is also its book. */
+    book: org.tatrman.automation.bundle.ApprovalBook? = approvals as? org.tatrman.automation.bundle.ApprovalBook,
 ) {
     private val shutdownLock = Mutex()
     private var shutdownComplete = false
@@ -98,6 +100,12 @@ class RunRuntime(
             clock,
         )
     val devRoutes = config.devRoutes
+    val served: () -> Bundle? = served
+    val approver =
+        book?.let {
+            org.tatrman.automation.bundle
+                .Approver(served, it, clock::instant)
+        }
     val sweeper = StagingSweeper(retention, store) { sessions.release(it) }
     val displayRows = config.budgets.displayRows
     val owner: UUID get() = workers.owner

@@ -179,7 +179,7 @@ class ApprovalsSpec :
             Staleness.of(golden, deployment, book).unapproved shouldContainExactly listOf("values $recipe")
         }
 
-        "a recipe approval without tests/ is 422 golden-required and writes nothing; values needs no golden" {
+        "a recipe approval without tests/ is 409 golden-required and writes nothing; values needs no golden" {
             val f =
                 bare.recipes
                     .getValue(recipe)
@@ -189,7 +189,7 @@ class ApprovalsSpec :
                     approver { bare }.approve("recipe", recipe, ApprovalFps(f.text, f.values), "recipe", "po")
                 }
             e.code shouldBe ErrorCode.GOLDEN_REQUIRED
-            e.code.status.value shouldBe 422
+            e.code.status.value shouldBe 409
             strings("SELECT count(*) FROM automation.approvals") shouldBe listOf("0")
             approver { bare }.approve("recipe", recipe, ApprovalFps(f.text, f.values), "values", "po").created shouldBe
                 true
@@ -237,6 +237,46 @@ class ApprovalsSpec :
                 listOf("${fps().text}:superseded", "sha256:moved:approved")
             book.approved("recipe", recipe, fps().text) shouldBe false
             book.approved("recipe", recipe, "sha256:moved") shouldBe true
+        }
+
+        "a toolchain-only text move is reported rebuild:[text], a text move under the same toolchain is not (D-185)" {
+            fun under(
+                toolchain: String,
+                text: String? = null,
+            ): Bundle {
+                val r = golden.recipes.getValue(recipe)
+                val fps = r.recipe.fingerprints.let { if (text == null) it else it.copy(text = text) }
+                val moved = r.recipe.copy(fingerprints = fps)
+                return golden.copy(
+                    recipes =
+                        golden.recipes +
+                            (
+                                recipe to
+                                    r.copy(
+                                        recipe = moved,
+                                        manifest = r.manifest.copy(toolchain = toolchain, recipe = moved),
+                                    )
+                            ),
+                )
+            }
+            approveAll(bundle = under("ttrp-0.22.3"))
+            strings("SELECT DISTINCT toolchain FROM automation.approvals") shouldBe listOf("ttrp-0.22.3")
+            open(under("ttrp-0.22.3")).httpStatus shouldBe 201
+
+            val bumped = shouldThrow<AutomationException> { open(under("ttrp-0.22.4", text = "sha256:rebuilt")) }
+            bumped.code shouldBe ErrorCode.RECIPE_STALE
+            bumped.detail!!
+                .jsonObject
+                .getValue("differs")
+                .jsonArray shouldBe JsonArray(listOf(JsonPrimitive("text")))
+            bumped.detail!!
+                .jsonObject
+                .getValue("rebuild")
+                .jsonArray shouldBe JsonArray(listOf(JsonPrimitive("text")))
+
+            val edited = shouldThrow<AutomationException> { open(under("ttrp-0.22.3", text = "sha256:edited")) }
+            edited.code shouldBe ErrorCode.RECIPE_STALE
+            edited.detail!!.jsonObject.containsKey("rebuild") shouldBe false
         }
 
         "the approvals view in automation_pg shows the row in the stdlib entity's shape" {

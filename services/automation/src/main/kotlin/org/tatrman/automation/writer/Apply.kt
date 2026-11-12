@@ -93,6 +93,12 @@ data class ApplyInput(
     val recorded: Map<Int, RowOutcome> = emptyMap(),
     /** S2.3: a revert batch — its inverse transitions are not checked against the declared graph ([RowWrites]). */
     val inverse: Boolean = false,
+    /**
+     * D-187: the batch a revert batch reverts. Its history rows name it in their identity, so they never collide with
+     * (and are never skipped as) the reverted batch's own rows, whose `seq` they reuse. `state_history` has no `rev_of`
+     * column in the stdlib (⚑ Found 2026-11-12); the revert's protocol entry carries it.
+     */
+    val revOf: UUID? = null,
 )
 
 /**
@@ -384,7 +390,7 @@ class Apply(
                                     JsonPrimitive(text),
                                     scalar(requireNotNull(transition.attribute)),
                                     JsonPrimitive(transition.seq),
-                                ),
+                                ) + listOfNotNull(input.revOf?.let { JsonPrimitive("rev_of:$it") }),
                             )
                         buildJsonObject {
                             put(

@@ -997,6 +997,31 @@ class ApplyComponentSpec :
             shouldThrow<AutomationException> { revert.revert(open, ops) }.code shouldBe ErrorCode.BATCH_NOT_COMMITTED
         }
 
+        "S2.3 D-187: a revert's history rows are its own even when its seqs repeat the reverted batch's" {
+            sql(
+                "INSERT INTO wet_fixture.obligation " +
+                    "(id, recipe, run, entity, key, kind, due, state, created_at) VALUES " +
+                    "('ob-1', 'release_order', 'r0', 'er.entity.order', '{\"order_number\":\"4711\"}', 'confirm', " +
+                    "'2026-11-25', 'open', '2026-11-01')",
+            )
+            // No verdict row: the inverse rows (update 1, transition 2, transition 3) reuse the original seqs exactly.
+            val id =
+                prepare({ planned(hold("4711") + listOf(obligationFulfil())) }, deployment = "release_native_event")
+            applyOnce(id)
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            val held = Held(ledger, Apply(door(), clock), contexts, { bundle }, clock)
+            clock.now = clock.now.plusSeconds(3600)
+            Revert(ledger, Apply(door(), clock), contexts, held, clock).revert(id, ops).applied shouldBe 3
+            rows("SELECT entity, from_state, to_state FROM wet_fixture.state_history ORDER BY at, entity") shouldBe
+                listOf(
+                    listOf("er.entity.obligation", "open", "fulfilled"),
+                    listOf("er.entity.order", "placed", "held"),
+                    listOf("er.entity.obligation", "fulfilled", "open"),
+                    listOf("er.entity.order", "held", "placed"),
+                )
+            rows("SELECT count(DISTINCT id) FROM wet_fixture.state_history") shouldBe listOf(listOf("4"))
+        }
+
         "S2.3 T3: perform {keys} applies only those keys' rows of the action; an identical call answers the first" {
             val id =
                 prepare({ run ->

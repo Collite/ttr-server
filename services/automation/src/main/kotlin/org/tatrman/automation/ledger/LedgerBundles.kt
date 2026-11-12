@@ -81,21 +81,47 @@ class LedgerBundles :
                 ?.get(fpColumn(kind))
         }
 
+    override fun latestToolchain(
+        kind: String,
+        obj: String,
+    ): String? =
+        transaction {
+            Approvals
+                .select(Approvals.toolchain)
+                .where { (Approvals.kind eq kind) and (Approvals.obj eq obj) and (Approvals.status eq "approved") }
+                .orderBy(Approvals.at to SortOrder.DESC, Approvals.id to SortOrder.DESC)
+                .limit(1)
+                .firstOrNull()
+                ?.get(Approvals.toolchain)
+        }
+
     /** One query: every approved row of [objects], each under the fingerprint its kind is judged by. */
     override fun snapshot(objects: Collection<String>): ApprovalReader {
         if (objects.isEmpty()) return ApprovalReader { _, _, _ -> false }
-        val approved =
+        val rows =
             transaction {
                 Approvals
-                    .select(Approvals.kind, Approvals.obj, Approvals.fpText, Approvals.fpValues, Approvals.fp)
-                    .where { (Approvals.status eq "approved") and (Approvals.obj inList objects.distinct()) }
+                    .select(
+                        Approvals.kind,
+                        Approvals.obj,
+                        Approvals.fpText,
+                        Approvals.fpValues,
+                        Approvals.fp,
+                        Approvals.toolchain,
+                    ).where { (Approvals.status eq "approved") and (Approvals.obj inList objects.distinct()) }
                     .orderBy(Approvals.at to SortOrder.DESC, Approvals.id to SortOrder.DESC)
                     .mapNotNull { row ->
                         val kind = row[Approvals.kind]
-                        row[fpColumn(kind)]?.let { Triple(kind, row[Approvals.obj], it) }
+                        row[fpColumn(kind)]?.let { Triple(kind, row[Approvals.obj], it) to row[Approvals.toolchain] }
                     }
             }
+        val approved = rows.map { it.first }
         return object : ApprovalReader {
+            override fun latestToolchain(
+                kind: String,
+                obj: String,
+            ): String? = rows.firstOrNull { it.first.first == kind && it.first.second == obj }?.second
+
             override fun approved(
                 kind: String,
                 obj: String,
@@ -152,6 +178,7 @@ class LedgerBundles :
                     existing[Approvals.at].toInstant().toString(),
                     existing[Approvals.note],
                     created = false,
+                    toolchain = existing[Approvals.toolchain],
                 )
             }
             Approvals.update({
@@ -170,6 +197,7 @@ class LedgerBundles :
                 it[at] = Instant.parse(record.at).atOffset(ZoneOffset.UTC)
                 it[note] = record.note
                 it[status] = "approved"
+                it[toolchain] = record.toolchain
             }
             record
         }

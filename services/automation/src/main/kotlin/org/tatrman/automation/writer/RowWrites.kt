@@ -56,7 +56,7 @@ class RowWrites(
     /**
      * S2.3 `-rev`: an inverse transition restores a recorded prior state, which the authored `transitions:` graph
      * usually does not lead to (placed → held has no held → placed). Its compare-and-set on the recorded `to` still
-     * guards it; the declared graph is not consulted (⚑ Found while doing, 2026-11-12).
+     * guards it; the declared graph is not consulted (D-187).
      */
     private val inverse: Boolean = false,
 ) {

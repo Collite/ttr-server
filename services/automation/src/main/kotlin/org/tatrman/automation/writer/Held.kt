@@ -36,7 +36,7 @@ import java.util.UUID
  * group's rows go through [Apply] — the same per-(storage, entity) door requests, compare-and-set and history as the
  * close — under the run's `run_as` ([DeferredContexts]); a row an earlier attempt recorded is never sent again. Each
  * decision is bounded by its own budget (now + the run's batch budget), not the run's original deadline, which has long
- * passed by the time a person answers (⚑ Found while doing, 2026-11-12). A reject applies nothing: the group's rows
+ * passed by the time a person answers (D-186). A reject applies nothing: the group's rows
  * become `skipped` (`rejected`). Decisions serialize per service; a decided group answers its recorded decision again.
  */
 class Held(
@@ -120,8 +120,7 @@ class Held(
     ) {
         val bundle = served()
         val world = deployment?.let { bundle?.deployments?.get(it) }?.let { bundle?.worldOf(it) }
-        val ops = world?.roles?.firstOrNull { it.name == OPS }
-        if (ops == null || ops.keycloakGroups.none { it in caller.roles || it in caller.groups }) {
+        if (!caller.holdsOps(world)) {
             throw AutomationException(
                 ErrorCode.IDENTITY,
                 "${caller.principal} may not decide held groups or revert this run: it needs role.$OPS",
@@ -187,4 +186,10 @@ class Held(
                 throw AutomationException(ErrorCode.BAD_REQUEST, "the run holds no group ${e.group}")
             }
         }
+}
+
+/** D-138: [world]'s `def role ops`, as a realm role or a Keycloak group of the bearer; false without such a role. */
+fun Caller.holdsOps(world: org.tatrman.automation.bundle.WorldScope?): Boolean {
+    val ops = world?.roles?.firstOrNull { it.name == Held.OPS } ?: return false
+    return ops.keycloakGroups.any { it in roles || it in groups }
 }

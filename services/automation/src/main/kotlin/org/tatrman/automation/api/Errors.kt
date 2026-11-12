@@ -63,11 +63,14 @@ enum class ErrorCode(
     // `preview` with every outcome already recorded.
     CLOSE_DEADLINE_EXCEEDED("close-deadline-exceeded", HttpStatusCode.GatewayTimeout, "S2.2"),
 
-    // S2.3 (Amendment 2026-11-03): approvals (D-89), the held commit's D-99 check and `-rev`.
-    GOLDEN_REQUIRED("golden-required", HttpStatusCode.UnprocessableEntity, "S2.3"),
+    // S2.3 (Amendment 2026-11-03): approvals (D-89; 409 per the Amendment 2026-11-12), the D-99 check and `-rev`.
+    GOLDEN_REQUIRED("golden-required", HttpStatusCode.Conflict, "S2.3"),
     SUPERSEDED("superseded", HttpStatusCode.Conflict, "S2.3"),
     BATCH_NOT_COMMITTED("batch-not-committed", HttpStatusCode.Conflict, "S2.3"),
     BATCH_REVERTED("batch-reverted", HttpStatusCode.Conflict, "S2.3"),
+
+    // D-186: a deferred apply (held commit, revert) of a run that ran as its caller has no credential to resume with.
+    IDENTITY_NOT_RESUMABLE("identity-not-resumable", HttpStatusCode.Conflict, "S2.3"),
     CONNECTOR_UNAVAILABLE("connector-unavailable", HttpStatusCode.ServiceUnavailable, "S3.1"),
 
     // §6 — a deployment whose program needs a face its connector lacks (at /refresh).

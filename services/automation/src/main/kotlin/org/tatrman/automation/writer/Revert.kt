@@ -78,6 +78,7 @@ class Revert(
                         context.routes,
                         rev.statuses.mapNotNull { it.recorded() }.associateBy { it.seq },
                         inverse = true,
+                        revOf = state.batch,
                     ),
                     object : ApplyJournal {
                         override fun begin(seqs: List<Int>) = ledger.beginApply(id, seqs)
