@@ -431,6 +431,17 @@ class ApplyComponentSpec :
                     put("failed", 0)
                     put("skipped", 0)
                     put("unknown", 0)
+                    putJsonObject("history") {
+                        put("applied", 2)
+                        put("failed", 0)
+                        put("unknown", 0)
+                    }
+                }
+            writes["history"] shouldBe
+                buildJsonObject {
+                    put("applied", 2)
+                    put("failed", 0)
+                    put("unknown", 0)
                 }
         }
 
