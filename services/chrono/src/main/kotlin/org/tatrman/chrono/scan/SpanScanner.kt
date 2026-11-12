@@ -12,6 +12,7 @@ import org.tatrman.chrono.recognize.PeriodUnit
 import org.tatrman.chrono.recognize.PeriodWords
 import org.tatrman.chrono.recognize.SpanReading
 import org.tatrman.chrono.recognize.WindowPeriods
+import org.tatrman.chrono.recognize.YearRanges
 import org.tatrman.grounding.lexicon.GroundingSlice
 import org.tatrman.text.Normalization
 import java.time.LocalDate
@@ -106,7 +107,22 @@ class SpanScanner(
                 // No rule reads a window without one anchor word: the rest would only read as nothing.
                 if ((first..last).none { anchored[it] }) continue
                 val w = Window(first, last)
-                recognizer.readSpan(textOf(working, tokens, w), reference, triggers, context)?.let { read[w] = it }
+                val phrase = textOf(working, tokens, w)
+                val rangeBoundary =
+                    YearRanges.isPhrase(Normalization.fold(phrase)) &&
+                        !YearRanges.guarded(working, tokens[first].first, tokens[last].last + 1)
+                val reading =
+                    if (rangeBoundary) {
+                        SpanReading.NoOnePeriod
+                    } else {
+                        recognizer.readSpan(
+                            phrase,
+                            reference,
+                            triggers,
+                            context,
+                        )
+                    }
+                reading?.let { read[w] = it }
             }
         }
         val textOfWindow = { w: Window -> textOf(working, tokens, w) }
@@ -115,7 +131,12 @@ class SpanScanner(
                 val reading = (r as? SpanReading.Read)?.reading ?: return@mapNotNull null
                 val confidence = confidenceOf(reading) ?: return@mapNotNull null
                 when {
-                    !phraseWords(w, words, timeWords) -> null
+                    !phraseWords(
+                        w,
+                        words,
+                        timeWords,
+                    ) &&
+                        !YearRanges.isPhrase(Normalization.fold(textOfWindow(w))) -> null
                     bareCode(working, tokens, w) -> null
                     amount(working, tokens, w, reading) -> null
                     // A year no word places is a span only as the bare number (§3.4): "last year for 2000" is not 2000.
@@ -260,6 +281,8 @@ class SpanScanner(
         textOf: (Window) -> String,
     ): Boolean {
         if (inner == w || !w.contains(inner) || !sameReading(innerReading, reading)) return false
+        // od/from belongs to the authored range, even though the endpoints alone compute the same bounds.
+        if (YearRanges.isPhrase(Normalization.fold(textOf(w)))) return false
         val prefix = w.first until inner.first
         val suffix = inner.last + 1..w.last
         val extra = { i: Int -> i < inner.first || i > inner.last }
@@ -426,7 +449,8 @@ class SpanScanner(
                     (next.isEmpty() || WindowPeriods.timeWordRe.matches(next))
             return monthBeside || ordinal || numericDate || count || shortYear
         }
-        return WindowPeriods.timeWordRe.matches(w) ||
+        return YearRanges.isPhrase(w) ||
+            WindowPeriods.timeWordRe.matches(w) ||
             phraseWord(w) ||
             Months.ofWord(w, withYear = true) != null ||
             MonthWords.find(w).isNotEmpty() ||

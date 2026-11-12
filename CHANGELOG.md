@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **chrono — calendar-year ranges (TS S0.5).** Ground reads `2024-2025`, `2024–2025`, `od 2024 do 2025`
+  and `from 2024 to 2025` as `[2024-01-01, 2026-01-01)`, including both years; Scan returns one complete
+  range with UTF-16 offsets. Supported separators also include em dash, `až/az`, `until` and `through`.
+  Descending, abbreviated and numerically embedded ranges stay unread without partial Scan years; fiscal slash
+  years and quarter ranges gain no reading. No period code: a date column gets datetime bounds; no date role
+  gets `values {start, end}` and blank SQL.
+
 - **metadata — ops review corrections.** Accepted non-fallback filesystem content can confirm CN promotions;
   Git confirmation remains restricted to the configured default branch. Successful no-change refreshes avoid
   repeated CN database observations, and failed observations retry. HTTP `read-timeout-ms` now sets a deadline for the

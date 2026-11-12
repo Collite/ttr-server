@@ -86,7 +86,8 @@ class DateRecognizer {
         val conversation = ConversationPeriods(context, reference, PeriodWords.findAll(n))
         val years = Years(stated = spanYear(n, conversation), leaned = lazy { conversation.leanedYear() })
         val base =
-            numbered(n, NumberedPeriods.lastMonths(n), 1, ::monthCode, reference, years)
+            yearRange(n, reference)
+                ?: numbered(n, NumberedPeriods.lastMonths(n), 1, ::monthCode, reference, years)
                 ?: partOfLarger(n)
                 ?: fiscalYear(n, reference)
                 ?: yearToDate(n, reference, years.stated)
@@ -258,6 +259,29 @@ class DateRecognizer {
         n: String,
         reference: LocalDate,
     ): Read? = if (YearPhrases.unreadIn(n)) NotOne else OtherPeriods.several(n, reference)?.read()
+
+    /** A-TS-5: two supported calendar-year endpoints are one interval, before P5's second-year refusal. */
+    private fun yearRange(
+        n: String,
+        reference: LocalDate,
+    ): Read? {
+        val ranges = YearRanges.findAll(n)
+        if (ranges.isEmpty()) return null
+        val m = ranges.singleOrNull() ?: return NotOne
+        val (from, to) = YearRanges.years(m) ?: return NotOne
+        if (!YearRanges.guarded(n, m.range.first, m.range.last + 1) || bounded(n, m.range)) return NotOne
+        // No quarter/month/fiscal/relative reading may borrow the endpoints as its year or hide beside them.
+        val rest = n.replaceRange(m.range, " ".repeat(m.value.length))
+        if (OtherPeriods.outside(rest, m.range, reference) != null ||
+            NamedYear.bareYears(rest).isNotEmpty() ||
+            YearPhrases.speaksOfYear(rest, m.range)
+        ) {
+            return NotOne
+        }
+        return Hit(
+            ChronoRecognition(LocalDate.of(from, 1, 1), LocalDate.of(to + 1, 1, 1), ChronoKind.CALENDAR_YEAR, 0.9),
+        )
+    }
 
     // ----- fiscal year: "fiscal year 2026" / "fiskalni rok 2026" -----
 

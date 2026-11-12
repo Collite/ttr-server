@@ -83,5 +83,12 @@
   {"round": 5, "text": "the previous quarter", "reference": "2026-11-01", "prior": ["Q2 revenue in previous years"], "spans": [{"text": "previous quarter", "reading": "2026Q1"}]},
   {"round": 5, "text": "the previous quarter", "reference": "2026-11-01", "prior": ["next Q2 plan"], "spans": [{"text": "previous quarter", "reading": "2026Q1"}]},
   {"round": 5, "text": "předchozí čtvrtletí", "reference": "2026-11-01", "prior": ["2. čtvrtletí o rok dříve"], "spans": [{"text": "předchozí čtvrtletí", "reading": "2026Q1"}]},
-  {"round": 5, "text": "the previous quarter", "reference": "2026-11-01", "prior": ["Q2 revenue since 2020"], "spans": [{"text": "previous quarter", "reading": "2020Q1"}]}
+  {"round": 5, "text": "the previous quarter", "reference": "2026-11-01", "prior": ["Q2 revenue since 2020"], "spans": [{"text": "previous quarter", "reading": "2020Q1"}]},
+  {"round": 244, "text": "tržby 2024-2025", "reference": "2026-11-01", "prior": [], "spans": [{"text": "2024-2025", "reading": "2024-01-01/2026-01-01"}]},
+  {"round": 244, "text": "sales 2024–2025 by region", "reference": "2026-11-01", "prior": [], "spans": [{"text": "2024–2025", "reading": "2024-01-01/2026-01-01"}]},
+  {"round": 244, "text": "Tržby od 2024 do 2025 pro Brno", "reference": "2026-11-01", "prior": [], "spans": [{"text": "od 2024 do 2025", "reading": "2024-01-01/2026-01-01"}]},
+  {"round": 244, "text": "📈 sales from 2024 to 2025 by region", "reference": "2026-11-01", "prior": [], "spans": [{"text": "from 2024 to 2025", "reading": "2024-01-01/2026-01-01"}]},
+  {"round": 244, "text": "tržby 2025-2024", "reference": "2026-11-01", "prior": [], "spans": []},
+  {"round": 244, "text": "tržby 2024-25", "reference": "2026-11-01", "prior": [], "spans": []},
+  {"round": 244, "text": "doklad 120250", "reference": "2026-11-01", "prior": [], "spans": []}
 ]

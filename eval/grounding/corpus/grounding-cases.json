@@ -2329,6 +2329,157 @@
     }
   },
   {
+    "id": "chrono/year-range",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2024-2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "sql_contains": [
+        "t.\"date\" >= {start}",
+        "t.\"date\" < {end}"
+      ]
+    }
+  },
+  {
+    "id": "chrono/year-range-abbreviated",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2024-25",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/year-range-descending",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2025-2024",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/year-range-document-number",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "doklad 120250",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "UNGROUNDABLE"
+    }
+  },
+  {
+    "id": "chrono/year-range-en-dash",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2024–2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "sql_contains": [
+        "t.\"date\" >= {start}",
+        "t.\"date\" < {end}"
+      ]
+    }
+  },
+  {
+    "id": "chrono/year-range-from-en",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "from 2024 to 2025",
+    "locale": "en-US",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "sql_contains": [
+        "t.\"date\" >= {start}",
+        "t.\"date\" < {end}"
+      ]
+    }
+  },
+  {
+    "id": "chrono/year-range-no-role",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "2024-2025",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "no-date-role",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "VALUES",
+      "source": "RULES",
+      "interval_start": "2024-01-01"
+    }
+  },
+  {
+    "id": "chrono/year-range-od-cs",
+    "tool": "ground_time",
+    "kind": "DATE",
+    "span": "od 2024 do 2025",
+    "locale": "cs-CZ",
+    "reference_datetime": "2026-11-01T12:00:00+02:00",
+    "timezone": "Europe/Prague",
+    "package": "cnc",
+    "model": "accounting-period",
+    "here": null,
+    "expect": {
+      "status": "OK",
+      "application": "FILTER",
+      "source": "RULES",
+      "interval_start": "2024-01-01",
+      "sql_contains": [
+        "t.\"date\" >= {start}",
+        "t.\"date\" < {end}"
+      ]
+    }
+  },
+  {
     "id": "chrono/yesterday",
     "tool": "ground_time",
     "kind": "DATE",
