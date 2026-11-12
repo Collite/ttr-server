@@ -144,20 +144,21 @@ class StoreClient:
 
     def source_tree(self, source_id: int, text: bool = True) -> SourceTree:
         """`GET /sources/{id}/units`: the tree and the source itself (docwh-store 0.11.14, T8f W5-4; None from an older
-        store). A body of another shape is `StoreError` `store/units-shape`, its field locations only, as R2's reads."""
+        store). A body of another shape is `StoreError` `store/units-shape`, its field locations only, as R2's reads;
+        one whose `sourceId` or `source.id` is another source's is `store/units-mismatch`."""
         r = self._http.get(f"/sources/{source_id}/units", params={"text": str(text).lower()})
         try:
             tree = SourceTree.model_validate(self._ok(r))
         except ValidationError as exc:
             raise _shape(r, "store/units-shape", exc) from None
-        if tree.source_id != source_id:
+        # the tree's id and its source's (review-257 F12): never another source's subject read as this member's
+        ids = [tree.source_id] + ([tree.source.id] if tree.source is not None else [])
+        answered = next((i for i in ids if i != source_id), source_id)
+        if answered != source_id:
             raise StoreError(
-                r.status_code, "store/units-mismatch", f"GET /sources/{source_id}/units answered {tree.source_id}"
+                r.status_code, "store/units-mismatch", f"GET /sources/{source_id}/units answered {answered}"
             )
         return tree
-
-    def units_of_source(self, source_id: int, text: bool = True) -> list[Unit]:
-        return self.source_tree(source_id, text).units
 
     def load_lemmas(self, run_id: str, lemmas: list[dict[str, Any]]) -> None:
         self._ok(self._http.post("/load/lemmas", json={"runId": run_id, "lemmas": lemmas}))
@@ -199,7 +200,6 @@ class StoreClient:
 
 class Warehouse(Protocol):
     def get_unit(self, unit_id: int, notebook_id: str = "") -> Unit: ...
-    def units_of_source(self, source_id: int, text: bool = True) -> list[Unit]: ...
     def source_tree(self, source_id: int, text: bool = True) -> SourceTree: ...
     def list_annotations(self, req: ListAnnotationsRequest) -> ListAnnotationsPage: ...
     def iter_annotations(self, req: ListAnnotationsRequest) -> Iterator[Annotation]: ...

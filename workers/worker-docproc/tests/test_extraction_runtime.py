@@ -27,7 +27,7 @@ from docproc.sdk.models import (
     payload_text,
 )
 from tests.conftest import WORKER
-from tests.extraction import complete_subject, split_source_metadata
+from tests.extraction import complete_subject
 from tests.fakes import PACK, FakeWarehouse, PackManager
 from tests.fakes_lexmatcher import recorded_lexmatcher
 from tests.fakes_nlp import recorded_nlp
@@ -105,7 +105,7 @@ def test_frozen_px_deterministic_flow_reports_incomplete_records(
     runner, manager, wh = extraction
     units = units_of(doc)
     # the source as split loads it: the subject on Source.metadata, which the runner reads with the tree (T8f W5-4)
-    wh.source_metadata[units[0].source_id] = split_source_metadata(doc)
+    wh.register(doc, units[0].source_id)
     wh.units = {u.id: u for u in units}
     wh.annotations = [
         Annotation(id=10 + n, unit_id=u.id, type="Section", payload_json=payload_text({"title": ""}))

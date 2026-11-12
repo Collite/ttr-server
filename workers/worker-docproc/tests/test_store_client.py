@@ -135,7 +135,7 @@ def test_remaining_reads_and_lemma_sink() -> None:
     )
     lemmas = respx.post(f"{BASE}/load/lemmas").mock(return_value=httpx.Response(200, json={}))
     client = StoreClient(BASE)
-    assert [u.id for u in client.units_of_source(7)] == [100, 101] and tree.called
+    assert [u.id for u in client.source_tree(7).units] == [100, 101] and tree.called
     entry = {"unitId": 101, "contentLemmas": "recenze", "lang": "cs", "lemmatizer": "test"}
     client.load_lemmas("r/1", [entry])
     assert json.loads(lemmas.calls.last.request.content) == {"runId": "r/1", "lemmas": [entry]}
@@ -312,6 +312,12 @@ def test_an_older_store_answers_no_source() -> None:
     [
         ({"sourceId": 7, "units": "x"}, "store/units-shape", "units: list_type"),
         ({**units_answer(), "sourceId": 8}, "store/units-mismatch", "GET /sources/7/units answered 8"),
+        # review-257 F12: the tree is 7's, the source in it 8's
+        (
+            {**units_answer(), "source": {**units_answer()["source"], "id": 8}},  # type: ignore[dict-item]
+            "store/units-mismatch",
+            "GET /sources/7/units answered 8",
+        ),
     ],
 )
 def test_a_units_answer_of_another_shape_or_source_is_refused(body: dict[str, object], code: str, message: str) -> None:

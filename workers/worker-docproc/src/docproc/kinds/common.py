@@ -8,12 +8,21 @@ from datetime import UTC, datetime
 from typing import Any
 
 from docproc.runtime.registry import RunContext
-from docproc.sdk.models import Annotation, Span, Unit, UnitKind, payload_text
+from docproc.sdk.models import Annotation, Source, Span, Unit, UnitKind, payload_text
 
 
-def meta(unit: Unit, name: str, default: str = "") -> str:
-    value = unit.metadata.get(name)
+def meta(item: Unit | Source, name: str, default: str = "") -> str:
+    """A single metadata value of a unit or a source; [default] when it is absent or blank."""
+    value = item.metadata.get(name)
     return (value.single if value else None) or default
+
+
+def source_meta(ctx: RunContext, source_id: int, name: str, default: str = "") -> str:
+    """A member's `Source.metadata` value, where split writes documentId, version, recordedAt, feed, subjectId and
+    lang (T8f W5-4; the DOCUMENT unit carries only title and lang). [default] when the store did not answer the source
+    (`RunContext.sources`: a docwh-store before 0.11.14)."""
+    source = ctx.sources.get(source_id)
+    return meta(source, name, default) if source is not None else default
 
 
 def meta_list(unit: Unit, name: str) -> list[str]:

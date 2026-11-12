@@ -16,7 +16,7 @@ from typing import Any
 import yaml
 from jsonschema import ValidationError
 
-from docproc.kinds.common import annotation, utc_instant, verdict
+from docproc.kinds.common import annotation, source_meta, utc_instant, verdict
 from docproc.kinds.rule_dsl import pack_file, related
 from docproc.runtime.predicate import _MISSING, path_value
 from docproc.runtime.registry import KindRefused, KindResult, RunContext, TypeRegistryClient
@@ -33,35 +33,40 @@ def digest(*parts: Any) -> str:
 def subject_scope(ctx: RunContext) -> tuple[str, list[Unit]]:
     """The one subject a subject step's members share, and their DOCUMENT roots. Each member's subject is its
     Source's `metadata.subjectId`: split writes it there, and the DOCUMENT unit carries only `title` and `lang` (T8f
-    W5-4). The runner reads the sources with the members' trees (`RunContext.sources`). Members naming no subject, or
-    more than one, are refused, and so is a unit outside the members' sources. Both are `KindRefused`: deterministic,
-    so the step fails at once, never retried."""
+    W5-4). The runner reads the sources with the members' trees (`RunContext.sources`).
+
+    `consolidate/single-subject-required` refuses the step unless every member names the same subject, with one
+    diagnostic per member at fault (review-257 F11, F13): `consolidate/source-unanswered` when the store answered no
+    source for it (a docwh-store before 0.11.14), `consolidate/no-subject` when its Source names none, and
+    `consolidate/subjects-differ` for each member naming a subject when they name more than one. No members at all is
+    `consolidate/no-members`. A unit outside the members' sources is `consolidate/unit-outside-subject`. All are
+    `KindRefused`: the same on every immediate retry, so the step fails at once."""
     roots = [u for u in ctx.units.values() if u.kind == UnitKind.DOCUMENT]
     members = sorted({r.source_id for r in roots})
+    if not members:
+        raise KindRefused("consolidate/single-subject-required", [{"rule": "consolidate/no-members"}])
     subjects = {sid: source_meta(ctx, sid, "subjectId") for sid in members}
-    named = set(subjects.values())
-    if not roots or len(named) != 1 or not next(iter(named)):
-        rule = "consolidate/subjects-differ" if len(named - {""}) > 1 else "consolidate/no-subject"
+    named = {s for s in subjects.values() if s}
+    if len(named) != 1 or not all(subjects.values()):
         raise KindRefused(
             "consolidate/single-subject-required",
             [
-                {"sourceId": sid, "rule": rule}
-                for sid in members
-                if rule != "consolidate/no-subject" or not subjects[sid]
+                {"sourceId": sid, "rule": member_fault(ctx, sid, subject)}
+                for sid, subject in subjects.items()
+                if not subject or len(named) > 1
             ],
         )
     outside = sorted(u.id for u in ctx.units.values() if u.source_id not in subjects)
     if outside:
         raise KindRefused("consolidate/unit-outside-subject", [{"unitId": uid} for uid in outside])
-    return next(iter(named)), roots
+    return named.pop(), roots
 
 
-def source_meta(ctx: RunContext, source_id: int, name: str) -> str:
-    """A member's `Source.metadata` value (split's documentId, version, recordedAt, feed, subjectId, lang); "" when the
-    store did not answer the source."""
-    source = ctx.sources.get(source_id)
-    value = source.metadata.get(name) if source is not None else None
-    return (value.single if value else None) or ""
+def member_fault(ctx: RunContext, source_id: int, subject: str) -> str:
+    """Why a member keeps its subject step from one subject (see `subject_scope`)."""
+    if source_id not in ctx.sources:
+        return "consolidate/source-unanswered"
+    return "consolidate/subjects-differ" if subject else "consolidate/no-subject"
 
 
 def record_decision(record: Annotation, decisions: list[Annotation], subject: str) -> dict[str, Any]:

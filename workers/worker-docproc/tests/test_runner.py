@@ -877,6 +877,48 @@ def test_record_etl_refusal_fails_without_loading(runtime: tuple[ProcessorRunner
             conn.execute("DELETE FROM review")
 
 
+def test_a_subject_step_against_a_store_without_sources_fails_permanently(
+    runtime: tuple[ProcessorRunner, WorkItem], world_db: str
+) -> None:
+    """review-257 F11: a docwh-store before 0.11.14 answers a member's units without its `source`. The runner then has
+    no subject for the member, and the step fails at once, `permanent`, saying the store did not answer the source —
+    a version skew for the operator (README: docwh-store < 0.11.14), not data that names no subject."""
+    import yaml
+
+    from docproc.sdk.models import InputSelector, RunVisibility
+    from tests.kinds.test_record_etl import prepared_etl
+    from tests.pack import context
+
+    runner, item = runtime
+    etl, ctx, wh = prepared_etl(world_db)
+    original = runner.manager.processor(item.family, item.version_hash)
+    manifest = {**context("review-001.en.json", "records-review").manifest, "family": item.family}
+    processor = original.model_copy(update={"kind": "record-etl", "manifest_yaml": yaml.safe_dump(manifest)})
+    assert isinstance(runner.manager, PackManager)
+    runner.manager.processors = {(item.family, item.version_hash): processor}
+    runner.warehouse = wh
+    runner.kinds.register("record-etl", etl)
+    [member] = {wh.units[uid].source_id for uid in ctx.item.unit_ids}
+    wh.unanswered.add(member)
+    item = item.model_copy(
+        update={
+            "kind": "record-etl",
+            "visibility": RunVisibility.ACTIVE,
+            "unit_ids": ctx.item.unit_ids,
+            "consume": InputSelector(types=["Record.review"], visibility="active"),
+        }
+    )
+    result = runner.process(enqueue(runner, item))
+    assert result is not None
+    assert result.status == CompletionStatus.FAILED
+    assert result.error == "consolidate/single-subject-required: 1 records"
+    assert result.permanent and [c.permanent for c in completions(runner, item)] == [True]
+    assert wh.loads == 0
+    assert json.loads(section(runner, item, "errors")["diagnosticsJson"]) == [
+        {"sourceId": member, "rule": "consolidate/source-unanswered"}
+    ]
+
+
 def test_unknown_plan_registry_is_permanent(
     runtime: tuple[ProcessorRunner, WorkItem], monkeypatch: pytest.MonkeyPatch
 ) -> None:

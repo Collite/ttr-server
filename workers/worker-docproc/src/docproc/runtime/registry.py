@@ -45,7 +45,8 @@ class Kind(Protocol):
 
 
 class KindRefused(ValueError):
-    """A kind refused all writes; diagnostics contain only annotation ids and rule codes."""
+    """A kind refused all writes; diagnostics contain only ids (annotation, source, unit) and rule codes. The runner
+    posts it FAILED and `permanent` (T8f W5-4): deterministic, so the planner does not retry it."""
 
     def __init__(self, code: str, diagnostics: list[dict[str, Any]]) -> None:
         super().__init__(f"{code}: {len(diagnostics)} records")

@@ -29,10 +29,13 @@ answers nothing, and the links are `lexicon` (S3.3).
 
 A subject step (`consolidate`, `record-etl`; 0.11.4, T8f W5-4) takes each member's subject from its Source,
 `Source.metadata.subjectId`, where split writes it; the DOCUMENT unit carries only `title` and `lang`. The runner reads
-each member's source with its tree from `GET /sources/{id}/units` (docwh-store ≥ 0.11.14 answers the source). Members
-naming no subject, or more than one, fail the run `consolidate/single-subject-required`, and so does a store older than
-0.11.14, which answers no source. A kind's `KindRefused` is a permanent FAILED (`Completion.permanent`): docwh-pipeline ≥
-0.11.15 fails the step at once instead of spending `budget.retries` on a deterministic error.
+each member's source with its tree from `GET /sources/{id}/units` (docwh-store ≥ 0.11.14 answers the source). Unless
+every member names the same subject, the run fails `consolidate/single-subject-required`, with one diagnostic per member
+at fault: `consolidate/source-unanswered` (the store answered no source: **docwh-store < 0.11.14**, roll the store
+first), `consolidate/no-subject` (its Source names none), `consolidate/subjects-differ` (members name more than one), or
+`consolidate/no-members`. A kind's `KindRefused` is a permanent FAILED (`Completion.permanent`): docwh-pipeline ≥
+0.11.15 fails the step at once instead of spending `budget.retries` on a deterministic error. `diff` takes a source's
+`recordedAt` from its Source too, when the store does not list it.
 
 Kinds run synchronously on the main thread on Linux/macOS. A POSIX interval timer
 interrupts a timed-out kind; no executor thread continues writing afterward.

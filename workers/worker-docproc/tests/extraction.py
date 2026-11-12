@@ -9,8 +9,8 @@ from typing import Any
 
 from docproc.kinds.common import annotation
 from docproc.runtime.registry import RunContext, TypeRegistryClient
-from docproc.sdk.models import MetadataValue, Source, UnitKind
-from tests.fakes import PACK, FakeWarehouse, PackManager
+from docproc.sdk.models import Source, UnitKind
+from tests.fakes import PACK, FakeWarehouse, PackManager, split_source_metadata
 from tests.pack import bundle_of, context, units_of
 
 
@@ -20,20 +20,10 @@ def registry(manager: PackManager | None = None) -> TypeRegistryClient:
     return client
 
 
-def split_source_metadata(doc: str) -> dict[str, MetadataValue]:
-    """`Source.metadata` as split writes it for the document's registration (docwh-pipeline `SplitKind`): documentId,
-    version, recordedAt, feed, subjectId, lang. The subject lives here, never on the DOCUMENT unit (T8f W5-4)."""
-    document = json.loads((PACK / "registrations" / (doc.rsplit(".", 1)[0] + ".json")).read_text())["document"]
-    keys = ("documentId", "version", "recordedAt", "feed", "subjectId", "lang")
-    return {k: MetadataValue(single=document[k]) for k in keys if document.get(k)}
-
-
 def complete_subject(doc: str = "review-001.en.json") -> tuple[RunContext, FakeWarehouse]:
     units = units_of(doc)
-    source = split_source_metadata(doc)
-    subject = source["subjectId"].single
-    wh = FakeWarehouse(units)
-    wh.source_metadata[units[0].source_id] = source
+    wh = FakeWarehouse(units).register(doc, units[0].source_id)
+    subject = split_source_metadata(doc)["subjectId"].single
     facts = bundle_of(doc, units)
     for n, fact in enumerate(facts):
         fact.id = 200 + n

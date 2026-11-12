@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from docproc.kinds.common import meta
 from docproc.runtime.validators import span_within_unit
 from docproc.sdk.models import (
     Annotation,
@@ -57,12 +58,25 @@ def concept_page(page_id: int, qname: str, title: str = "Item") -> dict[str, Any
     return page
 
 
+def split_source_metadata(doc: str) -> dict[str, MetadataValue]:
+    """`Source.metadata` as split writes it for the document's registration (docwh-pipeline `SplitKind`): documentId,
+    version, recordedAt, feed, subjectId, lang. These live on the Source, never on the DOCUMENT unit, which carries
+    only title and lang (T8f W5-4, review-257 F15)."""
+    document = json.loads((PACK / "registrations" / (doc.rsplit(".", 1)[0] + ".json")).read_text())["document"]
+    keys = ("documentId", "version", "recordedAt", "feed", "subjectId", "lang")
+    return {k: MetadataValue(single=document[k]) for k in keys if document.get(k)}
+
+
 class FakeWarehouse:
     """The store as the kinds see it. The retrieval reads answer the routes' own shapes (✅W5-2-C): `/findSimilar`
     refuses a blank mart or query before the wire, as `StoreClient.find_similar` does (`ValueError
     store/find-similar-blank`, review-244 F5/N2), and answers `ContextResult` built from [similar] (page hits, see
-    `page_hit`); `GET /pages/{id}` answers [pages] (see `concept_page`), 404 outside them; `GET /sources` lists one
-    source per source id of [units], in mart [mart], unless a test sets [sources]."""
+    `page_hit`); `GET /pages/{id}` answers [pages] (see `concept_page`), 404 outside them.
+
+    One source truth (review-257 F15): `GET /sources` and `GET /sources/{id}/units` both answer each source id of
+    [units] as `Source(id, metadata=source_metadata[id], notebookId=mart)`. [register] fills a source's metadata as
+    split writes it for a pack document; a test that needs another listing sets [sources], and one modelling a store
+    before 0.11.14 puts the source id in [unanswered]."""
 
     def __init__(self, units: list[Unit], mart: str = "hartland-public") -> None:
         self.units = {u.id: u for u in units}
@@ -77,6 +91,8 @@ class FakeWarehouse:
         self.sources: list[dict[str, Any]] | None = None  # None = one source per source id of the units
         # `GET /sources/{id}/units`'s `source` (docwh-store 0.11.14): its metadata as split writes it, by source id
         self.source_metadata: dict[int, dict[str, MetadataValue]] = {}
+        # source ids whose units answer carries no `source`: a docwh-store before 0.11.14 (review-257 F11)
+        self.unanswered: set[int] = set()
         self.loads = 0
         self.next_id = 1000
         self.visibility: dict[str, Any] = {}
@@ -85,15 +101,21 @@ class FakeWarehouse:
     def get_unit(self, unit_id: int, notebook_id: str = "") -> Unit:
         return self.units[unit_id].model_copy(deep=True)
 
-    def units_of_source(self, source_id: int, text: bool = True) -> list[Unit]:
-        out = [u for u in self.units.values() if u.source_id == source_id]
-        return sorted(out, key=lambda u: (u.parent_id is not None, u.idx))
+    def register(self, doc: str, source_id: int = 100) -> FakeWarehouse:
+        """Source [source_id] holds pack document [doc] as split loaded it: its Source's metadata, split's keys."""
+        self.source_metadata[source_id] = split_source_metadata(doc)
+        return self
+
+    def _source(self, source_id: int) -> Source:
+        return Source(id=source_id, metadata=self.source_metadata.get(source_id, {}), notebook_id=self.mart)
 
     def source_tree(self, source_id: int, text: bool = True) -> SourceTree:
-        """The tree with its source, as unitTree.json's response has it: the source's metadata from [source_metadata]
-        (split's keys: documentId, version, recordedAt, feed, subjectId, lang), its mart [mart]."""
-        source = Source(id=source_id, metadata=self.source_metadata.get(source_id, {}), notebook_id=self.mart)
-        return SourceTree(source_id=source_id, units=self.units_of_source(source_id, text), source=source)
+        """The tree with its source, as unitTree.json's response has it (no source for an [unanswered] id)."""
+        units = sorted(
+            (u for u in self.units.values() if u.source_id == source_id), key=lambda u: (u.parent_id is not None, u.idx)
+        )
+        source = None if source_id in self.unanswered else self._source(source_id)
+        return SourceTree(source_id=source_id, units=units, source=source)
 
     def iter_annotations(self, req: ListAnnotationsRequest) -> Iterator[Annotation]:
         for a in self.annotations:
@@ -152,9 +174,9 @@ class FakeWarehouse:
         self.source_reads += 1
         if self.sources is not None:
             return list(self.sources)
-        ids = sorted({u.source_id for u in self.units.values()})
-        meta = {"documentId": MetadataValue(single=document_id)}
-        return [{"id": i, **Source(metadata=meta, notebook_id=self.mart).dump()} for i in ids]
+        sources = [self._source(i) for i in sorted({u.source_id for u in self.units.values()})]
+        # as the store's documentId filter; a source no test registered names no document and is listed
+        return [s.dump() for s in sources if meta(s, "documentId") in ("", document_id)]
 
 
 class PackManager:

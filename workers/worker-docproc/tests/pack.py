@@ -10,7 +10,7 @@ from typing import Any
 from docproc.runtime.registry import RunContext
 from docproc.sdk.models import Annotation, MetadataValue, Processor, StringList, Unit, UnitKind, WorkItem
 from tests.conftest import CONTRACTS, WORKER
-from tests.fakes import PACK, PackManager
+from tests.fakes import PACK, PackManager, split_source_metadata
 
 DOCS = tuple(
     p.name.removesuffix(".expected.json") for p in sorted((PACK / "golden/mini-gold-v1").glob("*.expected.json"))
@@ -37,13 +37,9 @@ def units_of(doc: str, source_id: int = 100) -> list[Unit]:
         source_id=source_id,
         kind=UnitKind.DOCUMENT,
         content_text="\n\n".join(s["text"] for s in sections),
-        metadata=metadata(
-            title=doc,
-            lang=reg["document"]["lang"],
-            documentId=reg["document"]["documentId"],
-            version=reg["document"]["version"],
-            recordedAt=reg["document"]["recordedAt"],
-        ),
+        # split's DOCUMENT unit (SplitKind): title and lang only. documentId, version, recordedAt, feed and subjectId
+        # are the Source's (`FakeWarehouse.register`, `split_source_metadata`; review-257 F15)
+        metadata=metadata(title=doc, lang=reg["document"]["lang"]),
     )
     out = [root]
     reviews = json.loads((PACK / "documents" / doc).read_text()) if ".json" in doc else []
@@ -92,7 +88,7 @@ def context(
             "kind": p.kind,
             "version_hash": p.version_hash,
             "unit_ids": [u.id for u in units[1:]],
-            "document_id": units[0].metadata["documentId"].single,
+            "document_id": split_source_metadata(doc)["documentId"].single,  # the Source's, never the unit's
             "version": "1",
             "step_id": f"{family}-{doc}",
             "run_id": f"{family}-{doc}/1",
