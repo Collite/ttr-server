@@ -393,13 +393,17 @@ class ContextChunk(DxModel):
     """proto `ContextChunk` as docwh-store's v1 retrieval routes print it (ktor JSON: every field written, `null`s
     included). A page hit has `pageId` and no unit, chunk or span; `lead` is the `RetrievalLead` name. `score` is, on
     `/findSimilar`, the hit's cosine to the query (`1 − distance`, not normalized; docwh-store ≥ 0.11.13), and on
-    `/getContext` the fused rank score, its planes max-normalized (contracts §1.4)."""
+    `/getContext` the fused rank score, its planes max-normalized (contracts §1.4).
+
+    `pageId` and `score` are what link reads, so they are required (`pageId` may be `null`: a chunk hit). A hit whose
+    keys drifted is refused, never read as a chunk at score 0, i.e. "no candidates" (review-244 R2). The other fields
+    stay lenient: nothing reads them."""
 
     part_id: int = 0
     source_id: int = 0
-    page_id: int | None = None
+    page_id: int | None
     text: str = ""
-    score: float = 0.0
+    score: float
     lead: str = ""
     citation: Citation | None = None
     unit_id: int = 0

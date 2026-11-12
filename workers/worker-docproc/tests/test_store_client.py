@@ -201,10 +201,48 @@ def test_the_routes_answer_to_a_missing_key_is_a_bare_400() -> None:
 @pytest.mark.parametrize("body", [{"hits": []}, {"hits": [{"page": {"id": 9001}}]}, {}, {"grounded": False}])
 def test_a_find_similar_answer_without_chunks_is_refused_not_read_as_no_candidates(body: dict[str, object]) -> None:
     """review-244 F3: the old invented `{"hits": …}` (or any answer without `chunks`) is a drifted shape. Read leniently
-    it was `chunks=[]`, a silent "no kNN"; `chunks` is required, so it fails loudly."""
+    it was `chunks=[]`, a silent "no kNN"; `chunks` is required, so it fails loudly, as `store/find-similar-shape`
+    with the field's location only (R2)."""
     respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json=body))
-    with pytest.raises(ValidationError, match="chunks"):
+    with pytest.raises(StoreError) as e:
         StoreClient(BASE).find_similar("hartland-public", "x", ["page"], 5)
+    assert (e.value.status, e.value.code, e.value.message) == (200, "store/find-similar-shape", "chunks: missing")
+    assert "input_value" not in str(e.value)
+
+
+@respx.mock
+def test_a_hit_whose_keys_drifted_is_refused_not_read_as_a_chunk_at_score_0() -> None:
+    """review-244 R2: a hit's `pageId` and `score` are required (`pageId` may be `null`). A renamed one used to decode
+    as `page_id=None, score=0.0`, which link skips as a chunk hit: a silent lexicon-only run."""
+    body = {"chunks": [{"nodeId": 9001, "similarity": 0.9}], "grounded": True}
+    respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).find_similar("hartland-public", "x", ["page"], 5)
+    assert e.value.code == "store/find-similar-shape"
+    assert e.value.message == "chunks.0.pageId: missing; chunks.0.score: missing"
+
+
+@respx.mock
+def test_a_shape_error_carries_no_part_of_the_body() -> None:
+    """review-244 R2: pydantic's own text quotes the input (`input_value=…`, here document text). The shape error
+    names the field and the error type only, so no body reaches `Completion.error`."""
+    hit = {"pageId": 9001, "score": "The Aurora Desk Lamp hums"}
+    respx.post(f"{BASE}/findSimilar").mock(return_value=httpx.Response(200, json={"chunks": [hit]}))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).find_similar("hartland-public", "x", ["page"], 5)
+    assert e.value.message == "chunks.0.score: float_parsing"
+    assert "Aurora" not in str(e.value) and "input_value" not in str(e.value)
+
+
+@respx.mock
+def test_a_page_that_does_not_decode_is_a_page_shape_error() -> None:
+    """review-244 R2: `GET /pages/{id}` answering a drifted page is `store/page-shape`, with locations only."""
+    body = {"id": 9001, "kind": "CONCEPT", "conceptRef": "Item: a product the shop sells"}
+    respx.get(f"{BASE}/pages/9001").mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(StoreError) as e:
+        StoreClient(BASE).page(9001, "hartland-public")
+    assert (e.value.status, e.value.code, e.value.message) == (200, "store/page-shape", "conceptRef: model_type")
+    assert "product" not in str(e.value) and "input_value" not in str(e.value)
 
 
 @respx.mock
