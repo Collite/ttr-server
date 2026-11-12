@@ -52,6 +52,12 @@ class SchemaRejected(StoreError):
     """422 `annotation/schema` — a payload did not validate against its type's JSON Schema."""
 
 
+class PaginationLoop(StoreError):
+    """The store repeated an annotation page token: a loop the client detected itself. It is deterministic, so it is
+    never transient (`runtime/failures.py`), although it keeps its `502 pagination/loop` so logs read as before: every
+    redelivery would loop again and end as "retries exhausted", the cause lost (review-244 R3)."""
+
+
 #: How many failing fields a shape error names.
 _SHAPE_ERRORS = 5
 
@@ -131,7 +137,7 @@ class StoreClient:
             if not page.next_page_token:
                 return
             if page.next_page_token in seen:
-                raise StoreError(502, "pagination/loop", "repeated annotation page token")
+                raise PaginationLoop(502, "pagination/loop", "repeated annotation page token")
             seen.add(page.next_page_token)
             req = req.model_copy(update={"page_token": page.next_page_token})
 

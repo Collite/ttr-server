@@ -494,6 +494,40 @@ def test_permanent_store_error_inside_a_kind_fails_the_attempt(
     assert len(completions(runner, item)) == 1 and runner.bus.fetch(message.queue, 30) == []
 
 
+class AnnotationsRead:
+    """A kind that pages through annotations mid-run, as consolidate, rule and record-etl do, with the real client."""
+
+    def run(self, ctx: RunContext) -> KindResult:
+        from docproc.sdk.models import ListAnnotationsRequest
+        from docproc.sdk.store import StoreClient
+
+        list(StoreClient("http://docwh-store.test").iter_annotations(ListAnnotationsRequest(source_id=7)))
+        return Noop().run(ctx)
+
+
+def test_a_pagination_loop_inside_a_kind_fails_the_first_delivery_with_its_cause(
+    runtime: tuple[ProcessorRunner, WorkItem],
+) -> None:
+    """review-244 R3: the store repeating a page token is a loop the client detects itself. Its `502` is a label, so
+    it is not transient: the first delivery is FAILED with `pagination/loop`, never redelivered to `retries
+    exhausted` with the cause lost."""
+    import httpx
+    import respx
+
+    runner, item = runtime
+    runner.kinds.kinds["classify"] = AnnotationsRead()
+    message = enqueue(runner, item)
+    with respx.mock:
+        looping = respx.get("http://docwh-store.test/annotations").mock(
+            return_value=httpx.Response(200, json={"annotations": [], "nextPageToken": "t1"})
+        )
+        result = runner.process(message)
+    assert looping.call_count == 2 and message.read_ct == 1
+    assert result is not None and result.status == CompletionStatus.FAILED
+    assert result.error == "PaginationLoop: 502 pagination/loop: repeated annotation page token"
+    assert len(completions(runner, item)) == 1 and runner.bus.fetch(message.queue, 30) == []
+
+
 def test_store_refusal_finishes_once(
     runtime: tuple[ProcessorRunner, WorkItem], monkeypatch: pytest.MonkeyPatch
 ) -> None:
