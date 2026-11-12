@@ -16,15 +16,6 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-- **chrono — calendar-year ranges (TS S0.5).** Ground reads `2024-2025`, `2024–2025`, `od 2024 do 2025`
-  and `from 2024 to 2025` as `[2024-01-01, 2026-01-01)`, including both years; Scan returns one complete
-  range with UTF-16 offsets, including `v letech`, `od roku` and `for the years` frames. Supported separators also
-  include em dash, `až/az`, `until` and `through`. Sentence punctuation is allowed; numeric continuations stay guarded.
-  Descending and abbreviated ranges stay unread without partial Scan years; numeric dates, amounts and independent
-  sibling spans retain their readings. Fiscal/season-qualified ranges, fiscal slash years and quarter ranges gain
-  no reading. No period code: a date column gets datetime bounds; no date role
-  gets `values {start, end}` and blank SQL.
-
 - **metadata — ops review corrections.** Accepted non-fallback filesystem content can confirm CN promotions;
   Git confirmation remains restricted to the configured default branch. Successful no-change refreshes avoid
   repeated CN database observations, and failed observations retry. HTTP `read-timeout-ms` now sets a deadline for the
@@ -2011,6 +2002,24 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
+
+## chrono 0.11.32 — 2026-11-12
+
+- **chrono — calendar-year ranges (TS S0.5).** Ground reads `2024-2025`, `2024–2025`, `od 2024 do 2025`
+  and `from 2024 to 2025` as `[2024-01-01, 2026-01-01)`, including both years; Scan returns one complete
+  range with UTF-16 offsets, including `v letech`, `od roku` and `for the years` frames. Supported separators also
+  include em dash, `až/az`, `until` and `through`. Sentence punctuation is allowed; numeric continuations stay guarded.
+  Descending and abbreviated ranges stay unread without partial Scan years; numeric dates, amounts and independent
+  sibling spans retain their readings. Fiscal/season-qualified ranges, fiscal slash years and quarter ranges gain
+  no reading. No period code: a date column gets datetime bounds; no date role
+  gets `values {start, end}` and blank SQL.
+
+- Internal producer cut from reviewed `cc62a65989744f6e5503c56ad47eff1e44c9ac62`
+  (S0.5, [#389](https://github.com/Collite/ttr-server/pull/389), review-248 re-review 1 PASS;
+  merged as `5e061fa4`). The immutable source tag is `chrono/v0.11.32`. Grounding-mcp files
+  did not change in S0.5, so its image remains 0.11.31. No shared library cut or cluster roll.
+  Source, release run, digest and clean-resolution checks are recorded in
+  [PUBLISHING.md](./PUBLISHING.md#ts-s06-internal-year-range-release--chrono-01132-2026-11-12).
 
 ## server-libs 0.11.36 · chrono 0.11.31 · grounding-mcp 0.11.31 — 2026-11-08
 

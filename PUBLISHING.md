@@ -130,8 +130,9 @@ Both images contain `linux/amd64` and `linux/arm64` manifests:
 This cut ships `GroundingService.Scan`, its request/response/span messages, chrono's
 reviewed time recognition and span scanner, and grounding-mcp's `scan_time` tool.
 `Ground` and `GetStatus` keep their existing wire shape. Consumer adoption and cluster
-rolls belong to later TS stages. The TS-P2 copy source is `chrono/v0.11.31` at the
-source SHA above.
+rolls belong to later TS stages. The historical consumer source for this cut is
+`chrono/v0.11.31` at the source SHA above, superseded by `chrono/v0.11.32`
+([release evidence below](#ts-s06-internal-year-range-release--chrono-01132-2026-11-12)).
 
 ### Clean-resolution check
 
@@ -153,3 +154,59 @@ The resolved `server-proto` JAR SHA-256 is
 `6cdb13c3f300e3a19a8fac0eea340e33454e1cfc8620779f953af5e358181652`.
 It brings `org.tatrman:ttr-plan-proto:0.14.1`, inherited from master. Consumer pin
 adoption belongs to the later consumer stages.
+
+## TS S0.6 internal year-range release — chrono 0.11.32, 2026-11-12
+
+The immutable tag `chrono/v0.11.32` points to the exact reviewed S0.5 source
+`cc62a65989744f6e5503c56ad47eff1e44c9ac62` (source tree identical to repair
+`f40233ea`, [#389](https://github.com/Collite/ttr-server/pull/389), review-248
+re-review 1 PASS), reachable from master through merge
+`5e061fa4b7cb8c967411c97e1844577bf32d7e60`. The tag deliberately excludes later
+unrelated implementation changes. Source CI
+[43209232305](https://github.com/Collite/ttr-server/actions/runs/43209232305) is green;
+bp-dsk and the independent reviewer ran chrono 822 / grounding-mcp 17 tests and
+eval 23 checks, all passing. Version 0.11.32 was absent from both remote tags and
+GHCR before this cut.
+
+| Tag | Published artifact | Release CI |
+|---|---|---|
+| `chrono/v0.11.32` | `ghcr.io/collite/chrono:0.11.32` | [43257949667](https://github.com/Collite/ttr-server/actions/runs/43257949667), green on `cc62a659` |
+
+Manifest-list digest:
+`sha256:4bf66802cc0fb49fcb6ded5a08de60b9742dd178d4b046979350d676d338c15b`.
+The list contains `linux/amd64` and `linux/arm64`; the clean pull below verified
+amd64. This release ships calendar-year ranges and the review-248 S1–S6 repairs,
+as described in CHANGELOG's versioned 0.11.32 section.
+
+No `grounding-mcp/v0.11.32` companion is required:
+`git diff grounding-mcp/v0.11.31 chrono/v0.11.32 -- services/grounding-mcp shared/`
+is empty, including MCP tests and shared code, from the 0.11.31 build source
+`8d506b72` to `cc62a659`. S0.5 changed chrono implementation, tests and fixtures;
+eval tooling, tests and fixtures; conformance corpus checksums; and documentation.
+The MCP image remains 0.11.31. There is no shared server-libs publication,
+dependency pin change or cluster roll in S0.6; the earlier S0.4 library evidence and version-resolution
+warning above still apply.
+
+### Clean-resolution and tagged-corpus checks
+
+On `bp-dsk`, a disposable `docker:27-dind` pod, `ttr-server/ts-s06-clean-pull`,
+started with an empty `/var/lib/docker` volume and no registry credentials.
+Commands used explicit `kubectl --context bp-dsk -n ttr-server exec`:
+
+- `test -z "$(docker image ls -aq)"` and
+  `test ! -e /root/.docker/config.json` passed before the pull.
+- `docker pull ghcr.io/collite/chrono:0.11.32` resolved anonymously to the digest
+  above; `docker image inspect` confirmed that digest and `amd64`.
+- `docker manifest inspect ghcr.io/collite/chrono:0.11.32` independently confirmed
+  both platform entries. `docker create` followed by
+  `docker cp released-chrono:/app/classes/org/tatrman/chrono/recognize/YearRanges.class`
+  confirmed the range implementation class is present without starting the service.
+- A `git archive chrono/v0.11.32` of the tagged chrono and eval fixtures was
+  transferred into the pod and checked with Python: Ground 138 rows, planner Scan 109 rows, eval 228
+  cases. All 11 successful year-range Ground rows assert `intervalEnd: 2026-01-01`.
+  Eval SHA-256 is
+  `3f10d9773215b0af0cb52860c45c46a47ee2ad4d438594c705d530560d2d52b9`,
+  matching the source's conformance manifest.
+
+The disposable pod was deleted after verification. No deployed workload changed.
+This verified tag supersedes 0.11.31 as the source for later consumer stages.
