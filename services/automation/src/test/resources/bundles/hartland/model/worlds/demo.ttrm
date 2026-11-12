@@ -9,7 +9,7 @@ def world demo {
     def storage erp_db        { type: postgres, via: erp, hosts: [hartland],
                                 writable: [order.state, order.held_for, return_request_line.state, return_request_line.way] }
     def storage automation_db { type: postgres, via: automation,
-                                writable: [obligation, state_history, "*_verdict", "*_verdict_detail", approvals] }
+                                writable: [obligation, state_history, "*_verdict", "*_verdict_detail", "*_verdict_current", approvals] }
     def storage stage         { type: local_dir, staging: true }
 
     def identity automation_decider { principal: "svc-hartland-automation", credential: TTR_CONN_AUTOMATION_DECIDER }

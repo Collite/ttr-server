@@ -395,6 +395,7 @@ class ApplyPlanner(
                             JsonObject(args),
                             obligationRows ?: (start + 1..rows.size).toList(),
                             render(action.dryRun.byLanguage["en"], args),
+                            dryRun = context.dryRun,
                         )
                 }
             }
@@ -492,27 +493,7 @@ class ApplyPlanner(
                 rows.forEach { selected += it.copy(seq = selected.size + 1, entity = current) }
             }
         }
-        val groups =
-            selected
-                .groupBy { row ->
-                    val owner =
-                        if (row.entity == detail ||
-                            row.entity == current
-                        ) {
-                            requireNotNull(verdict)
-                        } else {
-                            row.entity
-                        }
-                    val storage =
-                        if (owner == verdict) {
-                            source.ledgerStorage
-                        } else if (owner == "er.entity.obligation") {
-                            source.obligationStorage ?: unsupported("obligation storage was not pinned")
-                        } else {
-                            source.storages[owner] ?: unsupported("apply entity storage was not pinned: $owner")
-                        }
-                    storage to owner
-                }.map { (key, rows) -> ApplyGroup(key.first, key.second, rows) }
+        val groups = groups(selected, source)
         return preview.copy(
             rows = selected,
             actions =
@@ -669,6 +650,42 @@ class ApplyPlanner(
 
     companion object {
         private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z_0-9.]*)}")
+
+        /**
+         * Detail/current rows share their verdict entity's group; each group is one door transaction (§4), in
+         * first-`seq` order. S2.2's close regroups the journaled rows with the same pinned [source].
+         */
+        fun groups(
+            rows: List<ApplyRow>,
+            source: PlanSource,
+        ): List<ApplyGroup> {
+            val schema = source.verdict
+            val verdict = schema?.let { name(it.entity) }
+            val detail = schema?.detail?.let(::name)
+            val current = schema?.current?.let(::name)
+            return rows
+                .groupBy { row ->
+                    val owner =
+                        if (row.entity == detail ||
+                            row.entity == current
+                        ) {
+                            requireNotNull(verdict)
+                        } else {
+                            row.entity
+                        }
+                    val storage =
+                        if (owner == verdict) {
+                            source.ledgerStorage
+                        } else if (owner == "er.entity.obligation") {
+                            source.obligationStorage ?: unsupported("obligation storage was not pinned")
+                        } else {
+                            source.storages[owner] ?: unsupported("apply entity storage was not pinned: $owner")
+                        }
+                    storage to owner
+                }.map { (key, rows) -> ApplyGroup(key.first, key.second, rows) }
+        }
+
+        private fun name(name: String) = if (name.startsWith("er.entity.")) name else "er.entity.$name"
 
         private fun unsupported(reason: String): Nothing =
             throw AutomationException(ErrorCode.PREVIEW_UNSUPPORTED, reason)

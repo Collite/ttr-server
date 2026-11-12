@@ -52,7 +52,8 @@ data class OpenResult(
 
 /**
  * Open validates an immutable bundle snapshot before its atomic ledger claim. It does no reads through the door.
- * P1 always records dry-run; async evaluation and protocol/lifecycle are the following P1 stages.
+ * §1.2 `dryRun` is only true-ward: a request or a `dry_run: true` deployment makes the run dry; otherwise it is an
+ * `auto` run whose batch applies at close (S2.2). A replay `asOf` needs `debug` or a dry run.
  * [approvalsOff] is accepted only by the startup config's explicit development gate.
  */
 class Open(
@@ -154,7 +155,18 @@ class Open(
                 }
             stale(current, missing, objects.mapValues { (_, pair) -> snapshot.latestApproved(pair.first, pair.second) })
         }
-        val port = OpenPort.resolve(bundle, recipe, program, request.port)
+        val step =
+            d.process?.let {
+                world.processes
+                    .getValue(it)
+                    .steps
+                    .single { s -> s.program == programName }
+            }
+        val port = OpenPort.resolve(bundle, recipe, program.copy(port = step?.port ?: program.port), request.port)
+        val dry = request.dryRun == true || d.dryRun
+        if (!dry && !d.debug && request.asOf != null && request.asOf != "now") {
+            throw AutomationException(ErrorCode.AS_OF, "a replay asOf needs a debug deployment or a dry run")
+        }
         val asOf = resolveAsOf(program, request.asOf, port.eventAt)
         val bindings = RecipeBindings.resolve(recipe.recipe, asOf, overrides(recipe, program))
         require(bindings.keys.none { it.startsWith("_au_port_") }) { "reserved port binding prefix in recipe" }
@@ -187,6 +199,8 @@ class Open(
                     } else {
                         null
                     },
+                dryRun = dry,
+                protocol = program.protocol,
                 calendar =
                     org.tatrman.automation.apply.PreviewCalendar.plan(
                         bundle,
@@ -232,11 +246,22 @@ class Open(
                 caller = caller.principal,
                 callerSubject = caller.sub,
                 origin = request.origin,
-                dryRun = true,
+                dryRun = dry,
                 governed = true,
                 budgetSync = sync,
                 budgetBatch = batch,
-                idempotencyKey = idempotency(bundle, request, caller, current, asOf, recipeName, programName, port),
+                idempotencyKey =
+                    idempotency(
+                        bundle,
+                        request,
+                        caller,
+                        current,
+                        asOf,
+                        recipeName,
+                        programName,
+                        port,
+                        dry,
+                    ),
                 openingProtocol =
                     buildJsonObject {
                         put("event", "opened")
@@ -260,7 +285,8 @@ class Open(
                         put("asOf", asOf.toString())
                         put("caller", caller.principal)
                         put("runAs", identity.principal)
-                        put("dryRun", true)
+                        put("dryRun", dry)
+                        program.protocol?.let { put("protocol", it) }
                         put("allowRestrictedView", d.allowRestrictedView)
                         put("readCeiling", context.readCeiling)
                         context.calendar?.let { calendar ->
@@ -343,6 +369,7 @@ class Open(
         recipeName: String,
         programName: String,
         port: OpenPort,
+        dry: Boolean,
     ): String {
         if (request.idempotencyKey != null &&
             request.idempotencyKey.isBlank()
@@ -360,9 +387,11 @@ class Open(
                 put("modelFp", bundle.modelFp)
             }
         // The ledger index is global. Namespace caller-supplied keys so another principal cannot claim a handle.
+        // A wet run never replays a dry one. Dry material is unchanged, so existing dry keys keep replaying.
         val material =
             JsonArray(
-                listOf(JsonPrimitive(caller.sub), JsonPrimitive(request.deployment), JsonPrimitive("open-v1"), key),
+                listOf(JsonPrimitive(caller.sub), JsonPrimitive(request.deployment), JsonPrimitive("open-v1"), key) +
+                    if (dry) emptyList() else listOf(JsonPrimitive("auto")),
             ).toString()
         return "open:" +
             MessageDigest

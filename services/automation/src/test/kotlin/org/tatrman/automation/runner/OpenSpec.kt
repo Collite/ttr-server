@@ -4,6 +4,7 @@ package org.tatrman.automation.runner
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import kotlinx.serialization.json.*
 import org.tatrman.automation.api.*
 import org.tatrman.automation.bundle.*
@@ -181,8 +182,35 @@ class OpenSpec :
             recorded!!.fpProgram shouldBe original.programFps.getValue(program)
             recorded!!.caller shouldBe "maya"
             recorded!!.callerSubject shouldBe caller.sub
-            recorded!!.dryRun shouldBe true // P1 has no writer; false in a request cannot make it wet.
+            // S2.2: a wet deployment opened without `dryRun` is an auto run (§1.2: dryRun is only true-ward).
+            recorded!!.dryRun shouldBe false
+            result.context!!.dryRun shouldBe false
             recorded!!.asOf shouldBe now
+        }
+        "dryRun is only true-ward: a request or a dry_run deployment makes the run dry, false never makes it wet" {
+            val runs = mutableListOf<RunOpen>()
+            val claim = { open: RunOpen ->
+                runs += open
+                Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant())
+            }
+            service(claim = claim).open(recipe, request().copy(dryRun = true), caller).context!!.dryRun shouldBe true
+            val b = bundle()
+            val dry =
+                b.copy(
+                    deployments =
+                        b.deployments + (deployment to b.deployments.getValue(deployment).copy(dryRun = true)),
+                )
+            service(dry, claim = claim).open(recipe, request().copy(dryRun = false), caller).context!!.dryRun shouldBe
+                true
+            runs.map { it.dryRun } shouldBe listOf(true, true)
+            // A dry and a wet open of the same request never share an idempotency key.
+            service(claim = claim).open(recipe, request(), caller)
+            runs.last().dryRun shouldBe false
+            runs.last().idempotencyKey shouldNotBe runs.first().idempotencyKey
+            // A replay asOf runs wet only on a debug deployment.
+            refused(
+                ErrorCode.AS_OF,
+            ) { service().open(recipe, request().copy(asOf = "2026-10-01T10:00:00+02:00"), caller) }
         }
         "deployment guard options are pinned at open and recorded in opening policy" {
             val b = bundle()
@@ -454,7 +482,12 @@ class OpenSpec :
                 .value shouldBe now
         }
         "literal replay and now are parsed once; malformed or unsupported as-of refuses" {
-            val result = service().open(recipe, request().copy(asOf = "2026-10-01T10:00:00+02:00"), caller)
+            val result =
+                service().open(
+                    recipe,
+                    request().copy(asOf = "2026-10-01T10:00:00+02:00", dryRun = true),
+                    caller,
+                )
             result.context!!
                 .bindings
                 .getValue("as_of")
@@ -466,7 +499,9 @@ class OpenSpec :
                 .getValue("as_of")
                 .value shouldBe
                 now
-            refused(ErrorCode.AS_OF) { service().open(recipe, request().copy(asOf = "yesterday"), caller) }
+            refused(
+                ErrorCode.AS_OF,
+            ) { service().open(recipe, request().copy(asOf = "yesterday", dryRun = true), caller) }
             refused(ErrorCode.BUNDLE) { service().open(recipe, request().copy(bundle = "preview:x"), caller) }
         }
         "resolved key spellings and event timestamp offsets produce the same derived idempotency key" {
@@ -566,7 +601,7 @@ class OpenSpec :
             val started = now.plusSeconds(8)
             val result =
                 service(claim = { Claim.Claimed(UUID.randomUUID(), startedAt = started) })
-                    .open(recipe, request().copy(asOf = now.minusSeconds(86400).toString()), caller)
+                    .open(recipe, request().copy(asOf = now.minusSeconds(86400).toString(), dryRun = true), caller)
             result.context!!.startedAt shouldBe started
             result.context!!
                 .bindings

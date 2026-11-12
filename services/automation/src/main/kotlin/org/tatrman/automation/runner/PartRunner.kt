@@ -45,6 +45,10 @@ data class RunContext(
     /** Compiler-resolved logical storage for an auxiliary obligation lookup, pinned at Open. */
     val obligationStorage: String? = null,
     val calendar: org.tatrman.automation.apply.CalendarPlan? = null,
+    /** §1.2: only true-ward. A wet run (`auto`) applies its batch at close through the door (S2.2). */
+    val dryRun: Boolean = true,
+    /** The program's `protocol:` (D-80): `on-route` omits the protocol document when no non-`none` route fired. */
+    val protocol: String? = null,
 ) {
     init {
         require(readCeiling > 0 && detailLimit > 0 && !timeout.isNegative && !timeout.isZero)

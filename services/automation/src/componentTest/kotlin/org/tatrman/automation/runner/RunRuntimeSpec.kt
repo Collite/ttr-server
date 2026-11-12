@@ -1188,6 +1188,239 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        // ---- S2.2: the apply through the door, end to end (open → evaluate → close) ----
+
+        fun sqlAuto(text: String) =
+            LedgerTestDb.db.getDataSource().connection.use { c ->
+                c.autoCommit = true
+                c.createStatement().use { it.execute(text) }
+            }
+
+        fun query(text: String): List<List<String?>> =
+            LedgerTestDb.db.getDataSource().connection.use { c ->
+                c.createStatement().use { s ->
+                    s.executeQuery(text).use { rs ->
+                        buildList { while (rs.next()) add((1..rs.metaData.columnCount).map { rs.getString(it) }) }
+                    }
+                }
+            }
+
+        /**
+         * The default H-1 fixture (route `release` → `release`, a transition placed/held → released, with history) plus
+         * the generated verdict catalog entities of the approval fixture's `release_order`, which the writer lowers
+         * against. ERP = erp_runtime (sales_order), automation_pg = wet_runtime.
+         */
+        fun wetFixture(
+            protocol: String? = null,
+            routed: Boolean = true,
+            initial: String = "held",
+        ): Triple<DurableRuntimeFixture, org.tatrman.automation.writer.RowWritesQueryFake, Unit> {
+            val root = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
+            val catalog =
+                BundleLoader(AuthorMap(emptyMap())).load(
+                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+            org.tatrman.automation.writer
+                .Ddl(LedgerTestDb.db.getDataSource(), { listOf("wet_runtime") })
+                .refresh(catalog.copy(recipes = catalog.recipes.filterKeys { it == "release_order" }))
+            val verdicts =
+                (catalog.model.schemas.getValue("er") as ErSchema).entities.filterValues {
+                    it.qname.name.startsWith("release_order_verdict")
+                }
+            sqlAuto(
+                "CREATE SCHEMA IF NOT EXISTS erp_runtime; DROP TABLE IF EXISTS erp_runtime.sales_order; " +
+                    "CREATE TABLE erp_runtime.sales_order " +
+                    "(order_number text PRIMARY KEY, state text NOT NULL, held_for text); " +
+                    "INSERT INTO erp_runtime.sales_order VALUES ('4711', '$initial', 'AR')",
+            )
+            val fake =
+                org.tatrman.automation.writer.RowWritesQueryFake(
+                    LedgerTestDb.db.getDataSource(),
+                    mapOf("w-erp" to "erp_runtime", "w-auto" to "wet_runtime"),
+                    tables = mapOf("order" to "sales_order"),
+                )
+            val program = "release_on_placement"
+            val f =
+                DurableRuntimeFixture(
+                    transformBundle = { b ->
+                        val er = b.model.schemas.getValue("er") as ErSchema
+                        b.copy(
+                            model =
+                                b.model.copy(
+                                    schemas =
+                                        b.model.schemas + ("er" to er.copy(entities = er.entities + verdicts)),
+                                ),
+                            programs =
+                                b.programs + (
+                                    program to
+                                        b.programs
+                                            .getValue(
+                                                program,
+                                            ).copy(protocol = protocol)
+                                ),
+                        )
+                    },
+                    queryTable = { request ->
+                        Table(
+                            listOf(ManifestColumn("order_number", "text"), ManifestColumn("verdict_reason", "text")),
+                            if (routed ||
+                                "candidates" in request.source
+                            ) {
+                                listOf(listOf("4711", "SQL reason"))
+                            } else {
+                                emptyList()
+                            },
+                        )
+                    },
+                    writeRoutes = "demo/erp_db=w-erp,demo/automation_db=w-auto",
+                    writes = fake,
+                )
+            return Triple(f, fake, Unit)
+        }
+
+        fun dropWet() = sqlAuto("DROP SCHEMA IF EXISTS wet_runtime CASCADE; DROP SCHEMA IF EXISTS erp_runtime CASCADE")
+
+        "a committed H-1 run applies through the door; a second run is idempotent; a dry run sends no row_writes" {
+            val (f, fake, _) = wetFixture()
+            val runtime = f.start()
+            try {
+                val wet = f.request.copy(dryRun = null)
+
+                suspend fun run(request: OpenRequest): UUID {
+                    val id =
+                        UUID.fromString(
+                            runtime.sessions
+                                .open("release_order", request, f.caller)
+                                .response.runId,
+                        )
+                    runtime.sessions.evaluate(id, f.caller)
+                    runtime.closer.close(id, f.caller).status shouldBe "closed"
+                    return id
+                }
+                val first = run(wet)
+                val batch = runtime.status.batch(first, f.caller)
+                batch.mode shouldBe "auto"
+                batch.statuses
+                    .filter {
+                        it.status != "applied"
+                    }.map { "${batch.rows[it.seq - 1]} ${it.error}" } shouldBe
+                    emptyList()
+                transaction { Batches.selectAll().where { Batches.run eq first }.single()[Batches.state] } shouldBe
+                    "committed"
+                query("SELECT run, order_number, route FROM wet_runtime.release_order_verdict") shouldBe
+                    listOf(listOf("$first", "4711", "release"))
+                query("SELECT run FROM wet_runtime.release_order_verdict_current") shouldBe listOf(listOf("$first"))
+                // The held order is transitioned, with its history row.
+                query("SELECT state FROM erp_runtime.sales_order") shouldBe listOf(listOf("released"))
+                query("SELECT from_state, to_state, run, by FROM wet_runtime.state_history") shouldBe
+                    listOf(listOf("held", "released", "$first", "maya"))
+                val transition = batch.rows.single { it.op == "transition" }
+                batch.statuses.single { it.seq == transition.seq }.prior shouldBe
+                    buildJsonObject { put("state", "held") }
+                val writes =
+                    runtime.protocol
+                        .read(
+                            first,
+                            f.caller,
+                        ).sections
+                        .getValue("writes")
+                        .last()
+                        .payload.jsonObject
+                writes["state"] shouldBe JsonPrimitive("committed")
+                writes["applied"] shouldBe JsonPrimitive(batch.rows.size)
+                fake.writes.map { it.world } shouldBe listOf("w-auto", "w-erp", "w-auto")
+                fake.writes.forEach { it.context.userId shouldBe "maya" }
+                // A second run: released → released is silent (no history), verdicts accumulate, current moves.
+                f.base.now = f.base.now.plusSeconds(60)
+                val second = run(wet)
+                runtime.status
+                    .batch(second, f.caller)
+                    .statuses
+                    .map { it.status }
+                    .toSet() shouldBe setOf("applied")
+                query("SELECT count(*) FROM wet_runtime.state_history") shouldBe listOf(listOf("1"))
+                query("SELECT count(*) FROM wet_runtime.release_order_verdict") shouldBe listOf(listOf("2"))
+                query("SELECT run FROM wet_runtime.release_order_verdict_current") shouldBe listOf(listOf("$second"))
+                // A dry run plans the same rows and sends zero row_writes requests (R217-L5).
+                val sent = f.rowWrites.get()
+                f.base.now = f.base.now.plusSeconds(60)
+                val dry = run(f.request)
+                runtime.status.batch(dry, f.caller).mode shouldBe "preview"
+                f.rowWrites.get() shouldBe sent
+                query("SELECT count(*) FROM wet_runtime.release_order_verdict") shouldBe listOf(listOf("2"))
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWet()
+            }
+        }
+
+        "an auto close after its executor is gone refuses instead of re-resolving a newer bundle" {
+            val (f, fake, _) = wetFixture()
+            val runtime = f.start()
+            try {
+                val id =
+                    UUID.fromString(
+                        runtime.sessions
+                            .open("release_order", f.request.copy(dryRun = null), f.caller)
+                            .response.runId,
+                    )
+                runtime.sessions.evaluate(id, f.caller)
+                runtime.shutdown()
+                val restarted = f.start()
+                try {
+                    shouldThrow<AutomationException> { restarted.closer.close(id, f.caller) }.code shouldBe
+                        ErrorCode.CLOSE_NOT_READY
+                    fake.writes.size shouldBe 0
+                } finally {
+                    restarted.shutdown()
+                }
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWet()
+            }
+        }
+
+        "protocol: on_route omits the document when every route is none, and keeps it when a route fired" {
+            for (routed in listOf(false, true)) {
+                LedgerTestDb.reset()
+                val (f, _, _) = wetFixture(protocol = "on_route", routed = routed)
+                val runtime = f.start()
+                try {
+                    val id =
+                        UUID.fromString(
+                            runtime.sessions
+                                .open("release_order", f.request, f.caller)
+                                .response.runId,
+                        )
+                    runtime.sessions.evaluate(id, f.caller)
+                    runtime.closer.close(id, f.caller)
+                    val document = runtime.protocol.read(id, f.caller)
+                    if (routed) {
+                        document.sections.filterValues { it.isNotEmpty() }.keys.containsAll(
+                            setOf("automation", "decision", "writes"),
+                        ) shouldBe
+                            true
+                    } else {
+                        document.sections.filterValues { it.isNotEmpty() }.keys shouldBe setOf("automation")
+                        document.sections
+                            .getValue("automation")
+                            .single()
+                            .payload shouldBe
+                            buildJsonObject { put("sealed", true) }
+                    }
+                    runtime.closer.close(id, f.caller).status shouldBe "closed"
+                    transaction { Runs.selectAll().where { Runs.id eq id }.single()[Runs.status] } shouldBe "closed"
+                } finally {
+                    runtime.shutdown()
+                    f.close()
+                    dropWet()
+                }
+            }
+        }
+
         "runtime maintenance collects abandoned orphans and closed previews release only after grace" {
             val f = DurableRuntimeFixture()
             val abandoned = f.ledger.claimRun(RunOpen("orphan", callerSubject = f.caller.sub)).runId
@@ -1437,7 +1670,13 @@ private class DurableRuntimeFixture(
     private val approvalReader: ApprovalReader? = null,
     private val lookupReads: List<String> = listOf("er.entity.obligation"),
     private val queryWarnings: (RunRequest) -> Set<String> = { emptySet() },
+    /** S2.2: AUTOMATION_DOOR_WRITE_ROUTES, and the row_writes seam (the component fake). */
+    writeRoutes: String = "",
+    private val writes: QueryRun? = null,
 ) {
+    /** Every row_writes request that reached the door — a dry run must leave it at zero (R217-L5). */
+    val rowWrites = AtomicInteger()
+
     // Far from the system clock: a queue/session accidentally using wall time would immediately refuse.
     val base = RuntimeClock(Instant.parse("2000-01-01T12:00:00Z"))
     val config =
@@ -1449,6 +1688,7 @@ private class DurableRuntimeFixture(
                     automation.door.queryUrl = "unused"
                     automation.door.metadataUrl = "unused"
                     automation.door.routes = "demo/erp_db=us-erp,demo/automation_db=us-automation"
+                    automation.door.writeRoutes = "$writeRoutes"
                     automation.auth.jwksUrl = "http://unused/certs"
                     automation.auth.issuer = "unused"
                     automation.clock.skew = 90s
@@ -1467,7 +1707,9 @@ private class DurableRuntimeFixture(
     val stagingRoot = Files.createTempDirectory("au-runtime-pg")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val caller = Caller("sub-maya", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "not-stored")
-    val request = OpenRequest("release_native_event", buildJsonObject { put("key", "4711") })
+
+    // The P1/S2.1 runtime specs are previews: S2.2 makes an unflagged open of a wet deployment an auto run (§1.2).
+    val request = OpenRequest("release_native_event", buildJsonObject { put("key", "4711") }, dryRun = true)
     val reads = AtomicInteger()
     private val columns = listOf(ManifestColumn("order_number", "text"), ManifestColumn("verdict_reason", "text"))
     private val source =
@@ -1565,8 +1807,14 @@ private class DurableRuntimeFixture(
                         ),
                     ).build()
 
-            override fun run(request: RunRequest) =
-                flow {
+            override fun run(request: RunRequest): kotlinx.coroutines.flow.Flow<ResultBatch> {
+                if (request.sourceLanguage == org.tatrman.translate.v1.Language.REL_NODE) {
+                    rowWrites.incrementAndGet()
+                    return requireNotNull(
+                        writes,
+                    ) { "a row_writes request reached a door with no write seam" }.run(request)
+                }
+                return flow {
                     request.world shouldBe
                         if ("_au_obligation_entity_" in request.source ||
                             "FROM \"obligation\"" in request.source
@@ -1596,6 +1844,7 @@ private class DurableRuntimeFixture(
                             .build(),
                     )
                 }
+            }
         }
 
     fun start() =

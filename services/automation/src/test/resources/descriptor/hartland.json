@@ -2,7 +2,7 @@
     "served": {
         "bundle": "served:master@0123456789ab",
         "commit": "0123456789abcdef0123456789abcdef01234567",
-        "modelFp": "sha256:7906b5da96c0c5753ae4693b83659d4507ed5d2b4ce842ef53255ad37bcd77d3",
+        "modelFp": "sha256:12667f11a04c2ae40a6d428288b747709c7bb98038b3c4794f6f422b7157765b",
         "refreshedAt": "2026-10-19T06:00:00Z"
     },
     "latest": {

@@ -641,7 +641,8 @@ private class ApplicationRuntimeFixture(
         }
     }
 
-    fun request(key: String) = """{"deployment":"release_native_event","port":{"key":"4711"},"idempotencyKey":"$key"}"""
+    fun request(key: String) =
+        """{"deployment":"release_native_event","port":{"key":"4711"},"dryRun":true,"idempotencyKey":"$key"}"""
 
     suspend fun open(
         api: ApplicationTestBuilder,

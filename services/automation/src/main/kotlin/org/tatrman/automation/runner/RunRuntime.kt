@@ -51,14 +51,20 @@ class RunRuntime(
             .ProtocolRecorder(ledger)
     val sessions: RunSessions
     val status = RunStatusReader(ledger)
-    val closer = RunCloser(ledger) { sessions.release(it) }
+    private val door = QueryDoor(query, config.door.routes.toMap(), tokens, config.door.writeRoutes)
+    val closer =
+        RunCloser(
+            ledger,
+            org.tatrman.automation.writer
+                .Apply(door, clock),
+            { id, caller -> sessions.context(id, caller) },
+        ) { sessions.release(it) }
     val sweeper = StagingSweeper(retention, store) { sessions.release(it) }
     val displayRows = config.budgets.displayRows
     val owner: UUID get() = workers.owner
 
     init {
         require(displayRows > 0 && config.budgets.detailLimit > 0) { "runner row limits must be positive" }
-        val door = QueryDoor(query, config.door.routes.toMap(), tokens)
         val staging = Staging(store, protocol)
         val planner =
             org.tatrman.automation.apply

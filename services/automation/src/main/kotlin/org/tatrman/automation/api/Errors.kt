@@ -58,6 +58,10 @@ enum class ErrorCode(
     // connector is down. `door-refused` keeps the legacy 502.
     DOOR_REFUSED("door-refused", HttpStatusCode.BadGateway, "S1.1"),
     BUDGET("budget", HttpStatusCode.GatewayTimeout, "S1.2"),
+
+    // S2.2 (Amendment 2026-11-11, review-244 B2): a wet close past the run's original deadline; the batch stays
+    // `preview` with every outcome already recorded.
+    CLOSE_DEADLINE_EXCEEDED("close-deadline-exceeded", HttpStatusCode.GatewayTimeout, "S2.2"),
     CONNECTOR_UNAVAILABLE("connector-unavailable", HttpStatusCode.ServiceUnavailable, "S3.1"),
 
     // §6 — a deployment whose program needs a face its connector lacks (at /refresh).
