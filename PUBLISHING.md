@@ -130,8 +130,9 @@ Both images contain `linux/amd64` and `linux/arm64` manifests:
 This cut ships `GroundingService.Scan`, its request/response/span messages, chrono's
 reviewed time recognition and span scanner, and grounding-mcp's `scan_time` tool.
 `Ground` and `GetStatus` keep their existing wire shape. Consumer adoption and cluster
-rolls belong to later TS stages. The TS-P2 copy source is `chrono/v0.11.31` at the
-source SHA above.
+rolls belong to later TS stages. The historical consumer source for this cut is
+`chrono/v0.11.31` at the source SHA above, superseded by `chrono/v0.11.32`
+([release evidence below](#ts-s06-internal-year-range-release--chrono-01132-2026-11-12)).
 
 ### Clean-resolution check
 
@@ -177,11 +178,13 @@ The list contains `linux/amd64` and `linux/arm64`; the clean pull below verified
 amd64. This release ships calendar-year ranges and the review-248 S1–S6 repairs,
 as described in CHANGELOG's versioned 0.11.32 section.
 
-No `grounding-mcp/v0.11.32` companion is required: `git diff 319ef2ee..cc62a659 --
-services/grounding-mcp` is empty (including its tests); S0.5 changed only chrono
-and chrono's shared/eval fixtures and documentation. The MCP image remains
-0.11.31. There is no shared server-libs publication, dependency pin change or
-cluster roll in S0.6; the earlier S0.4 library evidence and version-resolution
+No `grounding-mcp/v0.11.32` companion is required:
+`git diff grounding-mcp/v0.11.31 chrono/v0.11.32 -- services/grounding-mcp shared/`
+is empty, including MCP tests and shared code, from the 0.11.31 build source
+`8d506b72` to `cc62a659`. S0.5 changed chrono implementation, tests and fixtures;
+eval tooling, tests and fixtures; conformance corpus checksums; and documentation.
+The MCP image remains 0.11.31. There is no shared server-libs publication,
+dependency pin change or cluster roll in S0.6; the earlier S0.4 library evidence and version-resolution
 warning above still apply.
 
 ### Clean-resolution and tagged-corpus checks
@@ -198,13 +201,12 @@ Commands used explicit `kubectl --context bp-dsk -n ttr-server exec`:
   both platform entries. `docker create` followed by
   `docker cp released-chrono:/app/classes/org/tatrman/chrono/recognize/YearRanges.class`
   confirmed the range implementation class is present without starting the service.
-- A `git archive chrono/v0.11.32` of the shared fixtures was transferred into the
-  pod and checked with Python: Ground 138 rows, planner Scan 109 rows, eval 228
+- A `git archive chrono/v0.11.32` of the tagged chrono and eval fixtures was
+  transferred into the pod and checked with Python: Ground 138 rows, planner Scan 109 rows, eval 228
   cases. All 11 successful year-range Ground rows assert `intervalEnd: 2026-01-01`.
   Eval SHA-256 is
   `3f10d9773215b0af0cb52860c45c46a47ee2ad4d438594c705d530560d2d52b9`,
   matching the source's conformance manifest.
 
 The disposable pod was deleted after verification. No deployed workload changed.
-This verified tag supersedes 0.11.31 as the next TS-P2 copy source; ai-platform#340's
-single Y1b/Y2 repair remains held until S0.6's independent PASS and merge.
+This verified tag supersedes 0.11.31 as the source for later consumer stages.

@@ -2018,6 +2018,8 @@ artifact.
   (S0.5, [#389](https://github.com/Collite/ttr-server/pull/389), review-248 re-review 1 PASS;
   merged as `5e061fa4`). The immutable source tag is `chrono/v0.11.32`. Grounding-mcp files
   did not change in S0.5, so its image remains 0.11.31. No shared library cut or cluster roll.
+  Source, release run, digest and clean-resolution checks are recorded in
+  [PUBLISHING.md](./PUBLISHING.md#ts-s06-internal-year-range-release--chrono-01132-2026-11-12).
 
 ## server-libs 0.11.36 · chrono 0.11.31 · grounding-mcp 0.11.31 — 2026-11-08
 
