@@ -136,7 +136,7 @@ class RowWritesSpec :
             val recorded = mutableListOf<RowOutcome>()
             val source =
                 PlanSource(
-                    ManifestVerdictSchema("release_order_verdict"),
+                    ManifestVerdictSchema("missing_verdict"),
                     emptyMap(),
                     "automation_db",
                     writable =
@@ -151,7 +151,7 @@ class RowWritesSpec :
                     RunIdentity(Caller("s", "svc", emptySet(), TokenKind.SERVICE, "t"), RunAsRef.Caller, "svc", null),
                     "fp",
                     Clock.systemUTC().instant().plusSeconds(5),
-                    listOf(ApplyRow(1, "er.entity.release_order_verdict", "insert", key, row = key)),
+                    listOf(ApplyRow(1, "er.entity.missing_verdict", "insert", key, row = key)),
                     emptyList(),
                     source,
                     entities,

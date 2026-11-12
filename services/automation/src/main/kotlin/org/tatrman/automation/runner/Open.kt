@@ -155,14 +155,7 @@ class Open(
                 }
             stale(current, missing, objects.mapValues { (_, pair) -> snapshot.latestApproved(pair.first, pair.second) })
         }
-        val step =
-            d.process?.let {
-                world.processes
-                    .getValue(it)
-                    .steps
-                    .single { s -> s.program == programName }
-            }
-        val port = OpenPort.resolve(bundle, recipe, program.copy(port = step?.port ?: program.port), request.port)
+        val port = OpenPort.resolve(bundle, recipe, program, request.port)
         val dry = request.dryRun == true || d.dryRun
         if (!dry && !d.debug && request.asOf != null && request.asOf != "now") {
             throw AutomationException(ErrorCode.AS_OF, "a replay asOf needs a debug deployment or a dry run")
