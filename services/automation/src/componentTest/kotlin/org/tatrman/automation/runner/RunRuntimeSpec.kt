@@ -225,7 +225,6 @@ class RunRuntimeComponentSpec :
                             f.caller,
                         )
                     opened.httpStatus shouldBe 201
-                    opened.approvalsBypassed shouldBe false
                     val id = UUID.fromString(opened.response.runId)
                     val result = runtime.sessions.evaluate(id, f.caller)
                     val actions = runtime.status.read(id, f.caller).actions
@@ -399,7 +398,6 @@ class RunRuntimeComponentSpec :
                 try {
                     val opened = runtime.sessions.open("release_order", f.request, f.caller)
                     opened.httpStatus shouldBe 201
-                    opened.approvalsBypassed shouldBe false
                     transaction { Runs.selectAll().count() } shouldBe 1L
                     val id = UUID.fromString(opened.response.runId)
                     runtime.sessions.evaluate(id, f.caller)
@@ -719,7 +717,6 @@ class RunRuntimeComponentSpec :
             val runtime = f.start()
             try {
                 val opened = runtime.sessions.open("release_order", f.request, f.caller)
-                opened.approvalsBypassed shouldBe false
                 val id = UUID.fromString(opened.response.runId)
                 // The ERP key remains selected; missing fulfilment targets still refuse as before.
                 shouldThrow<AutomationException> {
@@ -770,7 +767,6 @@ class RunRuntimeComponentSpec :
             try {
                 val opened = runtime.sessions.open("release_order", f.request, f.caller)
                 opened.httpStatus shouldBe 201
-                opened.approvalsBypassed shouldBe false
                 val id = UUID.fromString(opened.response.runId)
                 val result = runtime.sessions.evaluate(id, f.caller)
                 val batch = runtime.status.batch(id, f.caller)
@@ -912,7 +908,6 @@ class RunRuntimeComponentSpec :
             try {
                 val opened = runtime.sessions.open("release_order", f.request, f.caller)
                 opened.httpStatus shouldBe 201
-                opened.approvalsBypassed shouldBe false
                 val id = UUID.fromString(opened.response.runId)
                 val startedAt = opened.context!!.startedAt
                 f.base.now = f.base.now.plusSeconds(1)
@@ -1018,7 +1013,6 @@ class RunRuntimeComponentSpec :
             try {
                 val opened = runtime.sessions.open("release_order", request, f.caller)
                 opened.httpStatus shouldBe 201
-                opened.approvalsBypassed shouldBe false
                 val id = UUID.fromString(opened.response.runId)
                 runtime.sessions.evaluate(id, f.caller)
                 val batch = runtime.status.batch(id, f.caller)
@@ -1104,7 +1098,7 @@ class RunRuntimeComponentSpec :
                     loc,
                 )
             val f =
-                DurableRuntimeFixture(development = true, transformBundle = { bundle ->
+                DurableRuntimeFixture(transformBundle = { bundle ->
                     val er = bundle.model.schemas.getValue("er") as ErSchema
                     val order = er.entities.values.single { it.qname.name == "order" }
                     val key = order.attributes.single { it.isKey }
@@ -1154,6 +1148,22 @@ class RunRuntimeComponentSpec :
                                 ),
                         ).withWriterStorage("order")
                         .withActions(bundle.actions + ("release" to action))
+                        // S2.3 removed the development bypass: stand in for evidence that covers these defaults.
+                        .let { b ->
+                            b.copy(
+                                recipes =
+                                    b.recipes.mapValues { (_, r) ->
+                                        r.copy(
+                                            coverage =
+                                                r.coverage.copy(
+                                                    refusal = null,
+                                                    coverage = null,
+                                                    defaultsWithoutEvidence = false,
+                                                ),
+                                        )
+                                    },
+                            )
+                        }
                 })
             f.base.now = Instant.parse("2000-01-01T12:00:00.123456Z")
             val runtime = f.start()
@@ -1664,7 +1674,6 @@ private class RuntimeClock(
 private class DurableRuntimeFixture(
     sync: String = "60s",
     private val beforeRead: suspend () -> Unit = {},
-    development: Boolean = false,
     transformBundle: (Bundle) -> Bundle = { it },
     private val queryTable: ((RunRequest) -> Table)? = null,
     private val approvalReader: ApprovalReader? = null,
@@ -1695,8 +1704,6 @@ private class DurableRuntimeFixture(
                     automation.budgets.syncDefault = $sync
                     automation.budgets.batchDefault = 10s
                     automation.runner.workers = 1
-                    automation.development = $development
-                    automation.approvals = ${if (development) "off" else "required"}
                     """.trimIndent(),
                 ).withFallback(ConfigFactory.parseResources("application.conf"))
                 .resolve(),

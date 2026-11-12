@@ -226,11 +226,12 @@ class AutomationConfigSpec :
             }
         }
 
-        "approvals are required by default; off needs an explicit development gate and typos refuse" {
-            load(required).approvalsOff shouldBe false
-            shouldThrow<IllegalArgumentException> { load(required + "\nautomation.approvals = off") }
-                .message shouldContain "development"
-            load(required + "\nautomation.approvals = off\nautomation.development = true").approvalsOff shouldBe true
-            shouldThrow<IllegalArgumentException> { load(required + "\nautomation.approvals = of") }
+        "S2.3: the approvals bypass is gone (read nowhere); dev routes are off unless AUTOMATION_DEV_ROUTES" {
+            val plain = load(required)
+            plain.devRoutes shouldBe false
+            plain.toString() shouldNotContain "approvals"
+            // A leftover `approvals = off` is not read: the loaded config is the same as without it.
+            load(required + "\nautomation.approvals = off\nautomation.development = true") shouldBe plain
+            load(required + "\nautomation.devRoutes = true").devRoutes shouldBe true
         }
     })

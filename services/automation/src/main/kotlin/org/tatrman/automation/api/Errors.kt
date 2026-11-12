@@ -62,6 +62,12 @@ enum class ErrorCode(
     // S2.2 (Amendment 2026-11-11, review-244 B2): a wet close past the run's original deadline; the batch stays
     // `preview` with every outcome already recorded.
     CLOSE_DEADLINE_EXCEEDED("close-deadline-exceeded", HttpStatusCode.GatewayTimeout, "S2.2"),
+
+    // S2.3 (Amendment 2026-11-03): approvals (D-89), the held commit's D-99 check and `-rev`.
+    GOLDEN_REQUIRED("golden-required", HttpStatusCode.UnprocessableEntity, "S2.3"),
+    SUPERSEDED("superseded", HttpStatusCode.Conflict, "S2.3"),
+    BATCH_NOT_COMMITTED("batch-not-committed", HttpStatusCode.Conflict, "S2.3"),
+    BATCH_REVERTED("batch-reverted", HttpStatusCode.Conflict, "S2.3"),
     CONNECTOR_UNAVAILABLE("connector-unavailable", HttpStatusCode.ServiceUnavailable, "S3.1"),
 
     // §6 — a deployment whose program needs a face its connector lacks (at /refresh).

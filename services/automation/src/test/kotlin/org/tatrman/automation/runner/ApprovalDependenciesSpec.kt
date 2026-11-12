@@ -182,7 +182,6 @@ class ApprovalDependenciesSpec :
                     Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.LOADED_AT)
                 }, request)
             result.httpStatus shouldBe 201
-            result.approvalsBypassed shouldBe false
             result.context!!
                 .previewMetadata!!
                 .actions
@@ -379,12 +378,12 @@ class ApprovalDependenciesSpec :
             }
         }
 
-        "unprepared recipes refuse before claim even in development mode" {
+        "unprepared recipes refuse before claim" {
             val b = load(fixture())
             val current = b.recipes.getValue(recipeName)
             val unprepared = LoadedRecipe(current.name, current.manifest, current.recipe, current.statements)
             val pending = b.copy(recipes = b.recipes + (recipeName to unprepared))
-            for (development in listOf(false, true)) {
+            run {
                 val e =
                     shouldThrow<AutomationException> {
                         Open(
@@ -397,7 +396,6 @@ class ApprovalDependenciesSpec :
                             Duration.ofSeconds(60),
                             Duration.ofMinutes(30),
                             BundleFixture.clock,
-                            approvalsOff = development,
                         ).open(recipeName, OpenRequest(deployment, buildJsonObject { put("key", "4711") }), caller)
                     }
                 e.code shouldBe ErrorCode.RECIPE_STALE

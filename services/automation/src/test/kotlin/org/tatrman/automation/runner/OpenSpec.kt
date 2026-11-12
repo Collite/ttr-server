@@ -59,7 +59,6 @@ class OpenSpec :
             approved: ApprovalReader = ApprovalReader { _, _, _ -> true },
             claim: (RunOpen) -> Claim = { Claim.Claimed(UUID.randomUUID(), startedAt = BundleFixture.clock.instant()) },
             paused: Boolean = false,
-            devOff: Boolean = false,
             detailLimit: Int = 200,
         ) = Open(
             {
@@ -77,11 +76,10 @@ class OpenSpec :
             ),
             Duration.ofMinutes(30),
             BundleFixture.clock,
-            devOff,
             detailLimit,
         )
 
-        "governed opens refuse missing writer-default evidence while development retains its explicit bypass" {
+        "opens refuse missing writer-default evidence; S2.3 removed the development bypass" {
             for (value in listOf<AutoValue>(
                 AutoValue.Obj(emptyList(), SourceLocation.UNKNOWN),
                 AutoValue.Null(SourceLocation.UNKNOWN),
@@ -123,9 +121,6 @@ class OpenSpec :
                     service(changed, claim = { error("must not claim unapproved defaults") })
                         .open(recipe, request(), caller)
                 }
-                val dev = service(changed, devOff = true).open(recipe, request(), caller)
-                dev.httpStatus shouldBe 201
-                dev.approvalsBypassed shouldBe true
                 Staleness.of(changed, deployment, ApprovalReader { _, _, _ -> true }).coverage shouldBe
                     mapOf(recipe to CoverageKind.MISSING)
                 Registry(ExecutorType.builtin()).cell(changed, changed.deployments.getValue(deployment)).status shouldBe
@@ -356,7 +351,7 @@ class OpenSpec :
             ) { service(original).open(recipe, request(), caller) }.detail!!.jsonObject["reason"] shouldBe
                 JsonPrimitive("unmapped")
         }
-        "approvals report each stale class; dev-off still refuses stale exports" {
+        "approvals report each stale class; stale exports refuse; no row means stale (no bypass)" {
             for ((kind, code, differs) in listOf(
                 Triple("recipe", ErrorCode.RECIPE_STALE, "text"),
                 Triple("values", ErrorCode.RECIPE_STALE, "values"),
@@ -378,13 +373,14 @@ class OpenSpec :
                     }
                 e.detail!!.jsonObject["differs"]!!.jsonArray shouldBe JsonArray(listOf(JsonPrimitive(differs)))
             }
-            val off = service(approved = ApprovalReader { _, _, _ -> false }, devOff = true)
-            off.open(recipe, request(), caller).approvalsBypassed shouldBe true
-            refused(ErrorCode.RECIPE_STALE) { off.open(recipe, request().copy(recipeFingerprint = "old"), caller) }
-            refused(ErrorCode.PROGRAM_STALE) { off.open(recipe, request().copy(programFingerprint = "old"), caller) }
+            val off = service(approved = ApprovalReader { _, _, _ -> false })
+            refused(ErrorCode.RECIPE_STALE) { off.open(recipe, request(), caller) }
+            val on = service()
+            refused(ErrorCode.RECIPE_STALE) { on.open(recipe, request().copy(recipeFingerprint = "old"), caller) }
+            refused(ErrorCode.PROGRAM_STALE) { on.open(recipe, request().copy(programFingerprint = "old"), caller) }
             refused(
                 ErrorCode.DEPLOYMENT_STALE,
-            ) { off.open(recipe, request().copy(deploymentFingerprint = "old"), caller) }
+            ) { on.open(recipe, request().copy(deploymentFingerprint = "old"), caller) }
         }
         "ports are exact typed shapes: text keys never coerce numbers; empty keys mean no candidates" {
             refused(ErrorCode.PORT) { service().open(recipe, request(buildJsonObject { put("key", 4711) }), caller) }

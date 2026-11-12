@@ -80,7 +80,6 @@ class RunRuntime(
                 config.budgets.syncDefault,
                 config.budgets.batchDefault,
                 clock,
-                config.approvalsOff,
                 config.budgets.detailLimit,
                 config.door.routes.keys
                     .toSet(),

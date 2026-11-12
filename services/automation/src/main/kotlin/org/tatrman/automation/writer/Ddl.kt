@@ -63,6 +63,12 @@ class Ddl(
                                 )
                             }
                         }
+                        // §3: `approvals` is a view onto the ledger's table, in the shape of automation-stdlib's
+                        // `approvals` entity (S2.3). Readers see it through the door; only the Server writes approvals.
+                        sql.execute("CREATE OR REPLACE VIEW ${quote(schema)}.${quote(APPROVALS)} AS $APPROVALS_VIEW")
+                        doorRole?.takeIf { it.isNotBlank() }?.let { role ->
+                            sql.execute("GRANT SELECT ON ${quote(schema)}.${quote(APPROVALS)} TO ${quote(role)}")
+                        }
                     }
                 }
                 connection.commit()
@@ -78,6 +84,16 @@ class Ddl(
     }
 
     companion object {
+        const val APPROVALS = "approvals"
+
+        /**
+         * automation-stdlib's `approvals`: `object` is `object_name`, a program/deployment row's `fp` is its `fp_text`,
+         * and `at` is UTC wall time (the entity's `timestamp`).
+         */
+        const val APPROVALS_VIEW =
+            "SELECT id::text AS id, object_kind, object AS object_name, COALESCE(fp_text, fp) AS fp_text, fp_values, " +
+                "kind, approver, (at AT TIME ZONE 'UTC') AS at, note, status FROM automation.approvals"
+
         fun configured(
             dataSource: DataSource,
             schemas: Map<String, String>,

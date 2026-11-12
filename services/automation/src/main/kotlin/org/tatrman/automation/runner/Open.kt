@@ -17,7 +17,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
-/** AU contracts §1.2. Optional exported fingerprints must match even in development approvals-off mode. */
+/** AU contracts §1.2. Optional exported fingerprints must match their current values. */
 @Serializable
 data class OpenRequest(
     val deployment: String,
@@ -47,14 +47,13 @@ data class OpenResult(
     val response: OpenResponse,
     /** Only a successful new claim may create an executor. Replays and live handles never run again. */
     val context: RunContext? = null,
-    val approvalsBypassed: Boolean = false,
 )
 
 /**
  * Open validates an immutable bundle snapshot before its atomic ledger claim. It does no reads through the door.
  * §1.2 `dryRun` is only true-ward: a request or a `dry_run: true` deployment makes the run dry; otherwise it is an
  * `auto` run whose batch applies at close (S2.2). A replay `asOf` needs `debug` or a dry run.
- * [approvalsOff] is accepted only by the startup config's explicit development gate.
+ * Approvals are always required (S2.3 removed the development bypass): a fingerprint without an `approved` row refuses.
  */
 class Open(
     private val served: () -> Bundle?,
@@ -66,7 +65,6 @@ class Open(
     private val syncDefault: Duration,
     private val batchDefault: Duration,
     private val clock: Clock = Clock.systemUTC(),
-    private val approvalsOff: Boolean = false,
     private val detailLimit: Int = 200,
     private val doorRoutes: Set<String> = emptySet(),
 ) {
@@ -98,7 +96,7 @@ class Open(
                 if (d.debug) DebugAs.CALLER else null,
             )
         val coverage = recipe.coverage
-        coverage.refusal?.takeUnless { approvalsOff && coverage.defaultsWithoutEvidence }?.let { reason ->
+        coverage.refusal?.let { reason ->
             throw AutomationException(
                 ErrorCode.RECIPE_STALE,
                 reason,
@@ -139,7 +137,7 @@ class Open(
                 .toList(),
             supplied,
         )
-        if (!approvalsOff) {
+        run {
             val snapshot = approvals.snapshot(listOf(recipeName, programName, request.deployment))
             val objects =
                 mapOf(
@@ -294,7 +292,7 @@ class Open(
                         put("detailLimits", JsonObject(context.detailLimits.mapValues { JsonPrimitive(it.value) }))
                         put("budgetSyncMs", sync.toMillis())
                         put("budgetBatchMs", batch.toMillis())
-                        put("approvals", if (approvalsOff) "development-off" else "required")
+                        put("approvals", "required")
                     },
             )
         val claimed = claim(run)
@@ -312,7 +310,6 @@ class Open(
                     201,
                     OpenResponse(id.toString(), false, "open", location),
                     context.copy(id = id, startedAt = claimed.startedAt),
-                    approvalsOff,
                 )
         }
     }
