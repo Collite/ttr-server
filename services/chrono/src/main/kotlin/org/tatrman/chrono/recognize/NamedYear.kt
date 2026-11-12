@@ -116,11 +116,18 @@ object NamedYear {
     fun bareYearsAt(n: String): List<Pair<Int, IntRange>> =
         fourDigitsRe
             .findAll(n)
-            .filterNot { amountBeforeRe.containsMatchIn(n.substring(0, it.range.first)) }
-            .filterNot { amountAfterRe.containsMatchIn(n.substring(it.range.last + 1)) }
+            .filterNot { isAmountAt(n, it.range) }
             .map { it.value.toInt() to it.range }
             .filter { it.first in PLAUSIBLE_YEARS }
             .toList()
+
+    /** The shared amount context, also used before a year-range candidate can claim either endpoint. */
+    internal fun isAmountAt(
+        n: String,
+        own: IntRange,
+    ): Boolean =
+        amountBeforeRe.containsMatchIn(n.substring(0, own.first)) ||
+            amountAfterRe.containsMatchIn(n.substring(own.last + 1))
 
     /** The one year [text] names — null when it names none, or several. */
     fun single(

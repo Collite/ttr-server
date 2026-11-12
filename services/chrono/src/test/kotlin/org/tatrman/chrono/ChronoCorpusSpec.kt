@@ -61,6 +61,7 @@ class ChronoCorpusSpec :
                     case.expect.periodCode?.let { paramValue(result, "p") shouldBe it }
                     case.expect.sqlContains.forEach { result.sqlPreview shouldContain it }
                     case.expect.intervalStart?.let { result.normalized.interval.start shouldStartWith it }
+                    case.expect.intervalEnd?.let { result.normalized.interval.end shouldStartWith it }
                 }
                 if (case.expect.optionIds.isNotEmpty()) {
                     response.optionsList.map { it.id } shouldBe case.expect.optionIds
@@ -140,6 +141,8 @@ private data class Expect(
     val sqlContains: List<String> = emptyList(),
     /** The date (YYYY-MM-DD) the grounded interval starts on. */
     val intervalStart: String? = null,
+    /** The exclusive end date (YYYY-MM-DD), when the corpus pins both bounds. */
+    val intervalEnd: String? = null,
     /** The ids of a clarification's options, in order. */
     val optionIds: List<String> = emptyList(),
 )

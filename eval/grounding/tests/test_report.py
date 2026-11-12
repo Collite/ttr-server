@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import report
 
-
 # ----- percentiles -----------------------------------------------------------
 
 
@@ -171,3 +170,17 @@ def test_bulk_option_ids_checked() -> None:
     r = report.evaluate_bulk_case(case, actual)
     assert not r["passed"]
     assert any("option_ids" in f for f in r["failures"])
+
+
+def test_year_range_end_is_exclusive_and_checked_independently() -> None:
+    case = _case(expect={"status": "OK", "interval_start": "2024-01-01", "interval_end": "2026-01-01"})
+    actual = _ok_actual()
+    interval = {"start": "2024-01-01T00:00:00+01:00", "end": "2026-01-01T00:00:00+01:00"}
+    actual["result"]["normalized"] = {"interval": interval}
+    assert report.evaluate_bulk_case(case, actual)["passed"]
+    interval["end"] = "2025-01-01T00:00:00+01:00"
+    result = report.evaluate_bulk_case(case, actual)
+    assert not result["passed"]
+    assert len(result["failures"]) == 1 and "interval_end" in result["failures"][0]
+    interval.pop("end")
+    assert not report.evaluate_bulk_case(case, actual)["passed"]

@@ -30,6 +30,7 @@ reference date of the request.
 | month, no year | *za červenec*, *od června*, *v září* | *in July*, *for September* | that month; the year from the conversation (#214), else ref's — and **asks** this year vs last when the month is later than ref's |
 | period code | *období 202605*, *202605* (alone) | *period 202605* | that month; a six-digit run inside other words is no period |
 | years | *2025*, *v roce 2025*, *fiskální rok 2026* | *2025*, *fiscal year 2026* | the calendar year (`CALENDAR_YEAR` / `FISCAL_YEAR`); a quarter or half of a fiscal year (*Q4 of fiscal year 2025*) is that quarter or half |
+| calendar-year ranges | *2024–2025*, *od 2024 do 2025*, *2024 až 2025* | *2024-2025*, *from 2024 to 2025*, *2024 until/through 2025* | both endpoint years inclusive: `[2024-01-01, 2026-01-01)`, `CALENDAR_YEAR`, confidence 0.9, no period code |
 | relative years | *letos*, *loni*, *vloni*, *předloni*, *letošní*, *loňský*, *předloňský*, *tento rok* | *this year*, *last year*, *the year before last* | ref's year, the one before, two before |
 | relative months, quarters | *tento / minulý / předminulý měsíc*, *toto / minulé čtvrtletí*, *tento / minulý kvartál* | *this / last month*, *this / last quarter* | ref's period, or the one before; quarters `PERIOD` `yyyyQn` |
 | anaphoric | *předchozí / předešlý rok, měsíc, čtvrtletí*; *minulý …* | *the previous year*, *the month before* | the period before the one the conversation is about (#214); *minulý* asks when the two readings differ; nothing to count from → `UNGROUNDABLE no_anchor` |
@@ -64,6 +65,19 @@ says which words are chrono's; it never changes what they mean.
 
 A one- or two-digit number after a yearless period is ambiguous: *Q2 25* and *Q2 10 stores* are both left unread;
 chrono does not decide whether it is a short year or a count.
+
+Calendar-year ranges accept hyphen, en dash and em dash with optional spaces, or *do/až/az/to/until/through*.
+Both endpoints must be in 1900–2999 and the final year cannot precede the first. A digit, slash or hyphen
+immediately outside the range guards it; a dot or comma does so only with a digit on its far side. Sentence-final
+punctuation and clause commas are allowed. A date's day/year joined to another date or an amount is not a year-range
+candidate: Scan keeps the original dates/years. Only an exactly two-digit endpoint after a dash is an abbreviated
+year refusal. Descending or abbreviated ranges (*2025-2024*, *2024-25*) give no partial year through Scan.
+*2024 and 2025* / *2024 a 2025* remain two independent year spans; a range beside another independent period keeps
+both spans. Fiscal and season-qualified ranges (*fiscal year 2024-2025*, *FY 2024-2025*, *sezóna 2024-2025*), fiscal
+slash years and a quarter of a year range (*Q2 2024-2025*) remain unread.
+Scan consumes the recognizer's range verdict and keeps the phrase's *od/from* and calendar-year noun frames:
+*v letech 2024–2025*, *od roku 2024 do 2025*, *for the years 2024 to 2025*. Ground uses datetime bounds with a date
+column (even with a period table), or `values {start, end}` and blank SQL without one; it never binds one `p` code.
 
 ## Outcomes of `Ground`
 

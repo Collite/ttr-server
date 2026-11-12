@@ -66,18 +66,38 @@ class DateRecognizer {
         reference: LocalDate,
         triggers: GroundingSlice = GroundingSlice.empty(CHRONO_KIND),
         context: List<String> = emptyList(),
-    ): ChronoReading? = (readSpan(span, reference, triggers, context) as? SpanReading.Read)?.reading
+    ): ChronoReading? {
+        // Ground may receive only the NER-sized numeric span; retain an unambiguous authored frame too.
+        val phrase = span.trim()
+        val question = context.firstOrNull().orEmpty()
+        val at = if (phrase.isEmpty()) -1 else question.indexOf(phrase, ignoreCase = true)
+        val unique = at >= 0 && question.indexOf(phrase, at + phrase.length, ignoreCase = true) < 0
+        return (
+            readSpan(
+                span,
+                reference,
+                triggers,
+                context,
+                before = if (unique) question.substring(0, at) else "",
+                after = if (unique) question.substring(at + phrase.length) else "",
+            ) as? SpanReading.Read
+        )?.reading
+    }
 
     /**
      * [read], telling apart the two kinds of null: a span that is no time, and one a rule recognised that names no
      * one period („1. a 2. čtvrtletí“, "next Q2", "excluding Q4"). `Scan` needs the second: a window that names no one
      * period must not be answered by a part of it ([org.tatrman.chrono.scan.SpanScanner]).
+     * [before] and [after] retain the original framing outside a Scan window, so numeric guards, qualifiers
+     * and bounds are decided here rather than re-interpreted by the scanner.
      */
     internal fun readSpan(
         span: String,
         reference: LocalDate,
         triggers: GroundingSlice = GroundingSlice.empty(CHRONO_KIND),
         context: List<String> = emptyList(),
+        before: String = "",
+        after: String = "",
     ): SpanReading? {
         val n = Normalization.fold(span).trim()
         if (n.isEmpty()) return null
@@ -86,7 +106,8 @@ class DateRecognizer {
         val conversation = ConversationPeriods(context, reference, PeriodWords.findAll(n))
         val years = Years(stated = spanYear(n, conversation), leaned = lazy { conversation.leanedYear() })
         val base =
-            numbered(n, NumberedPeriods.lastMonths(n), 1, ::monthCode, reference, years)
+            yearRange(n, reference, before, after)
+                ?: numbered(n, NumberedPeriods.lastMonths(n), 1, ::monthCode, reference, years)
                 ?: partOfLarger(n)
                 ?: fiscalYear(n, reference)
                 ?: yearToDate(n, reference, years.stated)
@@ -122,7 +143,7 @@ class DateRecognizer {
                         },
                     )
             }
-        return SpanReading.Read(reading)
+        return SpanReading.Read(reading, (base as? Hit)?.completeYearRange == true)
     }
 
     /** [read], for a caller that needs only the period: an unanchored span is no period either. */
@@ -138,6 +159,7 @@ class DateRecognizer {
 
     private data class Hit(
         val recognition: ChronoRecognition,
+        val completeYearRange: Boolean = false,
     ) : Read
 
     /**
@@ -258,6 +280,46 @@ class DateRecognizer {
         n: String,
         reference: LocalDate,
     ): Read? = if (YearPhrases.unreadIn(n)) NotOne else OtherPeriods.several(n, reference)?.read()
+
+    /** A-TS-5 / R248: one verdict for syntax, framing, refusal and independent periods beside a range. */
+    private fun yearRange(
+        n: String,
+        reference: LocalDate,
+        before: String,
+        after: String,
+    ): Read? {
+        val ranges = YearRanges.findAll(n, before, after)
+        if (ranges.isEmpty()) return null
+        for (m in ranges) {
+            if (YearRanges.qualified(
+                    Normalization.fold(before) + n.substring(0, m.range.first),
+                    n.substring(m.range.last + 1) + Normalization.fold(after),
+                )
+            ) {
+                return NotOne
+            }
+        }
+        if (ranges.size > 1) return Several
+        val m = ranges.single()
+        val (from, to) = YearRanges.years(m) ?: return NotOne
+        val prefix = Normalization.fold(before)
+        val framed = prefix + n + Normalization.fold(after)
+        val own = prefix.length + m.range.first..prefix.length + m.range.last
+        // A leading bound is not a supported calendar range; keep the independent years master scanned.
+        if (bounded(framed, own)) return Several
+        val rest = n.replaceRange(m.range, " ".repeat(m.value.length))
+        OtherPeriods.outside(rest, m.range, reference, wholeYear = true)?.let { return it.read() }
+        if (NamedYear.bareYears(rest).isNotEmpty() ||
+            PeriodWords.findAll(rest, PeriodUnit.YEAR).isNotEmpty()
+        ) {
+            return Several
+        }
+        if (YearPhrases.speaksOfYear(rest, m.range)) return NotOne
+        return Hit(
+            ChronoRecognition(LocalDate.of(from, 1, 1), LocalDate.of(to + 1, 1, 1), ChronoKind.CALENDAR_YEAR, 0.9),
+            completeYearRange = m.range.first == 0 && m.range.last == n.lastIndex,
+        )
+    }
 
     // ----- fiscal year: "fiscal year 2026" / "fiskalni rok 2026" -----
 
