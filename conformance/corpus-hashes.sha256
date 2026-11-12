@@ -1,6 +1,6 @@
 ccda5f2a891a16789b3b6cb752b3baab9b9a8b8fe96e2f01fd41a8d7444352a7  services/resolver/src/test/resources/q20/entities_only.jsonl
 f994789391af7773bb1061f1d7953a2aa870fd5233877574547cca284a5c2a3d  services/lex-matcher/src/test/resources/match-quality-corpus.jsonl
-610a4cc5bccec8b3716d1705d06ad38611060fd0beb54366f29112e3fb466fc5  eval/grounding/corpus/grounding-cases.json
+c2f184466616b2dcadcaa8c9455720d89e1547c1b3c2fa47b67f8520139127d8  eval/grounding/corpus/grounding-cases.json
 0034ed387f31c1dca8ba1a56b22b72f968193ee5f1aacb0f20aa7336facf77f7  eval/grounding/corpus/e2e-cases.json
 78577f1f142fdb6b9bca261e559b69335885358bcd4ba9ed6fb2bd75d45b2208  services/lex-matcher/src/test/resources/conformance/hartland-cz/aliases.lex.yaml
 3db553d63ab7dcbecd021326dbb13f9cab72b71ee9d7d571c663f65349208bc2  services/lex-matcher/src/test/resources/conformance/hartland-cz/skills/trend.md
