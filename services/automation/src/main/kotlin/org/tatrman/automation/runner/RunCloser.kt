@@ -93,7 +93,8 @@ class RunCloser(
                     context.modelFp,
                     // One absolute deadline: the run's original one, as pinned at Open and as the ledger holds it.
                     state.deadline,
-                    state.plan.rows,
+                    // S2.3: an `approval: required` action's rows wait in their groups; only the rest apply here.
+                    state.plan.rows.filter { it.group == null },
                     state.actions,
                     requireNotNull(metadata.planSource) { "apply placement was not pinned at open" },
                     metadata.entities,

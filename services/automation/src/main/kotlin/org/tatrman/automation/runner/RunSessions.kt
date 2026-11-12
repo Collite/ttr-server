@@ -307,6 +307,12 @@ class RunSessions(
         return session.runner.context.takeIf { it.identity.caller.sub == caller.sub }
     }
 
+    /** S2.3: the context pinned at Open while the run's executor is still held, whoever asks (an operator's decision). */
+    suspend fun pinned(id: UUID): RunContext? {
+        val session = lock.withLock { if (stopped) null else sessions[id]?.takeUnless { it.closing } } ?: return null
+        return session.runner.context
+    }
+
     suspend fun release(id: UUID) {
         withContext(NonCancellable) {
             val (session, owner, completion) =

@@ -35,6 +35,11 @@ data class RowOutcome(
     val prior: JsonObject? = null,
     /** An applied transition's `state_history` sub-outcome (Amendment 2026-11-11, review-244 B1); null otherwise. */
     val history: String? = null,
+    /**
+     * S2.3 F-3 (✅R244-F): the instant the transition committed, journaled with `history: pending`. Every `state_history`
+     * request for this row — the first or a retry — stamps it as `at`, never the retry's own time.
+     */
+    val committedAt: Instant? = null,
 ) {
     init {
         require(status in setOf("staged", "applied", "failed", "skipped"))
@@ -317,9 +322,17 @@ class Apply(
                         val from = prior?.get(requireNotNull(transition.attribute))
                         val owed = transition.history == true && from != transition.to
                         if (owed) histories += transition to (prior ?: JsonObject(emptyMap()))
+                        val committed = clock.instant()
                         unit.seqs.forEach {
                             val history = if (owed && it == transition.seq) RowOutcome.HISTORY_PENDING else null
-                            results[it] = RowOutcome(it, "applied", prior = prior, history = history)
+                            results[it] =
+                                RowOutcome(
+                                    it,
+                                    "applied",
+                                    prior = prior,
+                                    history = history,
+                                    committedAt = committed.takeIf { history != null },
+                                )
                         }
                     }
                 }
@@ -353,7 +366,7 @@ class Apply(
         fun failed(code: String) = settle("failed", "history-failed: $code")
         val storage = input.source.historyStorage ?: return failed("storage-unmapped")
         val lowering = RowWrites(input.entities, input.routes)
-        val at = clock.instant().atOffset(ZoneOffset.UTC).toLocalDateTime()
+        val now = clock.instant()
         val rows =
             try {
                 val values =
@@ -382,7 +395,9 @@ class Apply(
                             put("from_state", prior[requireNotNull(transition.attribute)] ?: JsonNull)
                             put("to_state", requireNotNull(transition.to))
                             put("run", input.run.toString())
-                            put("at", at.toString())
+                            // F-3: the transition's own commit instant, also on a retry; S2.2 rows without it: now.
+                            val at = applied[transition.seq]?.committedAt ?: now
+                            put("at", at.atOffset(ZoneOffset.UTC).toLocalDateTime().toString())
                             put("by", input.identity.principal)
                         }
                     }

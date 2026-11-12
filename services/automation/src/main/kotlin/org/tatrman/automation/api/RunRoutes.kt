@@ -15,6 +15,7 @@ fun Route.runRoutes(runtime: RunRuntime) {
     outputRoutes(runtime.sessions, runtime.displayRows)
     durableRunRoutes(runtime.status, runtime.protocol)
     closeRoutes(runtime.closer)
+    if (runtime.devRoutes) devRoutes(runtime.held)
 }
 
 /** Install inside bearer authentication. These readers remain usable without any execution runtime. */

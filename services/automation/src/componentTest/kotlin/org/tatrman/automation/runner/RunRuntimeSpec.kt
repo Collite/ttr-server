@@ -1148,22 +1148,21 @@ class RunRuntimeComponentSpec :
                                 ),
                         ).withWriterStorage("order")
                         .withActions(bundle.actions + ("release" to action))
-                        // S2.3 removed the development bypass: stand in for evidence that covers these defaults.
-                        .let { b ->
-                            b.copy(
-                                recipes =
-                                    b.recipes.mapValues { (_, r) ->
-                                        r.copy(
-                                            coverage =
-                                                r.coverage.copy(
-                                                    refusal = null,
-                                                    coverage = null,
-                                                    defaultsWithoutEvidence = false,
-                                                ),
-                                        )
-                                    },
-                            )
-                        }
+                }, afterPrepare = { b ->
+                    // S2.3 removed the development bypass: stand in for evidence that covers these defaults.
+                    b.copy(
+                        recipes =
+                            b.recipes.mapValues { (_, r) ->
+                                r.copy(
+                                    coverage =
+                                        r.coverage.copy(
+                                            refusal = null,
+                                            coverage = null,
+                                            defaultsWithoutEvidence = false,
+                                        ),
+                                )
+                            },
+                    )
                 })
             f.base.now = Instant.parse("2000-01-01T12:00:00.123456Z")
             val runtime = f.start()
@@ -1224,6 +1223,8 @@ class RunRuntimeComponentSpec :
             protocol: String? = null,
             routed: Boolean = true,
             initial: String = "held",
+            keys: List<String> = listOf("4711"),
+            wire: String = "release",
         ): Triple<DurableRuntimeFixture, org.tatrman.automation.writer.RowWritesQueryFake, Unit> {
             val root = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
             val catalog =
@@ -1255,11 +1256,53 @@ class RunRuntimeComponentSpec :
                 DurableRuntimeFixture(
                     transformBundle = { b ->
                         val er = b.model.schemas.getValue("er") as ErSchema
-                        b.copy(
+                        val r = b.recipes.getValue("release_order")
+                        val wired =
+                            r.recipe.copy(
+                                wiring =
+                                    r.recipe.wiring.map {
+                                        it.copy(
+                                            action = wire,
+                                            columns =
+                                                mapOf("order" to "order_number") +
+                                                    // release_confirmed also takes the order's value (a literal here).
+                                                    if (wire ==
+                                                        "release_confirmed"
+                                                    ) {
+                                                        mapOf("value" to "100000")
+                                                    } else {
+                                                        emptyMap()
+                                                    },
+                                        )
+                                    },
+                            )
+                        // The Core 0.22.3 fixture's release_confirmed `dry_run` names `{by}`, not a column, which the
+                        // preview refuses (fixed in hartland content by ttr-demo#171); the spec uses a column-only text.
+                        val actions =
+                            b.actions.mapValues { (name, a) ->
+                                if (name == "release_confirmed") {
+                                    a.copy(
+                                        dryRun =
+                                            org.tatrman.ttr.metadata.model.LocalizedText(
+                                                mapOf("en" to "would confirm the release of {order} ({value})"),
+                                            ),
+                                    )
+                                } else {
+                                    a
+                                }
+                            }
+                        val base = b.withActions(actions)
+                        base.copy(
+                            recipes =
+                                b.recipes +
+                                    (
+                                        "release_order" to
+                                            r.copy(recipe = wired, manifest = r.manifest.copy(recipe = wired))
+                                    ),
                             model =
-                                b.model.copy(
+                                base.model.copy(
                                     schemas =
-                                        b.model.schemas + ("er" to er.copy(entities = er.entities + verdicts)),
+                                        base.model.schemas + ("er" to er.copy(entities = er.entities + verdicts)),
                                 ),
                             programs =
                                 b.programs + (
@@ -1267,7 +1310,19 @@ class RunRuntimeComponentSpec :
                                         b.programs
                                             .getValue(
                                                 program,
-                                            ).copy(protocol = protocol)
+                                            ).let { p ->
+                                                p.copy(
+                                                    protocol = protocol,
+                                                    port =
+                                                        if (keys.size >
+                                                            1
+                                                        ) {
+                                                            "keys"
+                                                        } else {
+                                                            p.port
+                                                        },
+                                                )
+                                            }
                                 ),
                         )
                     },
@@ -1277,7 +1332,7 @@ class RunRuntimeComponentSpec :
                             if (routed ||
                                 "candidates" in request.source
                             ) {
-                                listOf(listOf("4711", "SQL reason"))
+                                keys.map { listOf(it, "SQL reason") }
                             } else {
                                 emptyList()
                             },
@@ -1359,6 +1414,153 @@ class RunRuntimeComponentSpec :
                 runtime.status.batch(dry, f.caller).mode shouldBe "preview"
                 f.rowWrites.get() shouldBe sent
                 query("SELECT count(*) FROM wet_runtime.release_order_verdict") shouldBe listOf(listOf("2"))
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWet()
+            }
+        }
+
+        "S2.3 T2: approval-required rows are held per key; a decision applies its group; the last one closes" {
+            val (f, fake, _) = wetFixture(keys = listOf("4711", "4712"), wire = "release_confirmed", initial = "placed")
+            sqlAuto("INSERT INTO erp_runtime.sales_order VALUES ('4712', 'placed', NULL)")
+            val runtime = f.start()
+            try {
+                val id =
+                    UUID.fromString(
+                        runtime.sessions
+                            .open(
+                                "release_order",
+                                f.request.copy(
+                                    dryRun = null,
+                                    port =
+                                        buildJsonObject {
+                                            put("keys", JsonArray(listOf(JsonPrimitive("4711"), JsonPrimitive("4712"))))
+                                        },
+                                ),
+                                f.caller,
+                            ).response.runId,
+                    )
+                runtime.sessions.evaluate(id, f.caller)
+                val pinned = requireNotNull(runtime.sessions.pinned(id))
+                val close = runtime.closer.close(id, f.caller)
+                close.status shouldBe "waiting"
+                close.batch.state shouldBe "held"
+                // The verdict rows committed `auto`; the ERP transitions wait.
+                query("SELECT order_number FROM wet_runtime.release_order_verdict ORDER BY 1") shouldBe
+                    listOf(listOf("4711"), listOf("4712"))
+                query("SELECT order_number, state FROM erp_runtime.sales_order ORDER BY 1") shouldBe
+                    listOf(listOf("4711", "placed"), listOf("4712", "placed"))
+                val batch = runtime.status.batch(id, f.caller)
+                batch.mode shouldBe "hold"
+                val held = batch.rows.filter { it.group != null }
+                held.map { it.op }.toSet() shouldBe setOf("transition")
+                held.map { it.group } shouldBe
+                    listOf("4711", "4712").map { buildJsonObject { put("order_number", it) } }
+                held.forEach { r -> r.group shouldBe r.key }
+                batch.statuses
+                    .filter { s -> s.seq in held.map { it.seq } }
+                    .map { it.status } shouldBe listOf("staged", "staged")
+                batch.statuses
+                    .filter { s -> s.seq !in held.map { it.seq } }
+                    .map { it.status }
+                    .toSet() shouldBe setOf("applied")
+                val sealed = runtime.protocol.read(id, f.caller).sections
+                sealed.getValue("automation").last().payload shouldBe buildJsonObject { put("sealed", true) }
+                sealed.getValue("writes").last().payload.jsonObject.let {
+                    it["state"] shouldBe JsonPrimitive("held")
+                    it["held"] shouldBe JsonPrimitive(2)
+                    it["groups"] shouldBe JsonPrimitive(2)
+                }
+                // Waiting is never abandoned (D-97), however late.
+                f.base.now = f.base.now.plusSeconds(86_400)
+                f.ledger.abandonExpiredRuns().contains(id) shouldBe false
+                f.ledger.findRun(id)!!.status shouldBe RunStatus.WAITING
+                // A retried close answers the waiting state again.
+                runtime.closer.close(id, f.caller).status shouldBe "waiting"
+
+                val door =
+                    QueryDoor(
+                        fake,
+                        emptyMap(),
+                        ServiceTokens(emptyMap(), { error("unused") }),
+                        mapOf("demo/erp_db" to "w-erp", "demo/automation_db" to "w-auto"),
+                    )
+
+                fun decider(served: Bundle = f.served) =
+                    org.tatrman.automation.writer.Held(
+                        f.ledger,
+                        org.tatrman.automation.writer
+                            .Apply(door, f.clock),
+                        org.tatrman.automation.writer
+                            .BundleDeferredContexts(
+                                { null },
+                                ServiceTokens(emptyMap(), { error("unused") }),
+                            ) { pinned },
+                        { served },
+                        f.clock,
+                    )
+                val ops = Caller("sub-olga", "olga", emptySet(), TokenKind.PERSON, "t", groups = setOf("hartland-ops"))
+                val k4711 = buildJsonObject { put("order_number", "4711") }
+                val k4712 = buildJsonObject { put("order_number", "4712") }
+                // role.ops through the world's `def role ops` (hartland-ops); Maya is not in it.
+                shouldThrow<AutomationException> { decider().commitHeld(id, k4711, f.caller) }.code shouldBe
+                    ErrorCode.IDENTITY
+                // D-99: a refresh that moved the recipe's text fp supersedes the held group; nothing is applied.
+                val r = f.served.recipes.getValue("release_order")
+                val moved = r.recipe.copy(fingerprints = r.recipe.fingerprints.copy(text = "sha256:moved"))
+                val refreshed = f.served.copy(recipes = f.served.recipes + ("release_order" to r.copy(recipe = moved)))
+                val writesBefore = fake.writes.size
+                val superseded = shouldThrow<AutomationException> { decider(refreshed).commitHeld(id, k4711, ops) }
+                superseded.code shouldBe ErrorCode.SUPERSEDED
+                superseded.detail!!.jsonObject["differs"] shouldBe JsonArray(listOf(JsonPrimitive("text")))
+                fake.writes.size shouldBe writesBefore
+                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                    listOf(listOf("placed"))
+                // commitHeld applies that group only.
+                val committed = decider().commitHeld(id, k4711, ops)
+                committed.applied shouldBe 1
+                committed.runStatus shouldBe "waiting"
+                query("SELECT order_number, state FROM erp_runtime.sales_order ORDER BY 1") shouldBe
+                    listOf(listOf("4711", "released"), listOf("4712", "placed"))
+                query("SELECT from_state, to_state, run FROM wet_runtime.state_history") shouldBe
+                    listOf(listOf("placed", "released", "$id"))
+                // A second identical commit answers the first outcome and sends nothing.
+                val sent = fake.writes.size
+                decider().commitHeld(id, k4711, ops).applied shouldBe 1
+                fake.writes.size shouldBe sent
+                // rejectHeld marks the group's rows skipped and records who; the last decision closes the run.
+                val rejected = decider().rejectHeld(id, k4712, ops)
+                rejected.discarded shouldBe 1
+                rejected.runStatus shouldBe "closed"
+                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4712'") shouldBe
+                    listOf(listOf("placed"))
+                val after = f.ledger.readRunBatch(id, f.caller.sub)
+                after.mode shouldBe "auto"
+                val row4712 = held.single { it.group == k4712 }.seq
+                after.statuses.single { it.seq == row4712 }.let {
+                    it.status shouldBe "skipped"
+                    it.error shouldBe "rejected"
+                    it.decided!!["by"] shouldBe JsonPrimitive("olga")
+                    it.decided!!["decision"] shouldBe JsonPrimitive("reject")
+                }
+                f.ledger.findRun(id)!!.status shouldBe RunStatus.CLOSED
+                transaction {
+                    Batches.selectAll().where { Batches.run eq id }.single().let {
+                        it[Batches.state] shouldBe "committed"
+                        it[Batches.committedBy] shouldBe "olga"
+                    }
+                }
+                val entries =
+                    runtime.protocol
+                        .read(id, f.caller)
+                        .sections
+                        .getValue("writes")
+                        .map { it.payload.jsonObject }
+                        .filter { it["after_seal"] == JsonPrimitive(true) }
+                entries.map { it["event"] } shouldBe listOf(JsonPrimitive("held-commit"), JsonPrimitive("held-reject"))
+                entries.map { it["by"] } shouldBe listOf(JsonPrimitive("olga"), JsonPrimitive("olga"))
+                entries.last()["last"] shouldBe JsonPrimitive(true)
             } finally {
                 runtime.shutdown()
                 f.close()
@@ -1675,6 +1877,8 @@ private class DurableRuntimeFixture(
     sync: String = "60s",
     private val beforeRead: suspend () -> Unit = {},
     transformBundle: (Bundle) -> Bundle = { it },
+    /** Applied after the fixture prepares coverage (`withActions`). */
+    afterPrepare: (Bundle) -> Bundle = { it },
     private val queryTable: ((RunRequest) -> Table)? = null,
     private val approvalReader: ApprovalReader? = null,
     private val lookupReads: List<String> = listOf("er.entity.obligation"),
@@ -1783,6 +1987,8 @@ private class DurableRuntimeFixture(
                 statements = mapOf("c.sql" to "candidates", "r.sql" to "route"),
             )
         }
+    val served: Bundle get() = bundle
+
     private val bundle =
         transformBundle(
             source.copy(
@@ -1794,7 +2000,7 @@ private class DurableRuntimeFixture(
                                 source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
                         ),
             ),
-        ).let { it.withActions(it.actions) }
+        ).let { afterPrepare(it.withActions(it.actions)) }
     private val query =
         object : QueryRun {
             override suspend fun compile(request: RunRequest) =

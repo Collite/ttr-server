@@ -59,6 +59,19 @@ class RunRuntime(
                 .Apply(door, clock),
             { id, caller -> sessions.context(id, caller) },
         ) { sessions.release(it) }
+
+    /** S2.3: held groups (commit/reject after the close) and their dev routes (`AUTOMATION_DEV_ROUTES`). */
+    val held =
+        org.tatrman.automation.writer.Held(
+            ledger,
+            org.tatrman.automation.writer
+                .Apply(door, clock),
+            org.tatrman.automation.writer
+                .BundleDeferredContexts(served, tokens) { sessions.pinned(it) },
+            served,
+            clock,
+        )
+    val devRoutes = config.devRoutes
     val sweeper = StagingSweeper(retention, store) { sessions.release(it) }
     val displayRows = config.budgets.displayRows
     val owner: UUID get() = workers.owner

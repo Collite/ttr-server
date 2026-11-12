@@ -386,6 +386,14 @@ class ApplyPlanner(
                         "deliver", "task", "start", "emit" -> Unit
                         else -> unsupported("native $sink preview requires its writer lowering")
                     }
+                    // S2.3 (Amendment 2026-11-03 `hold`): an `approval: required` action's writer-sink rows are held,
+                    // one group per candidate key (v1, ⚑20-2). The rest of the run's rows commit `auto` at close.
+                    if (action.approval == "required" && sink in HELD_SINKS) {
+                        for (seq in obligationRows ?: (start + 1..rows.size).toList()) {
+                            val held = rows[seq - 1]
+                            if (held.group == null) rows[seq - 1] = held.copy(group = key)
+                        }
+                    }
                     actions +=
                         DryRunAction(
                             key,
@@ -639,7 +647,7 @@ class ApplyPlanner(
                 var value: JsonElement = JsonObject(arguments)
                 for (part in match.groupValues[1].split('.')) {
                     value = (value as? JsonObject)?.get(part)
-                        ?: unsupported("unknown dry-run text argument")
+                        ?: unsupported("unknown dry-run text argument {${match.groupValues[1]}}")
                 }
                 PreviewWiringValues.display(value)
                     ?: unsupported("dry-run text requires a scalar or deferred-call/duration evidence")
@@ -649,6 +657,9 @@ class ApplyPlanner(
     private fun entityName(name: String) = if (name.startsWith("er.entity.")) name else "er.entity.$name"
 
     companion object {
+        /** The writer sinks whose rows an `approval: required` action holds (D-142: no other sink writes §4 rows). */
+        val HELD_SINKS = setOf("transition", "writer", "obligation")
+
         private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z_0-9.]*)}")
 
         /**

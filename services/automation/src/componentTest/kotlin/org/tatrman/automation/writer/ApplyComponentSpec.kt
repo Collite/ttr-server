@@ -890,6 +890,27 @@ class ApplyComponentSpec :
                 listOf(Triple("applied", null, null), Triple("applied", null, "applied"))
         }
 
+        "S2.3 F-3 (R244-F): a history retry 20 min later stamps the transition's commit time, not its own" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            val committedAt = clock.now
+            shouldThrow<IllegalStateException> {
+                applyOnce(id) { outcomes ->
+                    check(outcomes.none { it.history == RowOutcome.HISTORY_PENDING }) { "acknowledgement lost" }
+                }
+            }
+            ledger
+                .readRunBatch(id, subject)
+                .of("er.entity.order", "transition")
+                .single()
+                .historyAt shouldBe committedAt.toString()
+            clock.now = committedAt.plusSeconds(20 * 60)
+            // The run's budget is 30 min, so the retry still fits its original deadline.
+            applyOnce(id)
+            rows("SELECT to_char(at, 'YYYY-MM-DD\"T\"HH24:MI:SS') FROM wet_fixture.state_history") shouldBe
+                listOf(listOf("2026-11-11T10:00:00"))
+            committedAt shouldBe Instant.parse("2026-11-11T10:00:00Z")
+        }
+
         "B1: a history row that landed unacknowledged is found by the retry's re-read, not inserted again" {
             val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
             val inner = door()

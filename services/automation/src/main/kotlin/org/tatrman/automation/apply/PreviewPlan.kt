@@ -57,6 +57,15 @@ data class ApplyRow(
         /** `batch_rows.row` key of an applied transition's history sub-outcome (the payload's `history` is §4's flag). */
         const val HISTORY_OUTCOME = "history_outcome"
 
+        /** S2.3 F-3: the instant the transition committed, journaled with `history: pending`; a resent history stamps it. */
+        const val HISTORY_AT = "history_at"
+
+        /** S2.3: who decided a held row's group (commit or reject), and when; apply evidence, not §4. */
+        const val DECIDED = "decided"
+
+        /** The apply evidence kept beside a row's §4 payload in `batch_rows.row`. */
+        val EVIDENCE = setOf("prior", HISTORY_OUTCOME, HISTORY_AT, DECIDED)
+
         fun restore(
             seq: Int,
             entity: String,
@@ -71,7 +80,7 @@ data class ApplyRow(
                 if (op == "insert") {
                     mapOf("row" to requireNotNull(data))
                 } else {
-                    requireNotNull(data).jsonObject - setOf("prior", HISTORY_OUTCOME)
+                    requireNotNull(data).jsonObject - EVIDENCE
                 }
             return Json.decodeFromJsonElement(
                 JsonObject(
@@ -161,6 +170,10 @@ data class BatchRowStatus(
     val error: String? = null,
     val prior: JsonObject? = null,
     val history: String? = null,
+    /** S2.3 F-3: the transition's commit instant, recorded with `history: pending`. */
+    val historyAt: String? = null,
+    /** S2.3: `{ decision: commit|reject, by, at }` on a held row once its group is decided. */
+    val decided: JsonObject? = null,
 )
 
 /** Public apply envelope; action descriptions are read through run status and protocol. */
