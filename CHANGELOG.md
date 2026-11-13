@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **resolver — chrono finds time spans.** One `Scan` call adds DATE entities before the existing
+  universal path, retaining overlapping NER dates, quoted literals, request context and separate
+  time phrases for interpretation. The local time-phrase regex is removed. Scan failures keep NER
+  spans and record `scan_failed`; `values` grounding keeps its interval without a column attribution.
+  Replay coverage includes the Czech reserve question, adjacent spans and UTF-16/code-point mapping.
+
 - **metadata — ops review corrections.** Accepted non-fallback filesystem content can confirm CN promotions;
   Git confirmation remains restricted to the configured default branch. Successful no-change refreshes avoid
   repeated CN database observations, and failed observations retry. HTTP `read-timeout-ms` now sets a deadline for the

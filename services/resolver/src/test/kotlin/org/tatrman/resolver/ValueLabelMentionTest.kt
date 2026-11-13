@@ -44,7 +44,6 @@ import org.tatrman.nlp.v1.StatusResponse
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.resolver.client.FuzzyClient
-import org.tatrman.resolver.client.GroundingClient
 import org.tatrman.resolver.client.NlpClient
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.pipeline.LookupRoundConfig
@@ -219,7 +218,7 @@ class ValueLabelMentionTest :
     }
 
     /** chrono on a four-digit year: the calendar year, on the estate's event-date column, as live. */
-    private class YearKernel : GroundingClient {
+    private class YearKernel : GroundOnlyKernel {
         override suspend fun ground(request: GroundRequest): GroundResponse {
             val year =
                 request.spanText

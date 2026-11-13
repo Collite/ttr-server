@@ -346,7 +346,7 @@ class KernelAskTest :
                     .addOptions(kernelOption("", "?", "2025-11-01T00:00:00Z", "2025-12-01T00:00:00Z"))
                     .build()
             val kernel =
-                object : GroundingClient {
+                object : GroundOnlyKernel {
                     override suspend fun ground(request: GroundRequest) = oneOption
 
                     override suspend fun getStatus(): GetStatusResponse = GetStatusResponse.getDefaultInstance()
@@ -459,7 +459,7 @@ class KernelAskTest :
 
         /** A kernel that refuses every span `UNGROUNDABLE`, with one message carrying [code]. */
         fun refusing(code: String): GroundingClient =
-            object : GroundingClient {
+            object : GroundOnlyKernel {
                 override suspend fun ground(request: GroundRequest): GroundResponse =
                     GroundResponse
                         .newBuilder()
@@ -566,7 +566,7 @@ class KernelAskTest :
          * asks between this year's and last year's, and a resume by id is an OK carrying the interval
          * and the anchor column. The AWAITING carries no anchor — only an OK does.
          */
-        class FakeChrono : GroundingClient {
+        class FakeChrono : GroundOnlyKernel {
             enum class Answer { GROUND, ASK_AGAIN, UNGROUNDABLE, THROW }
 
             val seen = mutableListOf<GroundRequest>()

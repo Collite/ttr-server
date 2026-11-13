@@ -22,7 +22,6 @@ import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.Token
 import org.tatrman.resolver.client.FuzzyClient
-import org.tatrman.resolver.client.GroundingClient
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.pipeline.Binder
 import org.tatrman.resolver.pipeline.DomainSpanCandidate
@@ -994,7 +993,7 @@ class GrainWordTest :
                     ).build()
         }
 
-        class RecordingKernel : GroundingClient {
+        class RecordingKernel : GroundOnlyKernel {
             val seen = mutableListOf<GroundRequest>()
 
             override suspend fun ground(request: GroundRequest): GroundResponse {

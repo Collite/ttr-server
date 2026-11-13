@@ -60,7 +60,7 @@ class ScanSeamTest :
                             .universal
                     universal.entityType shouldBe UniversalEntityType.DATE
                     universal.rawText shouldBe span.text
-                    val value = out.resolutionState.valuesList.single()
+                    val value = out.resolutionState.valuesList.single { it.span.text == span.text }
                     value.span.start shouldBe span.start
                     value.span.end shouldBe span.end
                     value.span.text shouldBe span.text
@@ -161,7 +161,7 @@ class ScanSeamTest :
                     .setValues(ValueBinding.getDefaultInstance())
                     .build()
             withKernel(f.copy(ground = mapOf(phrase to response.build()))) { _, client ->
-                val value = resolve(f, client).resolutionState.valuesList.single()
+                val value = resolve(f, client).resolutionState.valuesList.single { it.span.text == phrase }
                 value.grounding.normalizedValue shouldBe "2026-09-01T00:00:00Z/2026-10-01T00:00:00Z"
                 value.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
                 value.attributionsList.shouldBeEmpty()
@@ -187,7 +187,10 @@ class ScanSeamTest :
         "without NER capability neither Scan nor Ground takes words from the mention path" {
             val f = fixtures().first()
             withKernel(f) { kernel, client ->
-                resolve(f, client, nerServed = false).resolutionState.valuesList.shouldBeEmpty()
+                resolve(f, client, nerServed = false)
+                    .resolutionState.valuesList
+                    .filter { it.grounding.kind == "DATE" }
+                    .shouldBeEmpty()
                 kernel.scans.shouldBeEmpty()
                 kernel.grounds.shouldBeEmpty()
             }
@@ -265,7 +268,7 @@ class ScanSeamTest :
                         ),
                 )
             withKernel(f) { _, client ->
-                val value = resolve(f, client).resolutionState.valuesList.single()
+                val value = resolve(f, client).resolutionState.valuesList.single { it.span.text == "minulý měsíc" }
                 value.span.start shouldBe base.scan.spansList
                     .single()
                     .start + 2

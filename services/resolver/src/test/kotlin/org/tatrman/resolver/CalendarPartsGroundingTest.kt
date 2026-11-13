@@ -16,7 +16,6 @@ import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.nlp.v1.StatusResponse
 import org.tatrman.resolver.client.FuzzyClient
-import org.tatrman.resolver.client.GroundingClient
 import org.tatrman.resolver.client.NlpClient
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.pipeline.ResolverPipeline
@@ -127,7 +126,7 @@ class CalendarPartsGroundingTest :
             override suspend fun getStatus(): FuzzyStatusResponse = FuzzyStatusResponse.getDefaultInstance()
         }
 
-        class RecordingKernel : GroundingClient {
+        class RecordingKernel : GroundOnlyKernel {
             val seen = mutableListOf<GroundRequest>()
 
             override suspend fun ground(request: GroundRequest): GroundResponse {

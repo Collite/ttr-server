@@ -31,7 +31,6 @@ import org.tatrman.nlp.v1.Token
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.resolver.client.FuzzyClient
-import org.tatrman.resolver.client.GroundingClient
 import org.tatrman.resolver.client.NlpClient
 import org.tatrman.resolver.model.ResolverThresholds
 import org.tatrman.resolver.pipeline.ResolverPipeline
@@ -988,7 +987,7 @@ class MistypedYearAttributionTest :
             override suspend fun getStatus(): FuzzyStatusResponse = FuzzyStatusResponse.getDefaultInstance()
         }
 
-        abstract class RecordingKernel : GroundingClient {
+        abstract class RecordingKernel : GroundOnlyKernel {
             val seen = mutableListOf<GroundRequest>()
 
             abstract fun answer(request: GroundRequest): GroundResponse

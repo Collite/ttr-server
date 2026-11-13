@@ -380,13 +380,8 @@ object GroundingRung {
         }
         val result: GroundingResult = response.result
         val interval = result.normalized.interval
-        val anchor =
-            result
-                .takeIf { it.hasFilter() }
-                ?.filter
-                ?.anchorColumn
-                ?.let { attributeRef(it) }
-                .orEmpty()
+        // A values application keeps the normalized interval and declares no anchor column.
+        val anchor = if (result.hasFilter()) attributeRef(result.filter.anchorColumn) else ""
         if (interval.start.isBlank() && interval.end.isBlank() && anchor.isBlank()) return null
         return Grounded(
             // The pair, rendered the way the interval is documented: start inclusive, end
