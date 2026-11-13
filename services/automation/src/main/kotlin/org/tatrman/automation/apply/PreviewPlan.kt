@@ -63,8 +63,14 @@ data class ApplyRow(
         /** S2.3: who decided a held row's group (commit or reject), and when; apply evidence, not §4. */
         const val DECIDED = "decided"
 
+        /**
+         * review-258 B3 (D-188): the door request a row was sent in, journaled with its in-flight mark — the rows of
+         * one request committed together or not at all. Not an attribute name (`:`), so an insert keeps it apart too.
+         */
+        const val REQUEST = "automation:request"
+
         /** The apply evidence kept beside a row's §4 payload in `batch_rows.row`. */
-        val EVIDENCE = setOf("prior", HISTORY_OUTCOME, HISTORY_AT, DECIDED)
+        val EVIDENCE = setOf("prior", HISTORY_OUTCOME, HISTORY_AT, DECIDED, REQUEST)
 
         fun restore(
             seq: Int,
@@ -78,7 +84,7 @@ data class ApplyRow(
             // evidence, not §4.
             val fields =
                 if (op == "insert") {
-                    mapOf("row" to requireNotNull(data))
+                    mapOf<String, JsonElement>("row" to JsonObject(requireNotNull(data).jsonObject - REQUEST))
                 } else {
                     requireNotNull(data).jsonObject - EVIDENCE
                 }
@@ -174,6 +180,8 @@ data class BatchRowStatus(
     val historyAt: String? = null,
     /** S2.3: `{ decision: commit|reject, by, at }` on a held row once its group is decided. */
     val decided: JsonObject? = null,
+    /** review-258 B3: the door request the row was sent in ([ApplyRow.REQUEST]); internal evidence, not served. */
+    @kotlinx.serialization.Transient val request: String? = null,
 )
 
 /** Public apply envelope; action descriptions are read through run status and protocol. */

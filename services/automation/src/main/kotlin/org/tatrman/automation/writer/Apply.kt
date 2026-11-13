@@ -2,10 +2,12 @@
 package org.tatrman.automation.writer
 
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
@@ -40,6 +42,8 @@ data class RowOutcome(
      * request for this row — the first or a retry — stamps it as `at`, never the retry's own time.
      */
     val committedAt: Instant? = null,
+    /** review-258 B3: the door request the row was sent in (read back from the journal; never written from here). */
+    val request: String? = null,
 ) {
     init {
         require(status in setOf("staged", "applied", "failed", "skipped"))
@@ -64,9 +68,6 @@ data class RowOutcome(
         /** review-258 B3: an unknown outcome a re-read found applied ([Apply.reconcile]). */
         const val RECONCILED = "reconciled"
 
-        /** review-258 B3: an unknown outcome a re-read found not applied (a revert's original: nothing to undo). */
-        const val NOT_APPLIED = "reconciled-not-applied"
-
         /** The `state_history` sub-outcomes: `pending` → `applied` | `failed` | `unknown` (a lost commit; not resent). */
         val HISTORY_STATES = setOf(HISTORY_PENDING, "applied", "failed", "unknown")
     }
@@ -74,7 +75,11 @@ data class RowOutcome(
 
 /** Durable per-group progress, so a retried close never resends a request whose outcome it cannot know. */
 interface ApplyJournal {
-    fun begin(seqs: List<Int>)
+    /** The in-flight mark, set before [request] (a fresh id per door request) leaves with [seqs]. */
+    fun begin(
+        seqs: List<Int>,
+        request: String,
+    )
 
     /** The request never left: clear only these rows' in-flight marks, preserving any settled outcomes. */
     fun release(seqs: List<Int>)
@@ -235,7 +240,7 @@ class Apply(
         if (units.isEmpty()) return out
         val seqs = units.flatMap { it.seqs }.distinct()
         remaining(input)
-        journal.begin(seqs)
+        journal.begin(seqs, UUID.randomUUID().toString())
         val timeout =
             try {
                 // begin is blocking IO: its transaction may have consumed the rest of the run's budget.
@@ -500,162 +505,223 @@ class Apply(
         }
 
     /**
-     * review-258 B3 (Amendment 2026-11-11: an unknown outcome is re-read before any retry or revert). The rows of
-     * [input] whose recorded outcome is unknown — `staged` with `unknown-outcome`, or a crash's `in-flight` marker —
-     * are re-read through [RowWrites.probe], which writes nothing (one request per storage and entity group), and
-     * compared with what they write:
-     * - the effect is there (every `set:` value and the transition's `to`; an inserted key exists) → `applied`, error
-     *   [RowOutcome.RECONCILED]. Its `prior` only where the row itself determines it (a transition alone, from exactly
-     *   one state; then, when [owesHistory], its history is owed, stamped with the re-read's time). Otherwise the
-     *   prior is unknown, and a revert refuses the row rather than guess;
-     * - the effect is not there, or no row has the key → [notApplied]: sendable again for a held commit (a transition
-     *   stays guarded by its compare-and-set), nothing to undo for a revert's original.
+     * review-258 B3, round three (D-188; Amendment 2026-11-11: an unknown outcome is re-read before any retry or
+     * revert). Rows recorded `unknown-outcome` (or a crash's `in-flight` mark) are settled **per lost door request**:
+     * the rows sent in one request ([ApplyRow.REQUEST]) committed together or not at all. Each key the request wrote is
+     * re-read through [RowWrites.probe] (nothing is written) and compared with the request's **last** effect on it, its
+     * units composed in send order:
+     * - every key shows that last effect → the whole request applied (`applied`, error [RowOutcome.RECONCILED]). Each
+     *   unit's `prior` is what the request's previous unit on that key wrote; the first unit's, only what the row
+     *   itself determines (a transition's single `from`). A unit whose prior stays unknown records none, and a revert
+     *   refuses it. When [owesHistory], a transition with a known `from` owes its history (stamped with the re-read's
+     *   time);
+     * - otherwise nothing is proven — a later write, in the same request or by another writer, can hide an applied
+     *   one — and the rows stay unknown. Only with [resend] (a held commit's or a revert's own retry), a unit that is
+     *   the request's only write to its key, carries a transition, and whose key is now in a state the transition's
+     *   compare-and-set accepts (and not its `to`), is made sendable again: its CAS guards the resend.
      *
-     * An idempotent row (a delete, an `if_absent` obligation insert) is [notApplied] without a re-read: resending it
-     * changes nothing more. A re-read the door refuses or loses leaves its rows unknown. Answers what it recorded.
+     * A request with a delete, a key that cannot be read back, a row without a recorded request, or a re-read the door
+     * refuses or loses, stays unknown. Answers the outcomes it recorded.
      */
     suspend fun reconcile(
         input: ApplyInput,
         journal: ApplyJournal,
         owesHistory: Boolean = true,
-        notApplied: (Int) -> RowOutcome,
+        resend: Boolean = false,
     ): Map<Int, RowOutcome> {
-        val unknown =
+        val bySeq = input.rows.associateBy { it.seq }
+        val requests =
             input.recorded.values
                 .filter {
                     it.status == "staged" && (it.error == RowOutcome.UNKNOWN || it.error == RowOutcome.IN_FLIGHT)
-                }.map { it.seq }
-                .toSet()
-        val rows = input.rows.filter { it.seq in unknown }
-        if (rows.isEmpty()) return emptyMap()
+                }.filter { it.request != null && it.seq in bySeq }
+                .groupBy { requireNotNull(it.request) }
+        if (requests.isEmpty()) return emptyMap()
         val partners = partners(input.rows, input.actions, input.units)
         val out = linkedMapOf<Int, RowOutcome>()
-
-        fun done(list: List<RowOutcome>) {
-            if (list.isEmpty()) return
-            journal.record(list)
-            list.forEach { out[it.seq] = it }
-        }
-        for (group in ApplyPlanner.groups(rows, input.source)) {
-            val lowering = RowWrites(input.entities, input.routes, input.inverse)
-            val probes = mutableListOf<Pair<List<ApplyRow>, org.tatrman.plan.v1.RowWrite>>()
-            val resend = mutableListOf<RowOutcome>()
-            val consumed = mutableSetOf<Int>()
-            for (row in group.rows) {
-                if (row.seq in consumed) continue
-                val members = members(row, group.rows, partners)
-                consumed += members.map { it.seq }
-                if (row.op == "delete" || row.op == "insert" && row.entity == OBLIGATION) {
-                    resend += members.map { notApplied(it.seq) }
-                    continue
-                }
-                try {
-                    probes +=
-                        members to
-                        if (row.op == "insert") {
-                            val values = requireNotNull(row.row)
-                            val names = lowering.keyNames(row.entity)
-                            if (names.isEmpty() || names.any { values[it] == null || values[it] == JsonNull }) {
-                                throw RowRefusal("row_writes_key", "${row.entity} has no key to re-read by")
-                            }
-                            lowering.probe(row.entity, JsonObject(names.associateWith { values.getValue(it) }), names)
-                        } else {
-                            val attributes =
-                                members.flatMap {
-                                    if (it.op == "transition") {
-                                        listOf(requireNotNull(it.attribute))
-                                    } else {
-                                        requireNotNull(it.set).keys.toList()
-                                    }
-                                }
-                            lowering.probe(row.entity, requireNotNull(row.key), attributes.distinct())
-                        }
-                } catch (_: RowRefusal) {
-                    // No re-read is possible: the rows stay unknown.
-                }
-            }
-            done(resend)
-            if (probes.isEmpty()) continue
-            val answer =
-                try {
-                    door.write(
-                        DoorWrite(
-                            input.run,
-                            "reconcile/${group.storage}/${probes.first().first.first().seq}",
-                            input.world,
-                            group.storage,
-                            RowWritesProto.newBuilder().addAllRows(probes.map { it.second }).build(),
-                            lowering.parameters,
-                            input.identity,
-                            input.modelFp,
-                            remaining(input),
-                        ),
-                    )
-                } catch (_: DoorWriteFailure) {
-                    continue
-                }
-            val now = clock.instant()
-            done(
-                probes.withIndex().flatMap { (index, probe) ->
-                    val (members, _) = probe
-                    val current = answer.prior.getOrNull(index)
-                    if (current != null &&
-                        present(members, current)
-                    ) {
-                        applied(members, now, owesHistory)
-                    } else {
-                        members.map { notApplied(it.seq) }
-                    }
-                },
-            )
+        for (lost in requests.values) {
+            val rows = lost.map { bySeq.getValue(it.seq) }.sortedBy { it.seq }
+            val settled = settle(input, rows, partners, owesHistory, resend)
+            if (settled.isEmpty()) continue
+            journal.record(settled)
+            settled.forEach { out[it.seq] = it }
         }
         return out
     }
 
-    /** Whether [current] (a probe's `prior`) shows every effect of [members]. */
-    private fun present(
-        members: List<ApplyRow>,
-        current: JsonObject,
-    ): Boolean =
-        members.all { m ->
-            when (m.op) {
-                "insert" -> true
-                "update" -> requireNotNull(m.set).all { (name, value) -> same(current[name], value) }
-                "transition" -> same(current[requireNotNull(m.attribute)], m.to)
-                else -> false
+    /** A key a lost request wrote: the entity and its key object. */
+    private data class Target(
+        val entity: String,
+        val key: JsonObject,
+    )
+
+    /** One lost request's rows → their settled outcomes (empty: they stay unknown). See [reconcile]. */
+    private suspend fun settle(
+        input: ApplyInput,
+        rows: List<ApplyRow>,
+        partners: Map<Int, Int>,
+        owesHistory: Boolean,
+        resend: Boolean,
+    ): List<RowOutcome> {
+        val group = ApplyPlanner.groups(rows, input.source).singleOrNull() ?: return emptyList()
+        val lowering = RowWrites(input.entities, input.routes, input.inverse)
+        // The request's write units, in the order it sent them.
+        val units = mutableListOf<List<ApplyRow>>()
+        val consumed = mutableSetOf<Int>()
+        for (row in rows) {
+            if (row.seq in consumed) continue
+            val members = members(row, rows, partners)
+            consumed += members.map { it.seq }
+            units += members
+        }
+        if (units.any { unit -> unit.any { it.op != "insert" && it.op != "update" && it.op != "transition" } }) {
+            return emptyList()
+        }
+        val byTarget = linkedMapOf<Target, MutableList<List<ApplyRow>>>()
+        try {
+            for (unit in units) {
+                val anchor = unit.first()
+                val key =
+                    if (anchor.op == "insert") {
+                        val values = requireNotNull(anchor.row)
+                        val names = lowering.keyNames(anchor.entity)
+                        if (names.isEmpty() || names.any { values[it] == null || values[it] == JsonNull }) {
+                            return emptyList()
+                        }
+                        JsonObject(names.associateWith { values.getValue(it) })
+                    } else {
+                        requireNotNull(anchor.key)
+                    }
+                byTarget.getOrPut(Target(anchor.entity, key)) { mutableListOf() } += unit
             }
+        } catch (_: RowRefusal) {
+            return emptyList()
+        }
+        // A key both inserted and updated by one request is not told apart here.
+        if (byTarget.values.any { us ->
+                us
+                    .flatten()
+                    .map { it.op == "insert" }
+                    .distinct()
+                    .size > 1
+            }
+        ) {
+            return emptyList()
+        }
+        val targets = byTarget.keys.toList()
+        val probes =
+            try {
+                targets.map { t ->
+                    val us = byTarget.getValue(t).flatten()
+                    val attributes =
+                        if (us.first().op == "insert") {
+                            t.key.keys.toList()
+                        } else {
+                            us
+                                .flatMap { written(it).keys }
+                                .distinct()
+                        }
+                    lowering.probe(t.entity, t.key, attributes)
+                }
+            } catch (_: RowRefusal) {
+                return emptyList()
+            }
+        val answer =
+            try {
+                door.write(
+                    DoorWrite(
+                        input.run,
+                        "reconcile/${group.storage}/${rows.first().seq}",
+                        input.world,
+                        group.storage,
+                        RowWritesProto.newBuilder().addAllRows(probes).build(),
+                        lowering.parameters,
+                        input.identity,
+                        input.modelFp,
+                        remaining(input),
+                    ),
+                )
+            } catch (_: DoorWriteFailure) {
+                return emptyList()
+            }
+        val current = targets.withIndex().associate { (i, t) -> t to answer.prior.getOrNull(i) }
+        val landed =
+            targets.all { t ->
+                val now = current[t] ?: return@all false
+                val us = byTarget.getValue(t).flatten()
+                us.first().op == "insert" ||
+                    us.fold(mapOf<String, JsonElement>()) { acc, r -> acc + written(r) }.all { (a, v) ->
+                        same(now[a], v)
+                    }
+            }
+        val now = clock.instant()
+        if (landed) {
+            return byTarget.values.flatMap { us ->
+                val known = mutableMapOf<String, JsonElement>()
+                us.flatMap { unit ->
+                    val transition = unit.firstOrNull { it.op == "transition" }
+                    val prior =
+                        if (unit.first().op == "insert") {
+                            null
+                        } else {
+                            unit
+                                .flatMap { written(it).keys }
+                                .distinct()
+                                .associateWith { a ->
+                                    known[a]
+                                        ?: transition
+                                            ?.takeIf { it.attribute == a && it.from.size == 1 }
+                                            ?.let { JsonPrimitive(it.from.single()) }
+                                }.takeIf { m -> m.values.none { it == null } }
+                                ?.let { m -> JsonObject(m.mapValues { requireNotNull(it.value) }) }
+                        }
+                    unit.forEach { known += written(it) }
+                    val from = transition?.let { prior?.get(requireNotNull(it.attribute)) }
+                    val owed = owesHistory && transition?.history == true && from != null && !same(from, transition.to)
+                    unit.map {
+                        val history = owed && it.seq == transition?.seq
+                        RowOutcome(
+                            it.seq,
+                            "applied",
+                            RowOutcome.RECONCILED,
+                            prior,
+                            RowOutcome.HISTORY_PENDING.takeIf { history },
+                            now.takeIf { history },
+                        )
+                    }
+                }
+            }
+        }
+        if (!resend) return emptyList()
+        return byTarget.entries.flatMap { (t, us) ->
+            val unit = us.singleOrNull() ?: return@flatMap emptyList()
+            val transition = unit.firstOrNull { it.op == "transition" } ?: return@flatMap emptyList()
+            val state = (current[t]?.get(requireNotNull(transition.attribute)) as? JsonPrimitive)?.contentOrNull
+            val legal = lowering.legalFrom(transition)
+            if (state == null || legal == null || state !in legal || same(JsonPrimitive(state), transition.to)) {
+                emptyList()
+            } else {
+                unit.map { RowOutcome(it.seq, "staged") }
+            }
+        }
+    }
+
+    /** What [row] writes, by attribute (a transition its `to`, an update its `set:`; an insert nothing here). */
+    private fun written(row: ApplyRow): Map<String, JsonElement> =
+        when (row.op) {
+            "transition" -> mapOf(requireNotNull(row.attribute) to requireNotNull(row.to))
+            "update" -> requireNotNull(row.set)
+            else -> emptyMap()
         }
 
     private fun same(
-        a: kotlinx.serialization.json.JsonElement?,
-        b: kotlinx.serialization.json.JsonElement?,
+        a: JsonElement?,
+        b: JsonElement?,
     ): Boolean {
         val left = a ?: JsonNull
         val right = b ?: JsonNull
         if (left is JsonNull || right is JsonNull) return left is JsonNull && right is JsonNull
         return (left as? JsonPrimitive)?.content == (right as? JsonPrimitive)?.content
-    }
-
-    /** A re-read found [members] applied: `reconciled`, with a prior only where the rows themselves determine it. */
-    private fun applied(
-        members: List<ApplyRow>,
-        now: Instant,
-        owesHistory: Boolean,
-    ): List<RowOutcome> {
-        val transition = members.singleOrNull()?.takeIf { it.op == "transition" && it.from.size == 1 }
-        val from = transition?.from?.single()
-        val prior = transition?.let { JsonObject(mapOf(requireNotNull(it.attribute) to JsonPrimitive(from))) }
-        val owed = owesHistory && transition?.history == true && from != (transition.to as? JsonPrimitive)?.content
-        return members.map {
-            RowOutcome(
-                it.seq,
-                "applied",
-                RowOutcome.RECONCILED,
-                prior,
-                RowOutcome.HISTORY_PENDING.takeIf { owed },
-                now.takeIf { owed },
-            )
-        }
     }
 
     companion object {

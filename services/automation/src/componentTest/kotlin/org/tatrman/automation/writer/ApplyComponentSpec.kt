@@ -343,8 +343,11 @@ class ApplyComponentSpec :
                     state.recorded,
                 ),
                 object : ApplyJournal {
-                    override fun begin(seqs: List<Int>) {
-                        ledger.beginApply(state.batch, seqs)
+                    override fun begin(
+                        seqs: List<Int>,
+                        request: String,
+                    ) {
+                        ledger.beginApply(state.batch, seqs, request)
                         afterBegin()
                     }
 
@@ -851,7 +854,10 @@ class ApplyComponentSpec :
                     state.recorded,
                 ),
                 object : ApplyJournal {
-                    override fun begin(seqs: List<Int>) = ledger.beginApply(state.batch, seqs)
+                    override fun begin(
+                        seqs: List<Int>,
+                        request: String,
+                    ) = ledger.beginApply(state.batch, seqs, request)
 
                     override fun release(seqs: List<Int>) = ledger.releaseApply(state.batch, seqs)
 
@@ -1147,64 +1153,70 @@ class ApplyComponentSpec :
                 0L
         }
 
-        "review-258 B3: a re-read settles what it can — a landed transition is restored, one that never landed is not" {
-            // 4711's transition committed but its answer was lost; 4712's request was lost before it reached the ERP.
+        "review-258 B3 (D-188): a lost same-key chain placed → held → released is one request: reverted to placed" {
             val id =
                 prepare(
-                    { planned(listOf(holdOnly("4711"), holdOnly("4712")), keys = emptyList()) },
+                    { planned(listOf(holdOnly("4711"), release("4711")), keys = emptyList()) },
                     deployment = "release_native_event",
                 )
-            val lossy =
-                object : Door {
-                    override suspend fun read(read: DoorRead) = door().read(read)
-
-                    override suspend fun write(write: DoorWrite): WriteResult {
-                        val rows = write.rows.rowsList
-                        if (write.storage == "erp_db" && rows.size == 2) {
-                            // The first lands, then the connection drops before the second statement is sent.
-                            door().write(
-                                write.copy(
-                                    rows =
-                                        write.rows
-                                            .toBuilder()
-                                            .removeRows(1)
-                                            .build(),
-                                ),
-                            )
-                            throw org.tatrman.automation.runner.DoorWriteFailure
-                                .Unknown("worker_execution_failed", "row_writes commit: connection lost")
-                        }
-                        return door().write(write)
-                    }
-                }
-            applyOnce(id, lossy)
+            fake.loseCommit = { it.world == "w-erp" }
+            applyOnce(id)
+            fake.loseCommit = { false }
             ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
-            rows(
-                "SELECT order_number, state FROM erp_fixture.sales_order WHERE order_number IN ('4711','4712') ORDER BY 1",
-            ) shouldBe
-                listOf(listOf("4711", "held"), listOf("4712", "placed"))
+            ledger.readRunBatch(id, subject).statuses.map { it.status to it.error } shouldBe
+                listOf("staged" to RowOutcome.UNKNOWN, "staged" to RowOutcome.UNKNOWN)
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("released"))
             clock.now = clock.now.plusSeconds(3600)
             val result = reverter().revert(id, ops)
-            result.rows shouldBe 1
-            result.applied shouldBe 1
-            rows(
-                "SELECT order_number, state FROM erp_fixture.sales_order WHERE order_number IN ('4711','4712') ORDER BY 1",
-            ) shouldBe
-                listOf(listOf("4711", "placed"), listOf("4712", "placed"))
-            ledger.readRunBatch(id, subject).let { b ->
-                b.statuses.map { it.status to it.error } shouldBe
-                    listOf("applied" to RowOutcome.RECONCILED, "skipped" to RowOutcome.NOT_APPLIED)
-            }
-            // The landed transition's prior came from its single `from`; nothing was resent to the ERP but the re-read
-            // and the one inverse row.
+            result.rows shouldBe 2
+            result.applied shouldBe 2
+            // The pre-batch state, not the intermediate one.
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("placed"))
+            // The request's last effect was there, so both rows applied; the second's prior is what the first wrote.
+            ledger.readRunBatch(id, subject).statuses.map { Triple(it.status, it.error, it.prior) } shouldBe
+                listOf(
+                    Triple("applied", RowOutcome.RECONCILED, buildJsonObject { put("state", "placed") }),
+                    Triple("applied", RowOutcome.RECONCILED, buildJsonObject { put("state", "held") }),
+                )
+            rows("SELECT from_state, to_state FROM wet_fixture.state_history ORDER BY from_state") shouldBe
+                listOf(listOf("held", "placed"), listOf("released", "held"))
+            // The lost request, one re-read, one inverse request: nothing resent.
             fake.writes.count { it.world == "w-erp" } shouldBe 3
+        }
+
+        "review-258 B3 (D-188): a re-read value that differs proves nothing — the revert refuses and writes nothing" {
+            val id =
+                prepare({ planned(listOf(holdOnly("4711")), keys = emptyList()) }, deployment = "release_native_event")
+            fake.loseCommit = { it.world == "w-erp" }
+            applyOnce(id)
+            fake.loseCommit = { false }
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            // The lost hold landed; another writer moved the order on since.
+            sql("UPDATE erp_fixture.sales_order SET state = 'cancelled' WHERE order_number = '4711'")
+            val sent = fake.writes.size
+            clock.now = clock.now.plusSeconds(3600)
+            val refused = shouldThrow<AutomationException> { reverter().revert(id, ops) }
+            refused.code shouldBe ErrorCode.BATCH_NOT_COMMITTED
+            refused.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
+            refused.detail!!.jsonObject["rows"] shouldBe JsonArray(listOf(JsonPrimitive(1)))
+            fake.writes.size shouldBe sent + 1
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("cancelled"))
+            ledger.readRunBatch(id, subject).statuses.map { it.status to it.error } shouldBe
+                listOf("staged" to RowOutcome.UNKNOWN)
             transactionCount(
                 "SELECT count(*) FROM automation.batches WHERE run = '$id' AND state = 'reverted'",
             ) shouldBe
-                1L
+                0L
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE run = '$id' AND rev_of IS NOT NULL",
+            ) shouldBe
+                0L
         }
 
-        "review-258 B5: a dry run answers every selected key dry-run, a held one too, and sends nothing" {
+        "R254-E: perform answers per key — a grouped key is held on a dry run too; the rest dry-run; nothing sent" {
             val id =
                 prepare(
                     {
@@ -1225,7 +1237,7 @@ class ApplyComponentSpec :
                 )
             val answer = perform.perform(id, "hold", PerformRequest(), identity.caller)
             answer.performed shouldBe emptyList()
-            answer.skipped shouldBe listOf(SkippedKey(key("4711"), "dry-run"), SkippedKey(key("4712"), "dry-run"))
+            answer.skipped shouldBe listOf(SkippedKey(key("4711"), "held"), SkippedKey(key("4712"), "dry-run"))
             fake.writes shouldBe emptyList()
         }
 

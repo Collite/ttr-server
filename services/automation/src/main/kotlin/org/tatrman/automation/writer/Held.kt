@@ -75,9 +75,10 @@ class Held(
                     context.routes,
                     held.statuses.mapNotNull { it.recorded() }.associateBy { it.seq },
                 )
-            // review-258 B3: a retried commit re-reads the rows an earlier attempt lost the answer to; one that did not
-            // land is sent again (a transition still under its compare-and-set), one that did is never resent.
-            val settled = apply.reconcile(input, journal(held.batch)) { RowOutcome(it, "staged") }
+            // review-258 B3 (D-188): a retried commit re-reads each request an earlier attempt lost the answer to. A request
+            // the re-read proves applied is never resent; otherwise only a lone transition whose key is in a state its
+            // compare-and-set accepts is sent again, and anything else keeps the group undecided.
+            val settled = apply.reconcile(input, journal(held.batch), resend = true)
             val outcomes = apply.apply(input.copy(recorded = input.recorded + settled), journal(held.batch))
             val open = held.rows.map { it.seq }.filter { outcomes[it] == null || outcomes[it]?.status == "staged" }
             if (open.isNotEmpty()) {
@@ -197,7 +198,10 @@ class Held(
 
     private fun journal(batch: UUID) =
         object : ApplyJournal {
-            override fun begin(seqs: List<Int>) = ledger.beginApply(batch, seqs)
+            override fun begin(
+                seqs: List<Int>,
+                request: String,
+            ) = ledger.beginApply(batch, seqs, request)
 
             override fun release(seqs: List<Int>) = ledger.releaseApply(batch, seqs)
 

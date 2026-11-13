@@ -114,5 +114,5 @@ internal fun BatchRowStatus.recorded(): RowOutcome? =
     if (status == "staged" && error == null) {
         null
     } else {
-        RowOutcome(seq, status, error, prior, history, historyAt?.let(Instant::parse))
+        RowOutcome(seq, status, error, prior, history, historyAt?.let(Instant::parse), request)
     }

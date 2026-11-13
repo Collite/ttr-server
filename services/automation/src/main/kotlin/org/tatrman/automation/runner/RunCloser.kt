@@ -122,7 +122,10 @@ class RunCloser(
                     state.recorded,
                 ),
                 object : ApplyJournal {
-                    override fun begin(seqs: List<Int>) = ledger.beginApply(state.batch, seqs)
+                    override fun begin(
+                        seqs: List<Int>,
+                        request: String,
+                    ) = ledger.beginApply(state.batch, seqs, request)
 
                     override fun release(seqs: List<Int>) = ledger.releaseApply(state.batch, seqs)
 

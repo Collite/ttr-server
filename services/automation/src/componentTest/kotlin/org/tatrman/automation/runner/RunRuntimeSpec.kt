@@ -1667,6 +1667,106 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        "review-258 B3 (D-188): a held retry resends only a transition its CAS still guards; a moved row stays held" {
+            val (f, fake, _) = wetFixture(keys = listOf("4711", "4712"), wire = "release_confirmed", initial = "placed")
+            sqlAuto("INSERT INTO erp_runtime.sales_order VALUES ('4712', 'placed', NULL)")
+            val runtime = f.start()
+            try {
+                val id =
+                    UUID.fromString(
+                        runtime.sessions
+                            .open(
+                                "release_order",
+                                f.request.copy(
+                                    dryRun = null,
+                                    port =
+                                        buildJsonObject {
+                                            put("keys", JsonArray(listOf(JsonPrimitive("4711"), JsonPrimitive("4712"))))
+                                        },
+                                ),
+                                f.caller,
+                            ).response.runId,
+                    )
+                runtime.sessions.evaluate(id, f.caller)
+                val pinned = requireNotNull(runtime.sessions.pinned(id))
+                runtime.closer.close(id, f.caller).status shouldBe "waiting"
+                val door =
+                    QueryDoor(
+                        fake,
+                        emptyMap(),
+                        ServiceTokens(emptyMap(), { error("unused") }),
+                        mapOf("demo/erp_db" to "w-erp", "demo/automation_db" to "w-auto"),
+                    )
+                // The ERP apply request is lost before it reaches the ERP; re-reads pass.
+                val dropping =
+                    object : Door {
+                        override suspend fun read(read: DoorRead) = door.read(read)
+
+                        override suspend fun write(write: DoorWrite): WriteResult {
+                            if (write.storage == "erp_db" && write.label.startsWith("apply/")) {
+                                throw DoorWriteFailure.Unknown("worker_execution_failed", "connection lost")
+                            }
+                            return door.write(write)
+                        }
+                    }
+
+                fun decider(d: Door) =
+                    org.tatrman.automation.writer.Held(
+                        f.ledger,
+                        org.tatrman.automation.writer
+                            .Apply(d, f.clock),
+                        org.tatrman.automation.writer
+                            .BundleDeferredContexts(
+                                { null },
+                                ServiceTokens(emptyMap(), { error("unused") }),
+                            ) { pinned },
+                        { f.served },
+                        f.clock,
+                    )
+                val ops = Caller("sub-olga", "olga", emptySet(), TokenKind.PERSON, "t", groups = setOf("hartland-ops"))
+                val k4711 = buildJsonObject { put("order_number", "4711") }
+                val k4712 = buildJsonObject { put("order_number", "4712") }
+
+                fun erpLabels() =
+                    fake.writes.filter { it.world == "w-erp" }.map {
+                        it.context.correlationId
+                            .substringAfter('/')
+                            .substringBefore('/')
+                    }
+
+                // 4711: lost before it landed; the order is still placed, a state its compare-and-set accepts → resent.
+                shouldThrow<AutomationException> { decider(dropping).commitHeld(id, k4711, ops) }.code shouldBe
+                    ErrorCode.CLOSE_NOT_READY
+                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                    listOf(listOf("placed"))
+                val before = erpLabels().size
+                val committed = decider(door).commitHeld(id, k4711, ops)
+                erpLabels().drop(before) shouldBe listOf("reconcile", "apply")
+                committed.applied shouldBe 1
+                committed.runStatus shouldBe "waiting"
+                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                    listOf(listOf("released"))
+                query("SELECT from_state, to_state FROM wet_runtime.state_history") shouldBe
+                    listOf(listOf("placed", "released"))
+
+                // 4712: lost, and another writer has moved the order on: no proof either way, nothing resent, undecided.
+                shouldThrow<AutomationException> { decider(dropping).commitHeld(id, k4712, ops) }
+                sqlAuto("UPDATE erp_runtime.sales_order SET state = 'cancelled' WHERE order_number = '4712'")
+                val sent = erpLabels().size
+                val stuck = shouldThrow<AutomationException> { decider(door).commitHeld(id, k4712, ops) }
+                stuck.code shouldBe ErrorCode.CLOSE_NOT_READY
+                stuck.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
+                erpLabels().drop(sent) shouldBe listOf("reconcile")
+                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4712'") shouldBe
+                    listOf(listOf("cancelled"))
+                f.ledger.findRun(id)!!.status shouldBe RunStatus.WAITING
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWet()
+            }
+        }
+
         "an auto close after its executor is gone refuses instead of re-resolving a newer bundle" {
             val (f, fake, _) = wetFixture()
             val runtime = f.start()

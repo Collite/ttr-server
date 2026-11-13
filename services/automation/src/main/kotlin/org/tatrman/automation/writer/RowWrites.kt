@@ -232,6 +232,18 @@ class RowWrites(
             .build()
     }
 
+    /**
+     * review-258 B3: the states [transition]'s compare-and-set accepts besides its `to` (the action's `from:`, else the
+     * declared graph); null when no state predicate guards it, or the transition is refused.
+     */
+    fun legalFrom(transition: ApplyRow): List<String>? =
+        try {
+            val entity = entity(transition.entity)
+            allowedFrom(entity, transition, requireNotNull(transition.to as? JsonPrimitive).content)
+        } catch (_: RowRefusal) {
+            null
+        }
+
     /** The primary-key attribute names of [entityName] (a writer insert's key, a probe's `where`). */
     fun keyNames(entityName: String): List<String> = keys(entity(entityName))
 

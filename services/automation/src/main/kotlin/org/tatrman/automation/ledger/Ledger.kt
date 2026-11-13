@@ -553,6 +553,11 @@ class Ledger(
                     ((it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) as? JsonPrimitive)?.content,
                     ((it[BatchRows.row] as? JsonObject)?.get(HISTORY_AT) as? JsonPrimitive)?.content,
                     (it[BatchRows.row] as? JsonObject)?.get(DECIDED) as? JsonObject,
+                    (
+                        (it[BatchRows.row] as? JsonObject)?.get(
+                            org.tatrman.automation.apply.ApplyRow.REQUEST,
+                        ) as? JsonPrimitive
+                    )?.content,
                 )
             }
         return RunBatchPlan(id.toString(), runId.toString(), rows, mode, statuses)
@@ -604,6 +609,7 @@ class Ledger(
                                 it.prior,
                                 it.history,
                                 it.historyAt?.let(Instant::parse),
+                                it.request,
                             )
                     },
                 runDeadline(runId, defaultBudget),
@@ -615,12 +621,26 @@ class Ledger(
     fun beginApply(
         batch: UUID,
         seqs: List<Int>,
+        /** review-258 B3: the door request's id, kept with each row ([ApplyRow.REQUEST]); null = not recorded. */
+        request: String? = null,
     ) {
         outermost("beginApply")
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
-            BatchRows.update({
-                (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged")
-            }) { it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT }
+            val staged = (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged")
+            if (request == null) {
+                BatchRows.update({ staged }) { it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT }
+                return@transaction
+            }
+            for (r in BatchRows.selectAll().where { staged }.toList()) {
+                BatchRows.update({ (BatchRows.batch eq batch) and (BatchRows.seq eq r[BatchRows.seq]) }) {
+                    it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT
+                    it[row] =
+                        JsonObject(
+                            (r[BatchRows.row] as? JsonObject).orEmpty() +
+                                (org.tatrman.automation.apply.ApplyRow.REQUEST to JsonPrimitive(request)),
+                        )
+                }
+            }
         }
     }
 

@@ -48,7 +48,8 @@ data class RevertResult(
  * review-258: an action's `set:` and its `transition` on one key were one compare-and-set, and their inverse is one
  * again, guarded by the recorded `to` (B1: a row that moved on since is not touched at all). The units are undone in
  * reverse effect order, so successive writes to one row unwind to the value before the batch (B2). A row whose outcome
- * is unknown is re-read first ([Apply.reconcile]); one that stays unknown, or was applied with no recorded `prior`,
+ * is unknown is settled per lost door request first ([Apply.reconcile]; D-188 — a re-read value that differs never
+ * proves "not applied"); one that stays unknown, or was applied with no derivable `prior`,
  * refuses the revert before anything is written (`409 batch-not-committed`, reason `unresolved-outcome`), and a
  * revert row whose own outcome stays unknown leaves the original `committed` until a retry settles it (B3).
  *
@@ -97,7 +98,8 @@ class Revert(
                     units = units,
                 )
                 if (state.rev == null) {
-                    // B3: settle the original's unknown outcomes (of the rows a revert undoes) before deciding what to undo.
+                    // B3: settle the original's lost requests (of the rows a revert undoes) before deciding what to undo;
+                    // a request the re-read cannot prove stays unknown and refuses the revert below.
                     val undone = writerRows(state)
                     val settled =
                         apply.reconcile(
@@ -110,7 +112,7 @@ class Revert(
                             journal(state.batch),
                             // The original is not re-applied: its history is not written after the fact.
                             owesHistory = false,
-                        ) { RowOutcome(it, "skipped", RowOutcome.NOT_APPLIED) }
+                        )
                     if (settled.isNotEmpty()) state = io { ledger.revertState(run) }
                 }
                 val inverse = inverse(state, context.entities)
@@ -125,8 +127,9 @@ class Revert(
                 }
                 val id = UUID.fromString(rev.batch)
                 val revInput = input(rev.rows, rev.statuses, inverse.units, inverse = true)
-                // B3: a resumed revert re-reads its own unknown rows; one that did not land is sent again (still guarded).
-                val settled = apply.reconcile(revInput, journal(id)) { RowOutcome(it, "staged") }
+                // B3: a resumed revert re-reads its own lost requests; only a lone inverse transition whose key is in a state
+                // its compare-and-set accepts is sent again.
+                val settled = apply.reconcile(revInput, journal(id), resend = true)
                 val outcomes = apply.apply(revInput.copy(recorded = revInput.recorded + settled), journal(id))
                 val open = rev.rows.map { it.seq }.filter { outcomes[it] == null || outcomes[it]?.status == "staged" }
                 if (open.isNotEmpty()) throw unresolved(id, open, "of the revert batch")
@@ -143,7 +146,10 @@ class Revert(
 
     private fun journal(batch: UUID) =
         object : ApplyJournal {
-            override fun begin(seqs: List<Int>) = ledger.beginApply(batch, seqs)
+            override fun begin(
+                seqs: List<Int>,
+                request: String,
+            ) = ledger.beginApply(batch, seqs, request)
 
             override fun release(seqs: List<Int>) = ledger.releaseApply(batch, seqs)
 

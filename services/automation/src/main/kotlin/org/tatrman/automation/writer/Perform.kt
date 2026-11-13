@@ -119,7 +119,10 @@ class Perform(
                         state.recorded,
                     ),
                     object : ApplyJournal {
-                        override fun begin(seqs: List<Int>) = ledger.beginApply(state.batch, seqs)
+                        override fun begin(
+                            seqs: List<Int>,
+                            request: String,
+                        ) = ledger.beginApply(state.batch, seqs, request)
 
                         override fun release(seqs: List<Int>) = ledger.releaseApply(state.batch, seqs)
 
@@ -133,9 +136,10 @@ class Perform(
             for (a in selected) {
                 val reason =
                     when {
-                        // §1.2 (2026-11-12, R254-C): a dry run answers every selected key `dry-run`, a held one too.
-                        state.dryRun -> "dry-run"
+                        // §1.2, ✅R254-E: a key with a grouped batch row is `held`, on a dry run too; every other key of a
+                        // dry run is `dry-run`.
                         a in held -> "held"
+                        state.dryRun -> "dry-run"
                         a.batchRows.any { statuses[it]?.status == "failed" } -> "failed"
                         a.batchRows.any { statuses[it]?.status == "staged" } -> "not-applied"
                         else -> null
