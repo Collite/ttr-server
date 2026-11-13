@@ -511,10 +511,12 @@ class Apply(
      * re-read through [RowWrites.probe] (nothing is written) and compared with the request's **last** effect on it, its
      * units composed in send order:
      * - every key shows that last effect → the whole request applied (`applied`, error [RowOutcome.RECONCILED]). Each
-     *   unit's `prior` is what the request's previous unit on that key wrote; the first unit's, only what the row
-     *   itself determines (a transition's single `from`). A unit whose prior stays unknown records none, and a revert
-     *   refuses it. When [owesHistory], a transition with a known `from` owes its history (stamped with the re-read's
-     *   time);
+     *   unit's `prior` is only one the ledger already journaled for it (a door-returned `prior`), never one inferred
+     *   from the plan (⚑AU-P2-12): a transition's CAS accepts its `to` as well as its `from`, and a CAS miss
+     *   (`rows_affected = 0`) commits too, so neither a single `from` nor the previous unit's write establishes the
+     *   state before the request. A unit without a journaled prior records none, and a revert refuses it
+     *   `unresolved-outcome`. When [owesHistory], a transition with a known `from` owes its history (stamped with the
+     *   re-read's time);
      * - otherwise nothing is proven — a later write, in the same request or by another writer, can hide an applied
      *   one — and the rows stay unknown. Only with [resend] (a held commit's or a revert's own retry), a unit that is
      *   the request's only write to its key, carries a transition, and whose key is now in a state the transition's
@@ -657,25 +659,13 @@ class Apply(
         val now = clock.instant()
         if (landed) {
             return byTarget.values.flatMap { us ->
-                val known = mutableMapOf<String, JsonElement>()
                 us.flatMap { unit ->
                     val transition = unit.firstOrNull { it.op == "transition" }
+                    // ⚑AU-P2-12: a prior the ledger journaled, never one inferred from the plan.
                     val prior =
-                        if (unit.first().op == "insert") {
-                            null
-                        } else {
-                            unit
-                                .flatMap { written(it).keys }
-                                .distinct()
-                                .associateWith { a ->
-                                    known[a]
-                                        ?: transition
-                                            ?.takeIf { it.attribute == a && it.from.size == 1 }
-                                            ?.let { JsonPrimitive(it.from.single()) }
-                                }.takeIf { m -> m.values.none { it == null } }
-                                ?.let { m -> JsonObject(m.mapValues { requireNotNull(it.value) }) }
-                        }
-                    unit.forEach { known += written(it) }
+                        unit
+                            .takeIf { it.first().op != "insert" }
+                            ?.firstNotNullOfOrNull { input.recorded[it.seq]?.prior }
                     val from = transition?.let { prior?.get(requireNotNull(it.attribute)) }
                     val owed = owesHistory && transition?.history == true && from != null && !same(from, transition.to)
                     unit.map {

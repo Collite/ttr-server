@@ -1153,37 +1153,58 @@ class ApplyComponentSpec :
                 0L
         }
 
-        "review-258 B3 (D-188): a lost same-key chain placed → held → released is one request: reverted to placed" {
+        // ⚑AU-P2-12: a lost request whose last effect is there is applied, but the state before it is not known — a
+        // transition's CAS accepts its `to` as well, and a CAS miss commits too. The revert refuses; nothing moves.
+        suspend fun lostThenRefused(
+            plan: List<ApplyRow>,
+            before: String,
+            seqs: List<Int>,
+        ) {
+            sql("UPDATE erp_fixture.sales_order SET state = '$before' WHERE order_number = '4711'")
             val id =
                 prepare(
-                    { planned(listOf(holdOnly("4711"), release("4711")), keys = emptyList()) },
+                    { planned(plan, keys = emptyList()) },
                     deployment = "release_native_event",
                 )
             fake.loseCommit = { it.world == "w-erp" }
             applyOnce(id)
             fake.loseCommit = { false }
             ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
-            ledger.readRunBatch(id, subject).statuses.map { it.status to it.error } shouldBe
-                listOf("staged" to RowOutcome.UNKNOWN, "staged" to RowOutcome.UNKNOWN)
+            val after = rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'")
+            val sent = fake.writes.size
+            clock.now = clock.now.plusSeconds(3600)
+            val refused = shouldThrow<AutomationException> { reverter().revert(id, ops) }
+            refused.code shouldBe ErrorCode.BATCH_NOT_COMMITTED
+            refused.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
+            refused.detail!!.jsonObject["rows"] shouldBe JsonArray(seqs.map { JsonPrimitive(it) })
+            // One re-read, nothing resent, no inverse applied, the state untouched.
+            fake.writes.size shouldBe sent + 1
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe after
+            ledger.readRunBatch(id, subject).statuses.map { Triple(it.status, it.error, it.prior) } shouldBe
+                seqs.map { Triple("applied", RowOutcome.RECONCILED, null) }
+            rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("0"))
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE run = '$id' AND (state = 'reverted' OR rev_of IS NOT NULL)",
+            ) shouldBe
+                0L
+        }
+
+        "review-258 B3 (⚑AU-P2-12): a lost chain placed → held → released has no known first prior: refused" {
+            lostThenRefused(listOf(holdOnly("4711"), release("4711")), before = "placed", seqs = listOf(1, 2))
             rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("released"))
-            clock.now = clock.now.plusSeconds(3600)
-            val result = reverter().revert(id, ops)
-            result.rows shouldBe 2
-            result.applied shouldBe 2
-            // The pre-batch state, not the intermediate one.
+        }
+
+        "review-258 B3 (⚑AU-P2-12): a lost silent self-transition from held is never reverted to placed" {
+            lostThenRefused(listOf(holdOnly("4711")), before = "held", seqs = listOf(1))
             rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
-                listOf(listOf("placed"))
-            // The request's last effect was there, so both rows applied; the second's prior is what the first wrote.
-            ledger.readRunBatch(id, subject).statuses.map { Triple(it.status, it.error, it.prior) } shouldBe
-                listOf(
-                    Triple("applied", RowOutcome.RECONCILED, buildJsonObject { put("state", "placed") }),
-                    Triple("applied", RowOutcome.RECONCILED, buildJsonObject { put("state", "held") }),
-                )
-            rows("SELECT from_state, to_state FROM wet_fixture.state_history ORDER BY from_state") shouldBe
-                listOf(listOf("held", "placed"), listOf("released", "held"))
-            // The lost request, one re-read, one inverse request: nothing resent.
-            fake.writes.count { it.world == "w-erp" } shouldBe 3
+                listOf(listOf("held"))
+        }
+
+        "review-258 B3 (⚑AU-P2-12): a lost chain on a key already released (CAS counts 0, 1) stays released" {
+            lostThenRefused(listOf(holdOnly("4711"), release("4711")), before = "released", seqs = listOf(1, 2))
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("released"))
         }
 
         "review-258 B3 (D-188): a re-read value that differs proves nothing — the revert refuses and writes nothing" {
