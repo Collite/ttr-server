@@ -26,7 +26,7 @@ from docproc.bus.pgmq import DONE, Message, PgmqBus, work_queue
 from docproc.config import Config
 from docproc.probes import duration, queue_age, queue_depth, runs, verdicts
 from docproc.runtime.failures import diagnostic, transient
-from docproc.runtime.registry import KindRefused, KindRegistry, RunContext, TypeRegistryClient
+from docproc.runtime.registry import WHOLE_SOURCE_UNITS, KindRefused, KindRegistry, RunContext, TypeRegistryClient
 from docproc.runtime.validators import Validators
 from docproc.sdk.models import (
     Annotation,
@@ -292,7 +292,7 @@ class ProcessorRunner:
             else:
                 units = {uid: self.warehouse.get_unit(uid) for uid in item.unit_ids}
                 sources: dict[int, Source] = {}
-                if item.kind in ("import", "diff") or manifest["graph"]["unit"] in ("document", "subject"):
+                if item.kind in ("import", "diff") or manifest["graph"]["unit"] in WHOLE_SOURCE_UNITS:
                     for source_id in {u.source_id for u in list(units.values())}:
                         tree = self.warehouse.source_tree(source_id)
                         units.update((u.id, u) for u in tree.units)

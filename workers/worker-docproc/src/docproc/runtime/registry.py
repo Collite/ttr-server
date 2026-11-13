@@ -16,6 +16,10 @@ from jsonschema import Draft202012Validator, FormatChecker
 from docproc.sdk.models import Annotation, Processor, Source, Unit, Usage, WorkItem
 from docproc.sdk.pipeline import Manager
 
+# The `graph.unit`s whose steps the runner reads whole trees for, and with them the units' sources
+# (`RunContext.sources`); a subject kind under another unit can judge no member (review-257 R7).
+WHOLE_SOURCE_UNITS = ("document", "subject")
+
 
 @dataclass(frozen=True)
 class RunContext:

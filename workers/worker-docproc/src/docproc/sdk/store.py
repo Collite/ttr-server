@@ -151,13 +151,16 @@ class StoreClient:
             tree = SourceTree.model_validate(self._ok(r))
         except ValidationError as exc:
             raise _shape(r, "store/units-shape", exc) from None
-        # the tree's id and its source's (review-257 F12): never another source's subject read as this member's
-        ids = [tree.source_id] + ([tree.source.id] if tree.source is not None else [])
-        answered = next((i for i in ids if i != source_id), source_id)
-        if answered != source_id:
-            raise StoreError(
-                r.status_code, "store/units-mismatch", f"GET /sources/{source_id}/units answered {answered}"
-            )
+        # the tree's id and its source's (review-257 F12): never another source's subject read as this member's. Each
+        # says which it is (R9): a wrong tree and a broken source join read differently
+        answers = [("sourceId", tree.source_id)] + ([("source.id", tree.source.id)] if tree.source is not None else [])
+        for field_name, answered in answers:
+            if answered != source_id:
+                raise StoreError(
+                    r.status_code,
+                    "store/units-mismatch",
+                    f"GET /sources/{source_id}/units answered {field_name} {answered}",
+                )
         return tree
 
     def load_lemmas(self, run_id: str, lemmas: list[dict[str, Any]]) -> None:

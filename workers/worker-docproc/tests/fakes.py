@@ -61,7 +61,10 @@ def concept_page(page_id: int, qname: str, title: str = "Item") -> dict[str, Any
 def split_source_metadata(doc: str) -> dict[str, MetadataValue]:
     """`Source.metadata` as split writes it for the document's registration (docwh-pipeline `SplitKind`): documentId,
     version, recordedAt, feed, subjectId, lang. These live on the Source, never on the DOCUMENT unit, which carries
-    only title and lang (T8f W5-4, review-257 F15)."""
+    only title and lang (T8f W5-4, review-257 F15).
+
+    A hand copy of the producer's key list: its pin is kantheon docwh-pipeline's `SplitKindSpec` (the loaded
+    Source.metadata equals the registration's six keys, blanks omitted; review-257 R4)."""
     document = json.loads((PACK / "registrations" / (doc.rsplit(".", 1)[0] + ".json")).read_text())["document"]
     keys = ("documentId", "version", "recordedAt", "feed", "subjectId", "lang")
     return {k: MetadataValue(single=document[k]) for k in keys if document.get(k)}
@@ -76,7 +79,12 @@ class FakeWarehouse:
     One source truth (review-257 F15): `GET /sources` and `GET /sources/{id}/units` both answer each source id of
     [units] as `Source(id, metadata=source_metadata[id], notebookId=mart)`. [register] fills a source's metadata as
     split writes it for a pack document; a test that needs another listing sets [sources], and one modelling a store
-    before 0.11.14 puts the source id in [unanswered]."""
+    before 0.11.14 puts the source id in [unanswered].
+
+    The listing is lenient where the store is not (review-257 R8): `GET /sources?documentId=` lists a source no test
+    registered (no `documentId`) under every document, so a test that does not care about the listing finds its own
+    source there (diff's `this_source`, link's mart). The store would not list it. A test of the unlisted path sets
+    [sources] itself."""
 
     def __init__(self, units: list[Unit], mart: str = "hartland-public") -> None:
         self.units = {u.id: u for u in units}

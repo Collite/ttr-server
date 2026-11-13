@@ -19,7 +19,7 @@ from jsonschema import ValidationError
 from docproc.kinds.common import annotation, source_meta, utc_instant, verdict
 from docproc.kinds.rule_dsl import pack_file, related
 from docproc.runtime.predicate import _MISSING, path_value
-from docproc.runtime.registry import KindRefused, KindResult, RunContext, TypeRegistryClient
+from docproc.runtime.registry import WHOLE_SOURCE_UNITS, KindRefused, KindResult, RunContext, TypeRegistryClient
 from docproc.sdk.models import Annotation, ListAnnotationsRequest, Span, Unit, UnitKind, canonical, json_text
 from docproc.sdk.store import Warehouse
 
@@ -40,7 +40,13 @@ def subject_scope(ctx: RunContext) -> tuple[str, list[Unit]]:
     source for it (a docwh-store before 0.11.14), `consolidate/no-subject` when its Source names none, and
     `consolidate/subjects-differ` for each member naming a subject when they name more than one. No members at all is
     `consolidate/no-members`. A unit outside the members' sources is `consolidate/unit-outside-subject`. All are
-    `KindRefused`: the same on every immediate retry, so the step fails at once."""
+    `KindRefused`: the same on every immediate retry, so the step fails at once.
+
+    The runner reads the members' trees, and so their sources, only for a `graph.unit` of `document` or `subject`.
+    Under any other unit no member can be judged, and every one would read as `source-unanswered` against a current
+    store, so the step is refused `consolidate/graph-unit` first: the manifest is at fault (review-257 R7)."""
+    if ctx.manifest.get("graph", {}).get("unit") not in WHOLE_SOURCE_UNITS:
+        raise KindRefused("consolidate/single-subject-required", [{"rule": "consolidate/graph-unit"}])
     roots = [u for u in ctx.units.values() if u.kind == UnitKind.DOCUMENT]
     members = sorted({r.source_id for r in roots})
     if not members:

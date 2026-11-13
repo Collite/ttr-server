@@ -438,12 +438,25 @@ def test_a_subject_step_without_members_says_so() -> None:
     assert refused.value.diagnostics == [{"rule": "consolidate/no-members"}]
 
 
+@pytest.mark.parametrize("unit", ["section", "chunk", None])
+def test_a_subject_step_under_another_graph_unit_blames_the_manifest(unit: str | None) -> None:
+    """review-257 R7: the runner reads the members' trees, and their sources, only for a `document` or `subject`
+    unit. Under another, every member would read `source-unanswered` and send the operator to roll a current store."""
+    ctx, _ = complete_subject()
+    graph = {k: v for k, v in ctx.manifest["graph"].items() if k != "unit"} | ({"unit": unit} if unit else {})
+    for sources in ({}, ctx.sources):  # as the runner leaves them, and even with the sources at hand
+        with pytest.raises(KindRefused, match="consolidate/single-subject-required: 1 records") as refused:
+            subject_scope(replace(ctx, manifest={**ctx.manifest, "graph": graph}, sources=sources))
+        assert refused.value.diagnostics == [{"rule": "consolidate/graph-unit"}]
+    assert ctx.manifest["graph"]["unit"] == "subject" and subject_scope(ctx)[0] == "HL-1001"
+
+
 @pytest.mark.parametrize("doc", DOCS)
 def test_the_test_packs_document_unit_has_splits_shape(doc: str) -> None:
     """review-257 F15: split's DOCUMENT unit carries title and lang only (`SplitKind`). The Source's keys (documentId,
     version, recordedAt, feed, subjectId) are on the Source: a test pack neater than its producer hid W5-4."""
     root = next(u for u in units_of(doc) if u.kind == UnitKind.DOCUMENT)
-    assert set(root.metadata) <= {"title", "lang"}
+    assert set(root.metadata) == {"title", "lang"}  # every pack document has both (review-257 R9)
 
 
 def test_a_unit_outside_the_members_sources_is_refused() -> None:

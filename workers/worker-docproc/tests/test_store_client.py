@@ -311,12 +311,12 @@ def test_an_older_store_answers_no_source() -> None:
     ("body", "code", "message"),
     [
         ({"sourceId": 7, "units": "x"}, "store/units-shape", "units: list_type"),
-        ({**units_answer(), "sourceId": 8}, "store/units-mismatch", "GET /sources/7/units answered 8"),
-        # review-257 F12: the tree is 7's, the source in it 8's
+        ({**units_answer(), "sourceId": 8}, "store/units-mismatch", "GET /sources/7/units answered sourceId 8"),
+        # review-257 F12: the tree is 7's, the source in it 8's; R9: and the message says which
         (
             {**units_answer(), "source": {**units_answer()["source"], "id": 8}},  # type: ignore[dict-item]
             "store/units-mismatch",
-            "GET /sources/7/units answered 8",
+            "GET /sources/7/units answered source.id 8",
         ),
     ],
 )

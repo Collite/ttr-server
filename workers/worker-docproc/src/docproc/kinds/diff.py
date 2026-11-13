@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from docproc.kinds.common import annotation, meta, meta_list, sections, source_meta, utc_instant
-from docproc.runtime.registry import KindResult, RunContext
+from docproc.runtime.registry import KindRefused, KindResult, RunContext
 from docproc.sdk.models import Unit, UnitKind
 from docproc.sdk.store import Warehouse
 
@@ -45,7 +45,11 @@ class Diff:
         this_source = next((s for s in sources if int(s["id"]) == source_id), None)
         if this_source is None:
             # the store does not list this source: its own, as the runner read it with its tree — split writes
-            # recordedAt on the Source, never on the DOCUMENT unit (review-257 F14, the W5-4 defect)
+            # recordedAt on the Source, never on the DOCUMENT unit (review-257 F14, the W5-4 defect). A source the
+            # store neither lists nor answered (docwh-store < 0.11.14) has no time to compare: every section would be
+            # `new` and the step SUCCEED, so it is refused, as consolidate's `source-unanswered` (review-257 R9)
+            if source_id not in ctx.sources:
+                raise KindRefused("diff/source-unanswered", [{"sourceId": source_id}])
             recorded_at = source_meta(ctx, source_id, "recordedAt")
         else:
             recorded_at = source_value(this_source, "recordedAt")
