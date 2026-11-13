@@ -114,6 +114,60 @@ class ScanSeamTest :
             }
         }
 
+        for ((label, normalized) in listOf(
+            "NUMBER" to "",
+            "CARDINAL" to "",
+            "ORDINAL" to "",
+            "PERCENT" to "",
+            "MISC" to "",
+            "MISC" to "cnec:nc",
+            "no" to "",
+            // Raw CNEC wins over a contradictory coarse label.
+            "DATE" to "cnec:n_",
+            "MONEY" to "",
+        )) {
+            "numeric or MONEY NER $label/$normalized owns overlap with a longer Scan year range" {
+                val f = rangeFixture("😀 Revenue 2024-2025")
+                f.scan.spansList
+                    .single()
+                    .text shouldBe "2024-2025"
+                val ner = entity(f, "2025", label, normalized)
+                withKernel(f) { kernel, client ->
+                    val out = resolve(f, client, listOf(ner))
+                    out.parse.entitiesList shouldContainExactly listOf(ner)
+                    // Drop the WHOLE range, with no fragment or scan-derived Ground on its number.
+                    kernel.grounds.shouldBeEmpty()
+                    kernel.scans.size shouldBe 1
+                }
+            }
+        }
+
+        "a Scan date adjacent to a numeric NER span survives after an emoji" {
+            val base = fixtures().first()
+            val f = base.copy(text = "😀 2025minulý měsíc", scan = shifted(base.scan, 7))
+            val ner = entity(f, "2025", "CARDINAL")
+            withKernel(f) { kernel, client ->
+                val out = resolve(f, client, listOf(ner))
+                out.parse.entitiesList.map { it.text } shouldContainExactly listOf("2025", "minulý měsíc")
+                out.parse.entitiesList
+                    .last()
+                    .charStart shouldBe ner.charEnd
+                kernel.grounds.map { it.spanText } shouldContainExactly listOf("minulý měsíc")
+            }
+        }
+
+        for ((label, normalized) in listOf("MISC" to "", "MISC" to "cnec:op", "NUMBER" to "cnec:op")) {
+            "domain MISC $label/$normalized does not claim numeric NER precedence" {
+                val base = fixtures().first()
+                val ner = entity(base, "měsíc", label, normalized)
+                withKernel(base) { kernel, client ->
+                    val out = resolve(base, client, listOf(ner))
+                    out.parse.entitiesList.map { it.text } shouldContainExactly listOf("minulý měsíc", "měsíc")
+                    kernel.grounds.map { it.spanText } shouldContainExactly listOf("minulý měsíc")
+                }
+            }
+        }
+
         for (status in listOf(Status.UNAVAILABLE, Status.INTERNAL)) {
             "Scan ${status.code} leaves NER spans only and records scan_failed without retry" {
                 val f = fixtures().first()
@@ -161,10 +215,12 @@ class ScanSeamTest :
                     .setValues(ValueBinding.getDefaultInstance())
                     .build()
             withKernel(f.copy(ground = mapOf(phrase to response.build()))) { _, client ->
-                val value = resolve(f, client).resolutionState.valuesList.single { it.span.text == phrase }
-                value.grounding.normalizedValue shouldBe "2026-09-01T00:00:00Z/2026-10-01T00:00:00Z"
-                value.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
-                value.attributionsList.shouldBeEmpty()
+                for (ner in listOf(emptyList(), listOf(entity(f, phrase)))) {
+                    val value = resolve(f, client, ner).resolutionState.valuesList.single { it.span.text == phrase }
+                    value.grounding.normalizedValue shouldBe "2026-09-01T00:00:00Z/2026-10-01T00:00:00Z"
+                    value.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+                    value.attributionsList.shouldBeEmpty()
+                }
             }
         }
 
@@ -347,6 +403,22 @@ class ScanSeamTest :
             }
         }
 
+        fun rangeFixture(text: String): Fixture {
+            val input = checkNotNull(ScanSeamTest::class.java.getResourceAsStream("/time-scan/numeric-ner-replay.json"))
+            val row = input.use { ObjectMapper().readTree(it).single { row -> row["text"].asText() == text } }
+            val base = fixtures().last()
+            return base.copy(
+                text = text,
+                scan =
+                    ScanResponse
+                        .newBuilder()
+                        .also {
+                            JsonFormat.parser().merge(row["scan"].toString(), it)
+                        }.build(),
+                tokens = QuoteScanner.tokens(text, AnalyzeResponse.getDefaultInstance()),
+            )
+        }
+
         fun shifted(
             scan: ScanResponse,
             start: Int,
@@ -366,12 +438,15 @@ class ScanSeamTest :
         fun entity(
             f: Fixture,
             text: String,
+            label: String = "DATE",
+            normalized: String = "",
         ): NerEntity {
             val start = f.text.indexOf(text)
             return NerEntity
                 .newBuilder()
                 .setText(text)
-                .setLabel("DATE")
+                .setLabel(label)
+                .setNormalizedValue(normalized)
                 .setSourceEngine("nametag3")
                 .setCharStart(
                     f.text.codePointCount(0, start),

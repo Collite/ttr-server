@@ -17,8 +17,9 @@ outside this repo could notice is in.
 ## Unreleased
 
 - **resolver — chrono finds time spans.** One `Scan` call adds DATE entities before the existing
-  universal path, retaining overlapping NER dates, quoted literals, request context and separate
-  time phrases for interpretation. The local time-phrase regex is removed. Scan failures keep NER
+  universal path, retaining original NER DATE/numeric/MONEY ownership, quoted literals, request context
+  and separate time phrases for interpretation. Any overlap drops the whole Scan candidate; numeric
+  years retain #206's contextual, anchor-required promotion. The local time-phrase regex is removed. Scan failures keep NER
   spans and record `scan_failed`; `values` grounding keeps its interval without a column attribution.
   Replay coverage includes the Czech reserve question, adjacent spans and UTF-16/code-point mapping.
 

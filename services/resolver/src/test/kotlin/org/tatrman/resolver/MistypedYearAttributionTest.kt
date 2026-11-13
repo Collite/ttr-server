@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.resolver
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.google.protobuf.util.JsonFormat
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -21,6 +23,9 @@ import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
 import org.tatrman.grounding.v1.GroundingResult
 import org.tatrman.grounding.v1.Normalized
+import org.tatrman.grounding.v1.GroundingContext
+import org.tatrman.grounding.v1.ScanResponse
+import org.tatrman.grounding.v1.ValueBinding
 import org.tatrman.nlp.v1.AnalyzeRequest
 import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.Capability
@@ -188,6 +193,31 @@ class MistypedYearAttributionTest :
             turn.asked.shouldBeEmpty()
         }
 
+        for ((case, number, kind) in listOf(
+            Triple(TRZBY_ZA_2000_KC, "2000", "MISC"),
+            Triple(REVENUE_FOR_2000_DOLLARS, "2000", "MONEY"),
+            Triple(OBJEDNAVKY_V_2025_KUSECH, "2025", "MISC"),
+        )) {
+            "TS-D14 `${case.text}` stays $kind even with a nonempty numeric Scan candidate" {
+                // The producer already excludes some amounts/counts. Replay its actual bare-year
+                // answer at this question's number to also prove the consumer's own ownership guard.
+                val start = case.text.indexOf(number)
+                val span =
+                    SCANS
+                        .getValue(number)
+                        .spansList
+                        .single()
+                        .toBuilder()
+                        .setStart(start)
+                        .setEnd(start + number.length)
+                val scan = ScanResponse.newBuilder().addSpans(span).build()
+                val turn = resolve(case, YearKernel(scan))
+                turn.value(case.entities.first().text).grounding.kind shouldBe kind
+                turn.value(case.entities.first().text).attributionsList.shouldBeEmpty()
+                turn.asked.shouldBeEmpty()
+            }
+        }
+
         "cs „Tržby do 2025“ — a range preposition is not in the table: never offered as the year 2025" {
             // The kernel reads the year alone, so „do 2025“ (until 2025) would come back as the
             // calendar year 2025 — a different period, told as an answer.
@@ -289,6 +319,8 @@ class MistypedYearAttributionTest :
             turn.year().grounding.kind shouldBe "MISC"
             turn.year().attributionsList.shouldBeEmpty()
             turn.gapsOnYear() shouldContainExactly listOf(GapKind.GAP_KIND_G3_UNATTRIBUTED)
+            turn.universalTypeOf("2025") shouldBe UniversalEntityType.MISC
+            turn.asked shouldContainExactly listOf("2025")
         }
 
         // ── two dated measures in one question ─────────────────────────────────────────────────
@@ -946,6 +978,17 @@ class MistypedYearAttributionTest :
                             .build(),
                     )
                 }
+            kernel.scanned.size shouldBe 1
+            // Original entities remain byte-for-byte intact even when Scan recognizes their year.
+            response.parse.entitiesList shouldContainExactly case.entities
+            if (case.text in
+                listOf(
+                    "Marketplace order 2025",
+                    "Marketplace revenue 2025",
+                )
+            ) {
+                check(kernel.scanned.single().spansCount > 0) { "numeric protection requires a nonempty Scan replay" }
+            }
             return Turn(response, kernel.seen.map { it.spanText })
         }
 
@@ -987,8 +1030,36 @@ class MistypedYearAttributionTest :
             override suspend fun getStatus(): FuzzyStatusResponse = FuzzyStatusResponse.getDefaultInstance()
         }
 
-        abstract class RecordingKernel : GroundOnlyKernel {
+        // Actual Scan responses captured from unchanged chrono at the fixed reference. Every #206
+        // parse above is exercised with its actual candidates, including numeric years, not an empty-Scan fake.
+        val SCANS: Map<String, ScanResponse> =
+            checkNotNull(
+                MistypedYearAttributionTest::class.java.getResourceAsStream("/time-scan/numeric-ner-replay.json"),
+            ).use { input ->
+                ObjectMapper().readTree(input).associate { row ->
+                    row["text"].asText() to
+                        ScanResponse
+                            .newBuilder()
+                            .also {
+                                JsonFormat.parser().merge(row["scan"].toString(), it)
+                            }.build()
+                }
+            }
+
+        abstract class RecordingKernel(
+            private val scanOverride: ScanResponse? = null,
+        ) : GroundOnlyKernel {
             val seen = mutableListOf<GroundRequest>()
+            val scanned = mutableListOf<ScanResponse>()
+
+            override suspend fun scan(
+                text: String,
+                context: GroundingContext,
+                pkg: String,
+            ): ScanResponse {
+                context.referenceDatetime shouldBe "2026-10-13T00:00:00Z"
+                return (scanOverride ?: SCANS.getValue(text)).also { scanned += it }
+            }
 
             abstract fun answer(request: GroundRequest): GroundResponse
 
@@ -1004,7 +1075,9 @@ class MistypedYearAttributionTest :
          * chrono on a four-digit year: the calendar year, on the estate's event-date column — the
          * anchor shape quoted from the live wire (`GroundingRungTest`). Anything else it does not read.
          */
-        class YearKernel : RecordingKernel() {
+        class YearKernel(
+            scanOverride: ScanResponse? = null,
+        ) : RecordingKernel(scanOverride) {
             override fun answer(request: GroundRequest): GroundResponse {
                 val year =
                     request.spanText
@@ -1046,7 +1119,7 @@ class MistypedYearAttributionTest :
                     .newBuilder()
                     .setStatus(GroundResponse.Status.OK)
                     .setResult(
-                        GroundingResult.newBuilder().setNormalized(
+                        GroundingResult.newBuilder().setValues(ValueBinding.getDefaultInstance()).setNormalized(
                             Normalized.newBuilder().setInterval(
                                 DateTimeInterval
                                     .newBuilder()

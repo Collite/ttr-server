@@ -11,7 +11,7 @@ import org.tatrman.nlp.v1.NerEntity
 import org.tatrman.resolver.client.GroundingClient
 import org.tatrman.resolver.v1.UniversalEntityType
 
-/** The Scan wire boundary: blank literals, keep NER dates, and add the kernel's remaining dates. */
+/** The Scan wire boundary: blank literals, preserve NER ownership, and add the kernel's remaining dates. */
 object TimeScan {
     private val log = LoggerFactory.getLogger(TimeScan::class.java)
 
@@ -41,9 +41,15 @@ object TimeScan {
             val scanText = blanked.concatToString()
             val response = client.scan(scanText, context, pkg)
             require(response.messagesList.none { it.severity == Severity.ERROR }) { "Scan returned an error" }
-            val dates =
+            // TS-D14: original DATE, numeric MISC and MONEY belong to NER. In particular, a
+            // number that looks like a year must still pass through #206's contextual promotion
+            // and anchor-required settlement. Protect the whole candidate even for partial overlap.
+            val protectedEntities =
                 parse.entitiesList.filter {
-                    UniversalClassifier.classify(it.label, it.normalizedValue, it.text) == UniversalEntityType.DATE
+                    when (UniversalClassifier.classify(it.label, it.normalizedValue, it.text)) {
+                        UniversalEntityType.DATE, UniversalEntityType.MISC, UniversalEntityType.MONEY -> true
+                        else -> false
+                    }
                 }
             val added =
                 response.spansList.mapNotNull { span ->
@@ -60,7 +66,9 @@ object TimeScan {
                     }
                     val start = text.codePointCount(0, span.start)
                     val end = text.codePointCount(0, span.end)
-                    if (literals.overlaps(start, end) || dates.any { it.charStart < end && start < it.charEnd }) {
+                    if (literals.overlaps(start, end) ||
+                        protectedEntities.any { it.charStart < end && start < it.charEnd }
+                    ) {
                         null
                     } else {
                         NerEntity
