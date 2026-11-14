@@ -531,6 +531,11 @@ internal fun sessionBundle(columns: List<ManifestColumn>): Bundle {
     return original.copy(
         modelFp = "pinned-model",
         recipes = original.recipes + ("release_order" to recipe),
+        // ⚑AU-S31-4: an on-event run lives by its sync budget; the session specs drive the batch deadline.
+        programs =
+            original.programs.mapValues { (name, p) ->
+                if (name == "release_on_placement") p.copy(mode = "batch") else p
+            },
         deployments =
             original.deployments +
                 (

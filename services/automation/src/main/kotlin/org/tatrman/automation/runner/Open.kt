@@ -190,7 +190,8 @@ class Open(
                 bindings,
                 port.keys,
                 d.readCeiling ?: 100_000,
-                batch,
+                // ⚑AU-S31-4: the session's deadline is the ledger's — an on-event run lives by its sync budget.
+                if (program.mode == org.tatrman.automation.ledger.ON_EVENT_MODE) sync else batch,
                 allowRestrictedView = d.allowRestrictedView,
                 detailLimit = detailLimit,
                 detailLimits = detailLimits(recipe.recipe, pinnedActions, detailLimit),

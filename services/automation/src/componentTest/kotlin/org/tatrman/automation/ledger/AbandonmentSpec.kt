@@ -123,6 +123,29 @@ class AbandonmentSpec :
             ledger.abandonExpiredRuns() shouldBe listOf(batch)
         }
 
+        "⚑AU-S31-4 (review-273 F4): the deadline follows the mode — an on_event run may not proceed after budget_sync" {
+            fun opened(mode: String?) =
+                ledger
+                    .claimRun(
+                        RunOpen(
+                            "release_order",
+                            budgetSync = Duration.ofSeconds(60),
+                            budgetBatch = Duration.ofMinutes(30),
+                            mode = mode,
+                        ),
+                    ).runId
+            val event = opened("on_event")
+            val batch = opened("batch")
+            val legacy = opened(null) // a pre-V10 row stays batch-first
+            clock.now = t0 + Duration.ofSeconds(61)
+            shouldThrow<org.tatrman.automation.api.AutomationException> { ledger.startEvaluation(event) }.code shouldBe
+                org.tatrman.automation.api.ErrorCode.BUDGET
+            ledger.startEvaluation(batch)
+            ledger.startEvaluation(legacy)
+            status(batch) shouldBe RunStatus.RUNNING
+            status(legacy) shouldBe RunStatus.RUNNING
+        }
+
         "bounded concurrent sweepers partition expired rows, skip unexpired rows and count each commit once" {
             // An older, long-budget run must not consume a sweep's limit and starve the expired ones.
             val live = open(batch = Duration.ofDays(10))

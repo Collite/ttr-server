@@ -27,20 +27,21 @@ internal fun ensureRunBudget(
                 "the run's original deadline passed before its wet close committed",
             )
         }
-        throw AutomationException(ErrorCode.BUDGET, "the run exceeded its batch budget")
+        throw AutomationException(ErrorCode.BUDGET, "the run exceeded its budget")
     }
 }
 
 /**
- * The run's absolute deadline: `started_at` + its batch → sync → default budget. At the deadline it has expired. The
- * deadline is not the abandonment clock: D-192 moves only the sweep and the claim's expiry onto [runBudget].
+ * The run's absolute deadline: `started_at` + its [runBudget] — the same rule as the abandonment clock (⚑R273-B /
+ * ⚑AU-S31-4): an on-event run may not apply or close after `budget_sync`, a batch run after `budget_batch`. Grace permits
+ * recovery, never late execution. At the deadline the run has expired; pre-V10 rows (mode null) stay batch-first.
  */
 internal fun runDeadline(
     run: UUID,
     defaultBudget: Duration,
 ): Instant {
     val row = Runs.selectAll().where { Runs.id eq run }.single()
-    val budget = runBudget(null, row[Runs.budgetSync], row[Runs.budgetBatch], defaultBudget)
+    val budget = runBudget(row[Runs.mode], row[Runs.budgetSync], row[Runs.budgetBatch], defaultBudget)
     return row[Runs.startedAt].toInstant().plus(budget)
 }
 
@@ -50,7 +51,7 @@ internal const val ON_EVENT_MODE = "on_event"
 /**
  * The one budget rule of the run clock (D-192, contracts "Amendment 2026-11-14"): an `on_event` run is clocked by its
  * sync → batch → default budget, every other run (and every pre-V10 row, mode null) by batch → sync → default. The
- * claim's expiry and the abandonment sweep read it, so they never disagree about when a key frees.
+ * deadline, the claim's expiry and the abandonment sweep all read it, so they never disagree about one run.
  */
 internal fun runBudget(
     mode: String?,
