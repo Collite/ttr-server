@@ -169,6 +169,11 @@ class ErrorEnvelopeSpec :
                 ErrorCode.OUT_OF_SCOPE_READ,
                 ErrorCode.DUPLICATE_KEY,
                 ErrorCode.BUDGET,
+                // S3.1 lands in pieces; CONNECTOR_UNAVAILABLE/CONNECTOR_FACE (D-142's connector faces) stay unraised.
+                ErrorCode.VARIABLE,
+                ErrorCode.VARIABLE_NAME,
+                ErrorCode.ROW_NOT_SINGLE,
+                ErrorCode.VARIABLE_TOO_LARGE,
             )
         val DELIVERED = setOf("S0.1", "S0.2", "S0.3", "S2.3")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")
