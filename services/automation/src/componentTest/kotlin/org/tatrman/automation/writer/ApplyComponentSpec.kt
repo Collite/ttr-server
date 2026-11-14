@@ -588,6 +588,125 @@ class ApplyComponentSpec :
                 }
         }
 
+        "S3.1 T6 (D-168): a typed perform hold on one order writes the transition + history, as its own perform run" {
+            val name =
+                bundle.deployments.keys.first {
+                    bundle.programs[bundle.deployments.getValue(it).program]?.recipe ==
+                        "release_order"
+                }
+            val served =
+                bundle.copy(
+                    deployments =
+                        bundle.deployments +
+                            (
+                                name to
+                                    bundle.deployments
+                                        .getValue(
+                                            name,
+                                        ).copy(runAs = org.tatrman.ttr.metadata.model.RunAsRef.Caller)
+                            ),
+                )
+            val caller = Caller(subject, principal, emptySet(), TokenKind.SERVICE, "not-stored")
+            val perform =
+                TypedPerform(
+                    {
+                        served
+                    },
+                    Apply(
+                        door(),
+                        clock,
+                    ),
+                    ledger,
+                    ServiceTokens(emptyMap(), { error("unused") }),
+                    Duration.ofSeconds(60),
+                    clock,
+                )
+            val request =
+                TypedPerformRequest(
+                    key = buildJsonObject { put("order", "4711") },
+                    params = buildJsonObject { put("department", "Sales") },
+                    idempotencyKey = "timeout:4711",
+                )
+            val answer = perform.perform(name, "hold", request, caller)
+            answer.outcome shouldBe "applied"
+            answer.rows.map { it.op to it.status } shouldBe listOf("update" to "applied", "transition" to "applied")
+            fake.writes.size shouldBe 2 // the guarded write, then its history row
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("held", "Sales"))
+            rows("SELECT entity, key, from_state, to_state, run, by FROM wet_fixture.state_history") shouldBe
+                listOf(
+                    listOf("er.entity.order", """{"order_number":"4711"}""", "placed", "held", answer.runId, principal),
+                )
+            val run = ledger.findRun(UUID.fromString(answer.runId))!!
+            run.status shouldBe RunStatus.CLOSED
+            run.open.kind shouldBe RUN_KIND_PERFORM
+            val writes = ledger.readProtocol(UUID.fromString(answer.runId), subject).sections.getValue("writes")
+            writes.last().payload.jsonObject["outcome"] shouldBe JsonPrimitive("applied")
+            // The same key replays the recorded outcome and sends nothing again.
+            val again = perform.perform(name, "hold", request, caller)
+            again.replayed shouldBe true
+            again.runId shouldBe answer.runId
+            fake.writes.size shouldBe 2
+            // An action needing approval refuses without `by`; an engine action has no typed perform; unknown columns 400.
+            val recipe = served.recipes.getValue("release_order")
+            val gated =
+                served.copy(
+                    recipes =
+                        served.recipes +
+                            (
+                                "release_order" to
+                                    recipe.copy(
+                                        coverage =
+                                            recipe.coverage.copy(
+                                                actions =
+                                                    recipe.coverage.actions +
+                                                        (
+                                                            "hold" to
+                                                                recipe.coverage.actions
+                                                                    .getValue(
+                                                                        "hold",
+                                                                    ).copy(approval = "required")
+                                                        ),
+                                            ),
+                                    )
+                            ),
+                )
+            val gatedPerform =
+                TypedPerform(
+                    {
+                        gated
+                    },
+                    Apply(
+                        door(),
+                        clock,
+                    ),
+                    ledger,
+                    ServiceTokens(emptyMap(), { error("unused") }),
+                    Duration.ofSeconds(60),
+                    clock,
+                )
+            shouldThrow<AutomationException> {
+                gatedPerform.perform(name, "hold", request.copy(idempotencyKey = null), caller)
+            }.code shouldBe ErrorCode.APPROVAL_REQUIRED
+            shouldThrow<AutomationException> {
+                perform.perform(
+                    name,
+                    "hold",
+                    request.copy(
+                        params =
+                            buildJsonObject {
+                                put("colour", "red")
+                            },
+                        idempotencyKey = null,
+                    ),
+                    caller,
+                )
+            }.code shouldBe ErrorCode.BAD_REQUEST
+            shouldThrow<AutomationException> { perform.perform(name, "nope", request, caller) }.code shouldBe
+                ErrorCode.ACTION
+            fake.writes.size shouldBe 2
+        }
+
         "a from mismatch answers 0: stale-state, the verdict stands, no history row" {
             val c =
                 commit(

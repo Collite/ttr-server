@@ -179,6 +179,8 @@ class ErrorEnvelopeSpec :
                 ErrorCode.GOLEM_NO_TABLE,
                 ErrorCode.GOLEM_UNAVAILABLE,
                 ErrorCode.TEMPLATES,
+                ErrorCode.ACTION,
+                ErrorCode.APPROVAL_REQUIRED,
             )
         val DELIVERED = setOf("S0.1", "S0.2", "S0.3", "S2.3")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")

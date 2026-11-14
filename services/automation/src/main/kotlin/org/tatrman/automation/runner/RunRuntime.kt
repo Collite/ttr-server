@@ -123,6 +123,21 @@ class RunRuntime(
             clock,
         )
     val ledger: Ledger = ledger
+
+    /** S3.1 T6: the digest renderer (D-148) and the typed-action perform (D-168) through the same writer. */
+    val digests =
+        org.tatrman.automation.protocol
+            .Digests(ledger, served)
+    val typedPerform =
+        org.tatrman.automation.writer.TypedPerform(
+            served,
+            org.tatrman.automation.writer
+                .Apply(door, clock),
+            ledger,
+            tokens,
+            config.budgets.syncDefault,
+            clock,
+        )
     val served: () -> Bundle? = served
     val approver =
         book?.let {
