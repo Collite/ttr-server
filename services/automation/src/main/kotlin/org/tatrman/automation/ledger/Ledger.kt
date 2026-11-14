@@ -14,6 +14,9 @@ import org.jetbrains.exposed.v1.core.LongColumnType
 import org.jetbrains.exposed.v1.core.TextColumnType
 import org.jetbrains.exposed.v1.core.statements.StatementType
 import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.greater
+import org.jetbrains.exposed.v1.core.less
+import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.notInList
@@ -86,10 +89,32 @@ data class RunOpen(
     val budgetBatch: Duration? = null,
     /** The program's `mode` (`batch · on_event · windowed`); `on_event` clocks the run by [budgetSync] (D-192). */
     val mode: String? = null,
+    /** `recipe · query · perform` (S3.1). */
+    val kind: String = RUN_KIND_RECIPE,
     /** Written in the same transaction as a new claim; never appended again for a replay/live handle. */
     val openingProtocol: JsonElement? = null,
     /** Verified JWT subject; never infer this from the caller's display principal. Legacy rows stay null. */
     val callerSubject: String? = null,
+)
+
+const val RUN_KIND_RECIPE = "recipe"
+const val RUN_KIND_QUERY = "query"
+const val RUN_KIND_PERFORM = "perform"
+
+/** One row of `GET /automation/runs` (S3.1 T4). [subject] is the recipe, the query's subject or the action. */
+data class RunListing(
+    val id: UUID,
+    val kind: String,
+    val subject: String,
+    val program: String?,
+    val deployment: String?,
+    val status: RunStatus,
+    val origin: String?,
+    val dryRun: Boolean,
+    val startedAt: Instant,
+    val endedAt: Instant?,
+    val protocolRef: String,
+    val error: String?,
 )
 
 /** A persisted run handle. The caller's token and execution resources never enter the ledger. */
@@ -1354,6 +1379,92 @@ class Ledger(
         }
     }
 
+    /**
+     * S3.1: a query or typed-action run ends in one transaction — its protocol [entries], the seal, and `closed`
+     * (or `failed` with [error], which frees an idempotency key like any failed run). Only an executing run may end.
+     */
+    fun finishAdHocRun(
+        runId: UUID,
+        entries: List<Pair<ProtocolSection, JsonElement>>,
+        error: JsonElement? = null,
+    ) {
+        outermost("finishAdHocRun")
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val from = RunStatus.of(Runs.select(Runs.status).where { Runs.id eq runId }.single()[Runs.status])
+            val to = if (error == null) RunStatus.CLOSED else RunStatus.FAILED
+            if (from !in setOf(RunStatus.OPEN, RunStatus.RUNNING)) throw IllegalRunTransition(runId, from, to)
+            if (isSealed(runId)) throw ProtocolSealed(runId)
+            val now = clock.instant().utc()
+            (entries + (ProtocolSection.AUTOMATION to SEALED)).forEach { (section, payload) ->
+                val seq = nextSeq(runId, section)
+                RunProtocol.insert {
+                    it[run] = runId
+                    it[RunProtocol.section] = section.wire
+                    it[RunProtocol.seq] = seq
+                    it[RunProtocol.payload] = payload
+                    it[at] = now
+                }
+            }
+            Runs.update({ Runs.id eq runId }) {
+                it[status] = to.wire
+                it[endedAt] = now
+                if (error != null) it[Runs.error] = error
+            }
+        }
+    }
+
+    /**
+     * S3.1 T4 `GET /automation/runs`: [subject]'s runs, newest first (`started_at`, then id), after the [before]
+     * cursor and strictly after [since]; [status] null = every status.
+     */
+    fun listRuns(
+        subject: String,
+        deployment: String? = null,
+        status: RunStatus? = null,
+        kind: String? = null,
+        since: Instant? = null,
+        before: Pair<Instant, UUID>? = null,
+        limit: Int = 100,
+    ): List<RunListing> {
+        require(subject.isNotBlank())
+        require(limit in 1..500)
+        return transaction {
+            Runs
+                .selectAll()
+                .where {
+                    var cond: org.jetbrains.exposed.v1.core.Op<Boolean> = Runs.callerSubject eq subject
+                    if (deployment != null) cond = cond and (Runs.deployment eq deployment)
+                    if (status != null) cond = cond and (Runs.status eq status.wire)
+                    if (kind != null) cond = cond and (Runs.kind eq kind)
+                    if (since != null) cond = cond and (Runs.startedAt greater since.utc())
+                    if (before != null) {
+                        val (at, id) = before
+                        cond = cond and
+                            ((Runs.startedAt less at.utc()) or ((Runs.startedAt eq at.utc()) and (Runs.id less id)))
+                    }
+                    cond
+                }.orderBy(Runs.startedAt to SortOrder.DESC, Runs.id to SortOrder.DESC)
+                .limit(limit)
+                .map { row ->
+                    RunListing(
+                        id = row[Runs.id],
+                        kind = row[Runs.kind],
+                        subject = row[Runs.recipe],
+                        program = row[Runs.program],
+                        deployment = row[Runs.deployment],
+                        status = RunStatus.of(row[Runs.status]),
+                        origin = row[Runs.origin],
+                        dryRun = row[Runs.dryRun],
+                        startedAt = row[Runs.startedAt].toInstant(),
+                        endedAt = row[Runs.endedAt]?.toInstant(),
+                        protocolRef = row[Runs.protocolRef] ?: "/automation/runs/${row[Runs.id]}/protocol",
+                        error = (row[Runs.error] as? JsonObject)?.get("code")?.let { (it as? JsonPrimitive)?.content },
+                    )
+                }
+        }
+    }
+
     /** The readiness probe's question: does the ledger's database answer? */
     fun ping(): Boolean =
         runCatching {
@@ -1516,6 +1627,7 @@ class Ledger(
                         budgetSync = row[Runs.budgetSync]?.let(Duration::ofMillis),
                         budgetBatch = row[Runs.budgetBatch]?.let(Duration::ofMillis),
                         mode = row[Runs.mode],
+                        kind = row[Runs.kind],
                     ),
                     RunStatus.of(row[Runs.status]),
                     row[Runs.protocolRef],
@@ -1718,6 +1830,7 @@ class Ledger(
             it[budgetSync] = open.budgetSync?.toMillis()
             it[budgetBatch] = open.budgetBatch?.toMillis()
             it[mode] = open.mode
+            it[kind] = open.kind
         }
         open.openingProtocol?.let { payload ->
             RunProtocol.insert {

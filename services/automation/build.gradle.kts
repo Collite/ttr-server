@@ -158,6 +158,12 @@ dependencies {
     // round-trips, the idempotency claim races. `src/componentTest`, so the unit gate stays Docker-free.
     "componentTestImplementation"(libs.testcontainers.postgresql)
     "componentTestImplementation"(libs.ktor.server.test.host)
+    // S3.1: the query/runs/templates routes are specified over HTTP against the real ledger.
+    "componentTestImplementation"(libs.ktor.server.auth)
+    "componentTestImplementation"(libs.ktor.server.content.negotiation)
+    "componentTestImplementation"(libs.ktor.server.status.pages)
+    "componentTestImplementation"(libs.ktor.serialization.kotlinx.json)
+    "componentTestImplementation"(project(":shared:libs:kotlin:mcp-identity"))
     "componentTestImplementation"(libs.jgit)
     "componentTestImplementation"(libs.auth0.java.jwt)
     "componentTestImplementation"(project(":shared:libs:kotlin:db-common"))

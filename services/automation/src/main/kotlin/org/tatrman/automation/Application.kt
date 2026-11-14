@@ -174,6 +174,12 @@ fun Application.module(config: Config) {
             clock,
             query,
             staging,
+            golem =
+                automation.door.irisUrl?.let {
+                    org.tatrman.automation.query
+                        .IrisGolem(it)
+                }
+                    ?: org.tatrman.automation.query.NoGolem,
         ).also { execution = it }
     // Fence new execution and join its workers/sessions before HTTP drain and dependency cleanup.
     // Use a worker dispatcher: shutdown must not depend on a blocked engine/event-loop thread.

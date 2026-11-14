@@ -450,7 +450,7 @@ class Open(
     }
 }
 
-private fun AutomationDuration.duration(): Duration {
+internal fun AutomationDuration.duration(): Duration {
     val millis =
         when (unit) {
             "ms", "millisecond", "milliseconds" -> amount

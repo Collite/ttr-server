@@ -174,6 +174,11 @@ class ErrorEnvelopeSpec :
                 ErrorCode.VARIABLE_NAME,
                 ErrorCode.ROW_NOT_SINGLE,
                 ErrorCode.VARIABLE_TOO_LARGE,
+                ErrorCode.STATEMENT,
+                ErrorCode.QUERY,
+                ErrorCode.GOLEM_NO_TABLE,
+                ErrorCode.GOLEM_UNAVAILABLE,
+                ErrorCode.TEMPLATES,
             )
         val DELIVERED = setOf("S0.1", "S0.2", "S0.3", "S2.3")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")

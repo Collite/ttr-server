@@ -16,6 +16,15 @@ data class DoorConfig(
      * `row_writes` go to. Never falls back to [routes] or a default: an unrouted storage fails `storage-unmapped`.
      */
     val writeRoutes: Map<String, String> = emptyMap(),
+    /** S3.1 (D-169): iris-bff, for `POST /automation/query`'s Golem lane; unset = that lane answers `502 golem-unavailable`. */
+    val irisUrl: String? = null,
+)
+
+/** S3.1 `POST /automation/query`: the row limit (default, ceiling) and `table`'s `max_table_rows`. */
+data class QueryConfig(
+    val defaultLimit: Int = 1000,
+    val maxLimit: Int = 10_000,
+    val maxTableRows: Int = 500,
 )
 
 /**
@@ -179,6 +188,7 @@ data class AutomationConfig(
      * default off. The routes still require `role.ops`.
      */
     val devRoutes: Boolean = false,
+    val query: QueryConfig = QueryConfig(),
 ) {
     companion object {
         const val ROOT = "automation"
@@ -206,6 +216,7 @@ data class AutomationConfig(
                             doorRoutes(
                                 env["AUTOMATION_DOOR_WRITE_ROUTES"] ?: c.optString("door.writeRoutes"),
                             ),
+                        irisUrl = env["AUTOMATION_DOOR_IRIS_URL"] ?: c.optString("door.irisUrl"),
                     ),
                 auth =
                     AuthConfig(
@@ -275,6 +286,16 @@ data class AutomationConfig(
                 pgDoorRole = env["AUTOMATION_PG_DOOR_ROLE"]?.ifBlank { null } ?: c.optString("pgDoorRole"),
                 pgSchemas = pgSchemas(env["AUTOMATION_PG_SCHEMAS"] ?: c.optString("pgSchemas")),
                 devRoutes = c.hasPath("devRoutes") && c.getBoolean("devRoutes"),
+                query =
+                    QueryConfig(
+                        defaultLimit = if (c.hasPath("query.defaultLimit")) c.getInt("query.defaultLimit") else 1000,
+                        maxLimit = if (c.hasPath("query.maxLimit")) c.getInt("query.maxLimit") else 10_000,
+                        maxTableRows = if (c.hasPath("query.maxTableRows")) c.getInt("query.maxTableRows") else 500,
+                    ).also {
+                        require(
+                            it.defaultLimit in 1..it.maxLimit && it.maxTableRows > 0,
+                        ) { "automation config: invalid query limits" }
+                    },
             )
         }
 

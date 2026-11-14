@@ -87,6 +87,9 @@ object Runs : Table("automation.runs") {
 
     /** The program's `mode` at Open (V10); `on_event` selects [budgetSync] for the run's clock (D-192). */
     val mode = text("mode").nullable()
+
+    /** `recipe · query · perform` (V10, S3.1). */
+    val kind = text("kind")
     val error = json("error").nullable()
 
     override val primaryKey = PrimaryKey(id)
