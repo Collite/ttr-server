@@ -48,7 +48,7 @@ class VariablesSpec :
         "the T1 set answers beside the frame with §1's JSON types" {
             val v =
                 derive(
-                    """{"n":"row_count","any":"exists","total":{"kind":"aggregate","column":"c","fn":"sum"},
+                    """{"n":"row_count","any":"exists","total":{"kind":"aggregate","column":"c","agg":"sum"},
                        "all":{"kind":"table","columns":["order_number","due"]},"v":"verdict"}""",
                 )
             v.toString() shouldBe
@@ -62,21 +62,22 @@ class VariablesSpec :
 
         "aggregates round half away from zero; null_is_zero and empty frames follow golden" {
             derive("""{"a":{"kind":"aggregate","column":"c","round":2}}""")["a"].toString() shouldBe "1.34"
-            derive("""{"a":{"kind":"aggregate","column":"c","fn":"min","round":2}}""")["a"].toString() shouldBe "-1.01"
-            derive("""{"a":{"kind":"aggregate","column":"c","fn":"avg"}}""")["a"].toString() shouldBe "0.67"
+            derive("""{"a":{"kind":"aggregate","column":"c","agg":"min","round":2}}""")["a"].toString() shouldBe "-1.01"
+            derive("""{"a":{"kind":"aggregate","column":"c","agg":"avg"}}""")["a"].toString() shouldBe "0.67"
             derive(
-                """{"a":{"kind":"aggregate","column":"c","fn":"avg","null_is_zero":true}}""",
+                """{"a":{"kind":"aggregate","column":"c","agg":"avg","null_is_zero":true}}""",
             )["a"].toString() shouldBe
                 "0.4466666666666667"
-            derive("""{"a":{"kind":"aggregate","column":"c","fn":"count"}}""")["a"].toString() shouldBe "2"
-            derive("""{"a":{"kind":"aggregate","column":"order_number","fn":"max"}}""")["a"].toString() shouldBe "3"
-            derive("""{"a":{"kind":"aggregate","column":"due","fn":"max"}}""")["a"].toString() shouldBe "\"2026-11-02\""
+            derive("""{"a":{"kind":"aggregate","column":"c","agg":"count"}}""")["a"].toString() shouldBe "2"
+            derive("""{"a":{"kind":"aggregate","column":"order_number","agg":"max"}}""")["a"].toString() shouldBe "3"
+            derive("""{"a":{"kind":"aggregate","column":"due","agg":"max"}}""")["a"].toString() shouldBe
+                "\"2026-11-02\""
             val empty = frame.copy(rows = emptyList())
             derive("""{"a":{"kind":"aggregate","column":"c"}}""", empty)["a"] shouldBe JsonNull
             derive("""{"a":{"kind":"aggregate","column":"c","null_is_zero":true}}""", empty)["a"].toString() shouldBe
                 "0.0"
-            derive("""{"a":{"kind":"aggregate","column":"c","fn":"count"}}""", empty)["a"].toString() shouldBe "0"
-            code { derive("""{"a":{"kind":"aggregate","column":"název"}}""") } shouldBe ErrorCode.VARIABLE
+            derive("""{"a":{"kind":"aggregate","column":"c","agg":"count"}}""", empty)["a"].toString() shouldBe "0"
+            code { derive("""{"a":{"kind":"aggregate","column":"název"}}""") } shouldBe ErrorCode.CONFIG_INVALID
         }
 
         "the protocol's exact copy keeps decimals as strings" {
@@ -130,13 +131,19 @@ class VariablesSpec :
             code { spec("""{"Total":"row_count"}""") } shouldBe ErrorCode.VARIABLE_NAME
             code { spec("""{"1n":"row_count"}""") } shouldBe ErrorCode.VARIABLE_NAME
             code { derive("""{"order_number":"row_count","r":"row"}""", one) } shouldBe ErrorCode.VARIABLE_NAME
-            code { spec("""{"n":"median"}""") } shouldBe ErrorCode.VARIABLE
-            code { spec("""{"n":{"kind":"aggregate"}}""") } shouldBe ErrorCode.VARIABLE
-            code { spec("""{"n":{"kind":"aggregate","column":"c","fn":"median"}}""") } shouldBe ErrorCode.VARIABLE
-            code { spec("""{"n":{"kind":"row_count","round":2}}""") } shouldBe ErrorCode.VARIABLE
-            code { spec("""{"n":{"kind":"row_count","colour":2}}""") } shouldBe ErrorCode.VARIABLE
-            code { derive("""{"s":"scalar"}""", one) } shouldBe ErrorCode.VARIABLE
-            code { derive("""{"k":{"kind":"column","column":"nope"}}""") } shouldBe ErrorCode.VARIABLE
+            code { spec("""{"n":"median"}""") } shouldBe ErrorCode.CONFIG_INVALID
+            code { spec("""{"n":{"kind":"aggregate"}}""") } shouldBe ErrorCode.CONFIG_INVALID
+            code { spec("""{"n":{"kind":"aggregate","column":"c","agg":"median"}}""") } shouldBe
+                ErrorCode.CONFIG_INVALID
+            // ⚑AU-S31-2: `fn` is not an alias of `agg`; row_count's `distinct` names a column, column's is a boolean.
+            code { spec("""{"n":{"kind":"aggregate","column":"c","fn":"sum"}}""") } shouldBe ErrorCode.CONFIG_INVALID
+            code { spec("""{"n":{"kind":"row_count","distinct":true}}""") } shouldBe ErrorCode.CONFIG_INVALID
+            code { spec("""{"n":{"kind":"column","column":"c","distinct":"c"}}""") } shouldBe ErrorCode.CONFIG_INVALID
+            code { spec("""{"n":{"kind":"scalar","prefix":"x_"}}""") } shouldBe ErrorCode.CONFIG_INVALID
+            code { spec("""{"n":{"kind":"row_count","round":2}}""") } shouldBe ErrorCode.CONFIG_INVALID
+            code { spec("""{"n":{"kind":"row_count","colour":2}}""") } shouldBe ErrorCode.CONFIG_INVALID
+            code { derive("""{"s":"scalar"}""", one) } shouldBe ErrorCode.CONFIG_INVALID
+            code { derive("""{"k":{"kind":"column","column":"nope"}}""") } shouldBe ErrorCode.CONFIG_INVALID
             Variables.fold("Název_Ř 2") shouldBe "nazev_r_2"
         }
     })

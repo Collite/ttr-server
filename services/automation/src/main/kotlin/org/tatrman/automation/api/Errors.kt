@@ -76,7 +76,7 @@ enum class ErrorCode(
     // S3.1 — `POST /automation/query` (D-146): the request, its variables and the Golem lane.
     STATEMENT("statement", HttpStatusCode.BadRequest, "S3.1"),
     QUERY("query", HttpStatusCode.NotFound, "S3.1"),
-    VARIABLE("variable", HttpStatusCode.BadRequest, "S3.1"),
+    CONFIG_INVALID("config-invalid", HttpStatusCode.BadRequest, "S3.1"),
     VARIABLE_NAME("variable-name", HttpStatusCode.BadRequest, "S3.1"),
     ROW_NOT_SINGLE("row-not-single", HttpStatusCode.UnprocessableEntity, "S3.1"),
     VARIABLE_TOO_LARGE("variable-too-large", HttpStatusCode.UnprocessableEntity, "S3.1"),

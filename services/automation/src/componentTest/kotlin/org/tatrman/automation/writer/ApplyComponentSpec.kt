@@ -6,6 +6,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
@@ -704,6 +706,85 @@ class ApplyComponentSpec :
             }.code shouldBe ErrorCode.BAD_REQUEST
             shouldThrow<AutomationException> { perform.perform(name, "nope", request, caller) }.code shouldBe
                 ErrorCode.ACTION
+            fake.writes.size shouldBe 2
+        }
+
+        "review-273 F2/F3/F6: key vs params, paused, and a replay answers the key the run performed on" {
+            val name =
+                bundle.deployments.keys.first {
+                    bundle.programs[bundle.deployments.getValue(it).program]?.recipe ==
+                        "release_order"
+                }
+            val served =
+                bundle.copy(
+                    deployments =
+                        bundle.deployments +
+                            (
+                                name to
+                                    bundle.deployments
+                                        .getValue(
+                                            name,
+                                        ).copy(runAs = org.tatrman.ttr.metadata.model.RunAsRef.Caller)
+                            ),
+                )
+            val caller = Caller(subject, principal, emptySet(), TokenKind.SERVICE, "not-stored")
+            var paused = false
+            val perform =
+                TypedPerform(
+                    { served },
+                    Apply(door(), clock),
+                    ledger,
+                    ServiceTokens(emptyMap(), { error("unused") }),
+                    Duration.ofSeconds(60),
+                    clock,
+                    { paused },
+                )
+
+            fun runs() = transaction { Runs.selectAll().count() }
+            // F2: a column in both key and params is refused before any run or door call — never overridden.
+            shouldThrow<AutomationException> {
+                perform.perform(
+                    name,
+                    "hold",
+                    TypedPerformRequest(
+                        key = buildJsonObject { put("order", "4711") },
+                        params =
+                            buildJsonObject {
+                                put("order", "4712")
+                                put("department", "Sales")
+                            },
+                    ),
+                    caller,
+                )
+            }.code shouldBe ErrorCode.BAD_REQUEST
+            runs() shouldBe 0L
+            fake.writes.size shouldBe 0
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4712'") shouldBe
+                listOf(listOf("placed"))
+            // F3 (✅R273-A): paused refuses 503 before the claim; unpaused, the same request applies.
+            val request =
+                TypedPerformRequest(
+                    key = buildJsonObject { put("order", "4711") },
+                    params = buildJsonObject { put("department", "Sales") },
+                    idempotencyKey = "timeout:4711",
+                )
+            paused = true
+            shouldThrow<AutomationException> { perform.perform(name, "hold", request, caller) }.code shouldBe
+                ErrorCode.PAUSED
+            runs() shouldBe 0L
+            fake.writes.size shouldBe 0
+            paused = false
+            perform.perform(name, "hold", request, caller).outcome shouldBe "applied"
+            // F6: the same idempotency key with another key replays the run, and answers the key it performed on.
+            val again =
+                perform.perform(
+                    name,
+                    "hold",
+                    request.copy(key = buildJsonObject { put("order", "4712") }),
+                    caller,
+                )
+            again.replayed shouldBe true
+            again.key shouldBe buildJsonObject { put("order", "4711") }
             fake.writes.size shouldBe 2
         }
 

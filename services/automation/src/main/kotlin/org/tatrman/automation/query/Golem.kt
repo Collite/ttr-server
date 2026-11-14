@@ -80,6 +80,8 @@ class IrisGolem(
         originRef: String,
         timeout: Duration,
     ): GolemAnswer {
+        // review-273 F7: one deadline per ask — the turn gets what the session left, never a second full budget.
+        val deadline = System.nanoTime() + timeout.toNanos()
         val session =
             post("/v1/session", "{}", bearer, timeout)
                 .let { (status, body) ->
@@ -95,7 +97,13 @@ class IrisGolem(
                 put("origin", "automation")
                 put("originRef", originRef)
             }
-        val (status, body) = post("/v1/chat/turn", turn.toString(), bearer, timeout)
+        val left = Duration.ofNanos(deadline - System.nanoTime())
+        if (left.isNegative ||
+            left.isZero
+        ) {
+            throw AutomationException(ErrorCode.BUDGET, "the Golem session used the query's budget")
+        }
+        val (status, body) = post("/v1/chat/turn", turn.toString(), bearer, left)
         if (status == 403) {
             throw AutomationException(
                 ErrorCode.IDENTITY,

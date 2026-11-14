@@ -213,16 +213,22 @@ internal class PreviewWriter private constructor(
             val keyed = action.columns.filter { '.' in it.type }
             // ⚑AU-D3-2 (S3.1): a transition writes its `transition:` entity only. A context column keyed by another
             // entity (`decide_way`'s `request`, D-171) is context for the engine's perform, not a second target.
+            // review-273 F9: owner and columns resolve to entities by one rule ([entityOf]), however each is spelled;
+            // a resolved owner with no key column of its own is refused where it is, never widened to every column.
             val owner =
                 action.transition
                     ?.attribute
                     ?.substringBeforeLast('.', "")
                     ?.takeIf { it.isNotEmpty() }
+                    ?.let { entityOf(it, entities) ?: unsupported("transition owner $it is not a model entity") }
             val columns =
-                owner
-                    ?.let { o -> keyed.filter { it.type.substringBeforeLast('.', "") == o } }
-                    ?.takeIf { it.isNotEmpty() }
-                    ?: keyed
+                if (owner == null) {
+                    keyed
+                } else {
+                    keyed
+                        .filter { entityOf(it.type.substringBeforeLast('.', ""), entities) == owner }
+                        .ifEmpty { unsupported("transition owner ${owner.qname.dotted()} has no key column") }
+                }
             return targets(columns, entities, null).map { it.second }.distinctBy { it.qname }
         }
 
@@ -250,15 +256,7 @@ internal class PreviewWriter private constructor(
                             // Legacy recipes have no recorded scope: retain their existing name matching.
                             val entityName = column.type.substringBeforeLast('.', "")
                             val attributeName = column.type.substringAfterLast('.')
-                            val entity =
-                                entities.singleOrNull {
-                                    entityName in
-                                        setOf(
-                                            it.qname.name,
-                                            it.qname.dotted(),
-                                            "${it.qname.`package`}.${it.qname.name}",
-                                        )
-                                } ?: unsupported()
+                            val entity = entityOf(entityName, entities) ?: unsupported()
                             entity to
                                 (
                                     entity.attributes.singleOrNull {
@@ -281,5 +279,17 @@ internal class PreviewWriter private constructor(
 
         private fun unsupported(): Nothing =
             throw AutomationException(ErrorCode.PREVIEW_UNSUPPORTED, "unsupported native writer mapping or value")
+
+        private fun unsupported(detail: String): Nothing =
+            throw AutomationException(ErrorCode.PREVIEW_UNSUPPORTED, "unsupported native writer mapping: $detail")
+
+        /** The one name rule of the legacy target mapping: an entity's name, its dotted qname, or `package.name`. */
+        private fun entityOf(
+            name: String,
+            entities: List<Entity>,
+        ): Entity? =
+            entities.singleOrNull {
+                name in setOf(it.qname.name, it.qname.dotted(), "${it.qname.`package`}.${it.qname.name}")
+            }
     }
 }

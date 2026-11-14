@@ -51,4 +51,50 @@ class DecideWayOpenSpec :
                 )
             result.httpStatus shouldBe 201
         }
+
+        "review-273 F9: a package-qualified transition owner resolves by the same rule as its unqualified key columns" {
+            val loaded = BundleFixture.load()
+            val line = loaded.entities.single { it.qname.name == "return_request_line" }
+            val qualified = "${line.qname.`package`}.return_request_line.state"
+            val recipe = loaded.recipes.getValue("decide_return")
+            val action = recipe.coverage.actions.getValue("decide_way")
+            val b =
+                loaded.copy(
+                    deployments =
+                        loaded.deployments +
+                            (
+                                "decide_native_batch" to
+                                    loaded.deployments.getValue("decide_native_batch").copy(runAs = ModelRunAs.Caller)
+                            ),
+                    recipes =
+                        loaded.recipes +
+                            (
+                                "decide_return" to
+                                    recipe.copy(
+                                        coverage =
+                                            recipe.coverage.copy(
+                                                actions =
+                                                    recipe.coverage.actions +
+                                                        (
+                                                            "decide_way" to
+                                                                action.copy(
+                                                                    transition =
+                                                                        action.transition!!.copy(
+                                                                            attribute = qualified,
+                                                                        ),
+                                                                )
+                                                        ),
+                                            ),
+                                    )
+                            ),
+                )
+            org.tatrman.automation.apply.PreviewWriter
+                .targetEntities(
+                    b.recipes
+                        .getValue("decide_return")
+                        .coverage.actions
+                        .getValue("decide_way"),
+                    b.entities,
+                ).map { it.qname.name } shouldBe listOf("return_request_line")
+        }
     })

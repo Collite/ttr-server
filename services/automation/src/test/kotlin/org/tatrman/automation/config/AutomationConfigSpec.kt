@@ -55,6 +55,15 @@ class AutomationConfigSpec :
             c.connections shouldBe emptyMap()
         }
 
+        "review-273 F8: an empty AUTOMATION_DOOR_IRIS_URL / _WRITE_ROUTES is unset; a value is read" {
+            load(required, mapOf("AUTOMATION_DOOR_IRIS_URL" to "")).door.irisUrl shouldBe null
+            load(required, mapOf("AUTOMATION_DOOR_IRIS_URL" to "  ")).door.irisUrl shouldBe null
+            load(required, mapOf("AUTOMATION_DOOR_IRIS_URL" to "http://iris-bff:8080")).door.irisUrl shouldBe
+                "http://iris-bff:8080"
+            load(required, mapOf("AUTOMATION_DOOR_WRITE_ROUTES" to "")).door.writeRoutes shouldBe emptyMap()
+            load(required).query shouldBe QueryConfig(1000, 10_000, 500)
+        }
+
         "world schemas are explicit configuration, with demo pinned to cz through the environment" {
             load(required).pgSchemas shouldBe emptyMap()
             load(required, mapOf("AUTOMATION_PG_DOOR_ROLE" to "au_door")).pgDoorRole shouldBe "au_door"

@@ -1428,7 +1428,8 @@ class Ledger(
         limit: Int = 100,
     ): List<RunListing> {
         require(subject.isNotBlank())
-        require(limit in 1..500)
+        // The route's public cap plus its one look-ahead row (review-273 F1).
+        require(limit in 1..MAX_RUNS_PAGE + 1)
         return transaction {
             Runs
                 .selectAll()
@@ -1885,6 +1886,9 @@ class Ledger(
 
     companion object {
         const val CLAIM_ATTEMPTS = 3
+
+        /** `GET /automation/runs`' largest page (S3.1 T4); [listRuns] reads one more row to know a next page exists. */
+        const val MAX_RUNS_PAGE = 500
         private val FREE_STATUSES = RunStatus.entries.filter { it.freesKey }.map { it.wire }
         private val SEALED = JsonObject(mapOf("sealed" to JsonPrimitive(true)))
     }

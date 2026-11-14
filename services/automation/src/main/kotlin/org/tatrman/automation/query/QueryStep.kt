@@ -6,7 +6,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -30,6 +29,7 @@ import org.tatrman.automation.identity.RunAs
 import org.tatrman.automation.identity.RunIdentity
 import org.tatrman.automation.identity.ServiceTokens
 import org.tatrman.automation.ledger.Claim
+import org.tatrman.automation.ledger.IllegalRunTransition
 import org.tatrman.automation.ledger.Ledger
 import org.tatrman.automation.ledger.ProtocolSection
 import org.tatrman.automation.ledger.RUN_KIND_QUERY
@@ -41,7 +41,6 @@ import org.tatrman.automation.runner.Table
 import org.tatrman.automation.runner.duration
 import org.tatrman.ttr.metadata.model.Query
 import org.tatrman.automation.identity.RunAsRef
-import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
 import java.util.UUID
@@ -197,7 +196,7 @@ class QueryStep(
                         caller = caller.principal,
                         callerSubject = caller.sub,
                         origin = request.origin ?: "query",
-                        idempotencyKey = request.idempotencyKey?.let { key(caller, it) },
+                        idempotencyKey = request.idempotencyKey?.let { key(caller, request.deployment, it) },
                         budgetSync = budget,
                         kind = RUN_KIND_QUERY,
                         openingProtocol = opening,
@@ -242,7 +241,12 @@ class QueryStep(
                     add(ProtocolSection.ISLANDS to islands)
                     answer.turn?.let { add(ProtocolSection.TURNS to it) }
                 }
-            withContext(Dispatchers.IO) { ledger.finishAdHocRun(run, entries) }
+            try {
+                withContext(Dispatchers.IO) { ledger.finishAdHocRun(run, entries) }
+            } catch (_: IllegalRunTransition) {
+                // review-273 F7: the sweep abandoned the run while the lane was still answering — its budget ran out.
+                throw AutomationException(ErrorCode.BUDGET, "the query outlived its budget; its run was abandoned")
+            }
             return QueryOutcome(
                 200,
                 QueryResponse(
@@ -580,19 +584,23 @@ class QueryStep(
         put("type", type)
     }
 
+    /** §1.2: a caller-asserted key is namespaced by the verified subject **and the deployment** (review-273 F6). */
     private fun key(
         caller: Caller,
+        deployment: String?,
         key: String,
-    ): String {
-        // The ledger's key index is global: namespace the caller's key, as Open does.
-        val material =
-            Json.encodeToString(
-                JsonArray.serializer(),
-                JsonArray(listOf(JsonPrimitive(caller.sub), JsonPrimitive("query-v1"), JsonPrimitive(key))),
-            )
-        val digest = MessageDigest.getInstance("SHA-256").digest(material.toByteArray(Charsets.UTF_8))
-        return "query:" + digest.joinToString("") { "%02x".format(it) }
-    }
+    ): String =
+        org.tatrman.automation.ledger.idempotencyKey(
+            "query",
+            JsonArray(
+                listOf(
+                    JsonPrimitive(caller.sub),
+                    deployment?.let(::JsonPrimitive) ?: JsonNull,
+                    JsonPrimitive("query-v1"),
+                    JsonPrimitive(key),
+                ),
+            ),
+        )
 
     private fun JsonObject.text(name: String): String? = (this[name] as? JsonPrimitive)?.contentOrNull
 

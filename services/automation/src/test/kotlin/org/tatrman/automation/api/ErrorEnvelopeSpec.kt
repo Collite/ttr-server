@@ -170,7 +170,7 @@ class ErrorEnvelopeSpec :
                 ErrorCode.DUPLICATE_KEY,
                 ErrorCode.BUDGET,
                 // S3.1 lands in pieces; CONNECTOR_UNAVAILABLE/CONNECTOR_FACE (D-142's connector faces) stay unraised.
-                ErrorCode.VARIABLE,
+                ErrorCode.CONFIG_INVALID,
                 ErrorCode.VARIABLE_NAME,
                 ErrorCode.ROW_NOT_SINGLE,
                 ErrorCode.VARIABLE_TOO_LARGE,

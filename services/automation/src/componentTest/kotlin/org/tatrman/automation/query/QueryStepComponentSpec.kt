@@ -115,7 +115,10 @@ class QueryStepComponentSpec :
             },
             var refuse: (RunRequest) -> ResponseMessage? = { null },
             var golemAnswer: GolemAnswer = GolemAnswer(QueryVerdict.ANSWERED),
+            val served: Bundle = bundle,
         ) {
+            /** review-273 F7: the sweep abandons the run while the Golem is still answering. */
+            var abandonDuringAsk = false
             val requests: MutableList<RunRequest> = Collections.synchronizedList(mutableListOf())
             val asked: MutableList<List<String>> = Collections.synchronizedList(mutableListOf())
             val ledger = Ledger(Duration.ofMinutes(30))
@@ -143,11 +146,12 @@ class QueryStepComponentSpec :
             val golem =
                 Golem { bearer, agent, question, originRef, _ ->
                     asked += listOf(bearer, agent, question, originRef)
+                    if (abandonDuringAsk) ledger.markStatus(UUID.fromString(originRef), RunStatus.ABANDONED)
                     golemAnswer
                 }
             val step =
                 QueryStep(
-                    { bundle },
+                    { served },
                     QueryDoor(
                         query,
                         mapOf(
@@ -179,7 +183,7 @@ class QueryStepComponentSpec :
             val out =
                 f.run(
                     """{"query":"orders_of_customer","parameters":{"customer":"C-1"},
-                       "variables":{"n":"row_count","any":"exists","total":{"kind":"aggregate","column":"amount","fn":"sum"},
+                       "variables":{"n":"row_count","any":"exists","total":{"kind":"aggregate","column":"amount","agg":"sum"},
                                     "all":"table","v":"verdict"}}""",
                 )
             out.status shouldBe 200
@@ -332,6 +336,91 @@ class QueryStepComponentSpec :
             again.response.variables shouldBe first.response.variables
             again.response.rowCount shouldBe 2
             f.requests.size shouldBe 1
+        }
+
+        "review-273 F6: one caller key under two deployments is two runs, never the other deployment's answer" {
+            val names =
+                bundle.deployments.keys
+                    .filter {
+                        bundle
+                            .worldOf(
+                                bundle.deployments.getValue(it),
+                            )?.name == "demo"
+                    }.take(2)
+            names.size shouldBe 2
+            val asCaller =
+                bundle.copy(
+                    deployments =
+                        bundle.deployments +
+                            names.associateWith {
+                                bundle.deployments
+                                    .getValue(
+                                        it,
+                                    ).copy(runAs = org.tatrman.ttr.metadata.model.RunAsRef.Caller)
+                            },
+                )
+            val f = Fixture(served = asCaller)
+            val body = { d: String -> """{"statement":"SELECT 1 AS x","deployment":"$d","idempotencyKey":"daily"}""" }
+            val first = f.run(body(names[0]))
+            val second = f.run(body(names[1]))
+            second.response.replayed shouldBe false
+            (second.response.run.id == first.response.run.id) shouldBe false
+            f.run(body(names[0])).response.let {
+                it.replayed shouldBe true
+                it.run shouldBe first.response.run
+            }
+        }
+
+        "review-273 F7: a query whose run the sweep abandoned meanwhile answers budget, not 500" {
+            val f =
+                Fixture(
+                    golemAnswer =
+                        GolemAnswer(
+                            QueryVerdict.ANSWERED,
+                            Table(listOf(ManifestColumn("x", "int")), listOf(listOf(1L))),
+                        ),
+                )
+            f.abandonDuringAsk = true
+            code { f.run("""{"golem":{"agent":"sales","question":"q"}}""") } shouldBe ErrorCode.BUDGET
+        }
+
+        "review-273 F1: the runs list pages at its documented maximum (500); 501 is 400" {
+            val realm = TestRealm()
+            val f = Fixture()
+            try {
+                val maya = realm.person("maya", listOf("hartland-sales-managers"))
+                repeat(501) {
+                    f.ledger.claimRun(
+                        org.tatrman.automation.ledger
+                            .RunOpen("statement", callerSubject = "sub-maya", kind = "query"),
+                    )
+                }
+                testApplication {
+                    application {
+                        install(ContentNegotiation) { json() }
+                        install(StatusPages) { installAutomationErrors() }
+                        val verifier =
+                            CallerVerifier(
+                                JwksBearerVerifier(
+                                    HttpJwksKeySource(realm.jwksUrl),
+                                    TestRealm.ISSUER,
+                                    TestRealm.AUDIENCE,
+                                ),
+                            )
+                        install(Authentication) { AutomationBearerProvider.register(this, verifier) }
+                        routing { authenticate(AUTOMATION_AUTH) { queryRoutes(f.step, { bundle }, f.ledger) } }
+                    }
+                    val page = client.get("/automation/runs?status=any&limit=500") { bearerAuth(maya) }
+                    page.status shouldBe HttpStatusCode.OK
+                    val body = Json.parseToJsonElement(page.bodyAsText()).jsonObject
+                    body.getValue("runs").jsonArray.size shouldBe 500
+                    (body["next"].toString() == "null") shouldBe false
+                    client.get("/automation/runs?status=any&limit=501") { bearerAuth(maya) }.status shouldBe
+                        HttpStatusCode.BadRequest
+                }
+            } finally {
+                realm.close()
+            }
         }
 
         "GET /automation/queries, /automation/runs and /automation/templates/{target} over HTTP" {

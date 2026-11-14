@@ -33,7 +33,6 @@ import org.tatrman.automation.ledger.ProtocolSection
 import org.tatrman.automation.ledger.RUN_KIND_PERFORM
 import org.tatrman.automation.ledger.RunOpen
 import org.tatrman.automation.runner.duration
-import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
 import java.util.UUID
@@ -89,6 +88,8 @@ class TypedPerform(
     private val tokens: ServiceTokens,
     private val syncDefault: Duration,
     private val clock: Clock = Clock.systemUTC(),
+    /** ✅R273-A: a paused service refuses a typed perform like Open and the query step (`503 paused`). */
+    private val paused: () -> Boolean = { false },
 ) {
     suspend fun perform(
         deploymentName: String,
@@ -96,6 +97,7 @@ class TypedPerform(
         request: TypedPerformRequest,
         caller: Caller,
     ): TypedPerformResponse {
+        if (paused()) throw AutomationException(ErrorCode.PAUSED, "automation is paused")
         val bundle = served() ?: throw AutomationException(ErrorCode.DEPLOYMENT, "no bundle is served")
         val deployment =
             bundle.deployments[deploymentName]
@@ -129,10 +131,13 @@ class TypedPerform(
         if (request.idempotencyKey != null && request.idempotencyKey.isBlank()) bad("idempotencyKey cannot be blank")
         val columns = action.columns.associateBy { it.name }
         val args = LinkedHashMap<String, JsonElement>()
-        for ((name, value) in request.key + request.params) {
-            if (name !in columns) bad("action $actionName has no column $name")
-            if (name in args) bad("column $name is given twice")
-            args[name] = value
+        // review-273 F2: key and params are read apart — a column in both is refused, never overridden by params.
+        for (part in listOf(request.key, request.params)) {
+            for ((name, value) in part) {
+                if (name !in columns) bad("action $actionName has no column $name")
+                if (name in args) bad("column $name is given twice")
+                args[name] = value
+            }
         }
         val identity =
             RunAs(GrantMap(world.grants, world.identities, world.roles), world.identities, tokens).resolve(
@@ -324,7 +329,8 @@ class TypedPerform(
         return TypedPerformResponse(
             run.toString(),
             action,
-            key,
+            // review-273 F6: the key the run performed on, never the replaying request's.
+            writes["key"] as? JsonObject ?: key,
             (writes["outcome"] as JsonPrimitive).content,
             rows,
             ref,
@@ -337,14 +343,11 @@ class TypedPerform(
         deployment: String,
         action: String,
         key: String,
-    ): String {
-        val material =
-            JsonArray(
-                listOf(caller.sub, deployment, action, "perform-v1", key).map(::JsonPrimitive),
-            ).toString()
-        val digest = MessageDigest.getInstance("SHA-256").digest(material.toByteArray(Charsets.UTF_8))
-        return "perform:" + digest.joinToString("") { "%02x".format(it) }
-    }
+    ): String =
+        org.tatrman.automation.ledger.idempotencyKey(
+            "perform",
+            JsonArray(listOf(caller.sub, deployment, action, "perform-v1", key).map(::JsonPrimitive)),
+        )
 
     private fun bad(message: String): Nothing = throw AutomationException(ErrorCode.BAD_REQUEST, message)
 }

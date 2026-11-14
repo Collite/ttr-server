@@ -214,9 +214,11 @@ data class AutomationConfig(
                         routes = doorRoutes(c.optString("door.routes")),
                         writeRoutes =
                             doorRoutes(
-                                env["AUTOMATION_DOOR_WRITE_ROUTES"] ?: c.optString("door.writeRoutes"),
+                                env["AUTOMATION_DOOR_WRITE_ROUTES"]?.ifBlank { null } ?: c.optString(
+                                    "door.writeRoutes",
+                                ),
                             ),
-                        irisUrl = env["AUTOMATION_DOOR_IRIS_URL"] ?: c.optString("door.irisUrl"),
+                        irisUrl = env["AUTOMATION_DOOR_IRIS_URL"]?.ifBlank { null } ?: c.optString("door.irisUrl"),
                     ),
                 auth =
                     AuthConfig(

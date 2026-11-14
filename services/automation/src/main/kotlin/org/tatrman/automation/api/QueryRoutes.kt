@@ -91,7 +91,10 @@ fun Route.queryRoutes(
         val since = p["since"]?.let { instant(it, "since") }
         val before = p["cursor"]?.let(::cursor)
         val limit =
-            p["limit"]?.let { it.toIntOrNull()?.takeIf { n -> n in 1..500 } ?: bad("limit must be in 1..500") } ?: 100
+            p["limit"]?.let {
+                it.toIntOrNull()?.takeIf { n -> n in 1..Ledger.MAX_RUNS_PAGE }
+                    ?: bad("limit must be in 1..${Ledger.MAX_RUNS_PAGE}")
+            } ?: 100
         val caller = call.caller()
         val runs =
             withContext(Dispatchers.IO) {

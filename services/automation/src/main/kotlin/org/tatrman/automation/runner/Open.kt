@@ -11,7 +11,6 @@ import org.tatrman.automation.ledger.*
 import org.tatrman.ttr.metadata.model.AutomationDuration
 import org.tatrman.ttr.metadata.model.AutomationProgram
 import org.tatrman.ttrp.resolve.AutomationScope
-import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -396,13 +395,9 @@ class Open(
             JsonArray(
                 listOf(JsonPrimitive(caller.sub), JsonPrimitive(request.deployment), JsonPrimitive("open-v1"), key) +
                     if (dry) emptyList() else listOf(JsonPrimitive("auto")),
-            ).toString()
-        return "open:" +
-            MessageDigest
-                .getInstance(
-                    "SHA-256",
-                ).digest(material.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
+            )
+        return org.tatrman.automation.ledger
+            .idempotencyKey("open", material)
     }
 
     private fun stale(

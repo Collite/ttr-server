@@ -137,6 +137,7 @@ class RunRuntime(
             tokens,
             config.budgets.syncDefault,
             clock,
+            { config.paused },
         )
     val served: () -> Bundle? = served
     val approver =

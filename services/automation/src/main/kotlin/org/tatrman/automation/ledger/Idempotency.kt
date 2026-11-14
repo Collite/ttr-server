@@ -112,3 +112,17 @@ object IdempotencyPolicy {
         }
     }
 }
+
+/**
+ * The ledger's idempotency key for one run kind (review-273 N1): `<prefix>:` + the SHA-256 hex of [material]'s JSON text.
+ * The key index is global, so every caller-asserted key is namespaced inside [material] (caller subject, deployment …).
+ */
+fun idempotencyKey(
+    prefix: String,
+    material: kotlinx.serialization.json.JsonArray,
+): String =
+    "$prefix:" +
+        java.security.MessageDigest
+            .getInstance("SHA-256")
+            .digest(material.toString().toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }

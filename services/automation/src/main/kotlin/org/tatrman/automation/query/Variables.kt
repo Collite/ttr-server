@@ -37,7 +37,7 @@ data class VariableSpec(
     val name: String,
     val kind: String,
     val column: String? = null,
-    val fn: String? = null,
+    val agg: String? = null,
     val round: Int? = null,
     val nullIsZero: Boolean = false,
     val distinct: JsonElement? = null,
@@ -64,7 +64,18 @@ object Variables {
     private const val MAX_VARIABLES = 64
     private val NAME = Regex("^[a-z][a-z0-9_]*$")
     private val KINDS = setOf("scalar", "row_count", "exists", "aggregate", "column", "row", "table", "verdict")
-    private val FNS = setOf("sum", "avg", "count", "min", "max")
+    private val AGGS = setOf("sum", "avg", "count", "min", "max")
+    private val KEYS =
+        mapOf(
+            "scalar" to setOf("column"),
+            "row_count" to setOf("distinct"),
+            "exists" to emptySet(),
+            "aggregate" to setOf("column", "agg", "round", "null_is_zero"),
+            "column" to setOf("column", "distinct"),
+            "row" to setOf("prefix", "columns"),
+            "table" to setOf("columns"),
+            "verdict" to emptySet(),
+        )
     private val NUMERIC = setOf("int", "integer", "bigint", "decimal", "numeric", "float", "double", "real")
     private val INTEGER = setOf("int", "integer", "bigint")
 
@@ -87,10 +98,15 @@ object Variables {
                     is JsonObject -> raw
                     else -> bad("variable $name: a kind or an object")
                 }
-            val known = setOf("kind", "column", "fn", "round", "null_is_zero", "distinct", "prefix", "columns")
-            (spec.keys - known).firstOrNull()?.let { bad("variable $name: unknown field $it") }
             val kind = spec["kind"]?.text() ?: bad("variable $name: kind is required")
             if (kind !in KINDS) bad("variable $name: unknown kind $kind")
+            // ⚑AU-S31-2 (Amendment 2026-11-14 (c)): each kind reads its own keys; anything else (`fn` included) is refused.
+            (
+                spec.keys -
+                    KEYS.getValue(
+                        kind,
+                    ) - "kind"
+            ).firstOrNull()?.let { bad("variable $name: $kind has no field $it") }
             val round =
                 spec["round"]?.let {
                     (it as? JsonPrimitive)?.intOrNull
@@ -103,7 +119,7 @@ object Variables {
                 name = name,
                 kind = kind,
                 column = spec["column"]?.text(),
-                fn = spec["fn"]?.text(),
+                agg = spec["agg"]?.text(),
                 round = round,
                 nullIsZero =
                     spec["null_is_zero"]?.let {
@@ -124,7 +140,7 @@ object Variables {
         when (spec.kind) {
             "aggregate" -> {
                 spec.column ?: bad("variable $n: aggregate needs column")
-                if ((spec.fn ?: "sum") !in FNS) bad("variable $n: fn is one of ${FNS.joinToString()}")
+                if ((spec.agg ?: "sum") !in AGGS) bad("variable $n: agg is one of ${AGGS.joinToString()}")
             }
             "column" -> spec.column ?: bad("variable $n: column needs column")
             "row_count" ->
@@ -256,7 +272,7 @@ object Variables {
     ): Any? {
         val i = index(frame, requireNotNull(spec.column), spec)
         val type = frame.columns[i].type.lowercase()
-        val fn = spec.fn ?: "sum"
+        val fn = spec.agg ?: "sum"
         val raw = frame.rows.map { it[i] }
         if (fn == "count") return (if (spec.nullIsZero) raw.size else raw.count { it != null }).toLong()
         if (fn in setOf("min", "max") && type !in NUMERIC) {
@@ -416,7 +432,7 @@ object Variables {
     private fun JsonElement.text(): String =
         (this as? JsonPrimitive)?.takeIf { it.isString }?.content ?: bad("a variable field must be a string")
 
-    private fun bad(message: String): Nothing = throw AutomationException(ErrorCode.VARIABLE, message)
+    private fun bad(message: String): Nothing = throw AutomationException(ErrorCode.CONFIG_INVALID, message)
 
     private fun badName(
         name: String,

@@ -8,6 +8,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
+import com.sun.net.httpserver.HttpServer
+import java.net.InetSocketAddress
+import java.time.Duration
+import java.util.concurrent.Executors
 
 /** iris-bff's `/v1/chat/turn` answer (one `IrisStreamEvent`, proto-JSON) → the Golem lane's verdict and frame. */
 class IrisGolemSpec :
@@ -44,6 +48,38 @@ class IrisGolemSpec :
             shouldThrow<AutomationException> {
                 answer("""{"envelope":{"turnId":"t","text":"hello","format":{"kind":"PLAINTEXT"}}}""")
             }.code shouldBe ErrorCode.GOLEM_NO_TABLE
+        }
+
+        "review-273 F7: one deadline per ask — a slow session leaves the turn only the rest, then budget" {
+            val budget = Duration.ofSeconds(3)
+            val pause = budget.toMillis() * 6 / 10
+            val server =
+                HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+                    executor = Executors.newCachedThreadPool()
+                    for (path in listOf("/v1/session", "/v1/chat/turn")) {
+                        createContext(path) { exchange ->
+                            Thread.sleep(pause)
+                            val body = """{"sessionId":"s","envelope":{"format":{"kind":"PLAINTEXT"}}}""".toByteArray()
+                            exchange.sendResponseHeaders(200, body.size.toLong())
+                            exchange.responseBody.use { it.write(body) }
+                        }
+                    }
+                    start()
+                }
+            try {
+                val started = System.nanoTime()
+                val error =
+                    shouldThrow<AutomationException> {
+                        IrisGolem(
+                            "http://127.0.0.1:${server.address.port}",
+                        ).ask("bearer", "sales", "q", "run-1", budget)
+                    }
+                val elapsed = Duration.ofNanos(System.nanoTime() - started)
+                error.code shouldBe ErrorCode.BUDGET
+                (elapsed < budget.multipliedBy(12).dividedBy(10)) shouldBe true
+            } finally {
+                server.stop(0)
+            }
         }
 
         "a table cut by the Golem (totalRows > rows) is truncated" {
