@@ -295,6 +295,7 @@ class ProcessorRunner:
                 if item.kind in ("import", "diff") or manifest["graph"]["unit"] in WHOLE_SOURCE_UNITS:
                     for source_id in {u.source_id for u in list(units.values())}:
                         tree = self.warehouse.source_tree(source_id)
+                        # these replace get_unit's: each must carry its source id (`own_units`, T8f W5-5)
                         units.update((u.id, u) for u in tree.units)
                         if tree.source is not None:
                             sources[source_id] = tree.source

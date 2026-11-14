@@ -40,6 +40,11 @@ docwh-pipeline ≥ 0.11.15 fails the step at once instead of spending `budget.re
 takes a source's `recordedAt` from its Source too, when the store does not list it; a source the store neither lists nor
 answered fails `diff/source-unanswered` (docwh-store < 0.11.14).
 
+The store prints a tree's `sourceId` once, at the top of `GET /sources/{id}/units`; its units carry none. The client
+gives each unit the tree's id (0.11.5, T8f W5-5), so a whole-source step (`document`, `subject`, import, diff) keeps
+every unit's source. 0.11.4 read them as source 0, and every live subject step failed
+`consolidate/source-unanswered` for source 0. A unit that names another source is `store/units-mismatch`.
+
 Kinds run synchronously on the main thread on Linux/macOS. A POSIX interval timer
 interrupts a timed-out kind; no executor thread continues writing afterward.
 Heartbeat renewal runs separately. SIGTERM stops fetches and finishes the current

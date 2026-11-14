@@ -307,6 +307,17 @@ def test_an_older_store_answers_no_source() -> None:
 
 
 @respx.mock
+def test_each_unit_of_a_tree_answers_its_source() -> None:
+    """T8f W5-5: the store prints the tree's `sourceId` once, at the top; its units carry none (unitTree.json, as the
+    store's `UnitRoutesSpec` prints it). The runner puts these units over `get_unit`'s, so each must keep its source,
+    or a subject step finds every member under source 0 (job-9: `consolidate/source-unanswered`, sourceId 0, 4/4)."""
+    assert all("sourceId" not in u for u in units_answer()["units"])  # type: ignore[attr-defined]
+    respx.get(f"{BASE}/sources/7/units").mock(return_value=httpx.Response(200, json=units_answer()))
+    tree = StoreClient(BASE).source_tree(7)
+    assert [(u.id, u.source_id) for u in tree.units] == [(100, 7), (101, 7)]
+
+
+@respx.mock
 @pytest.mark.parametrize(
     ("body", "code", "message"),
     [
@@ -317,6 +328,12 @@ def test_an_older_store_answers_no_source() -> None:
             {**units_answer(), "source": {**units_answer()["source"], "id": 8}},  # type: ignore[dict-item]
             "store/units-mismatch",
             "GET /sources/7/units answered source.id 8",
+        ),
+        # T8f W5-5: a unit that names another source is never read as this one's
+        (
+            {**units_answer(), "units": [{**units_answer()["units"][0], "sourceId": 8}]},  # type: ignore[index]
+            "store/units-mismatch",
+            "GET /sources/7/units answered unit 100 of sourceId 8",
         ),
     ],
 )

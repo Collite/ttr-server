@@ -350,7 +350,8 @@ class Source(DxModel):
 class SourceTree(DxModel):
     """`GET /sources/{id}/units` (proto `ListUnitsResponse`): the tree in document order and, since docwh-store 0.11.14
     (T8f W5-4), the source itself with its mart. `source` is None from an older store. A subject step reads each
-    member's subject from `source.metadata.subjectId`: split writes it there, not on the DOCUMENT unit."""
+    member's subject from `source.metadata.subjectId`: split writes it there, not on the DOCUMENT unit. The wire's
+    units carry no `sourceId` (the tree's is at the top); `StoreClient.source_tree` fills it in (T8f W5-5)."""
 
     source_id: int = 0
     units: list[Unit] = []
