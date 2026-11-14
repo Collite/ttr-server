@@ -256,11 +256,18 @@ class Ledger(
         outermost("claimRun")
         var abandonedRecipe: String? = null
         val claim =
-            transaction {
+            // ✅R280-A: a wet watermark open reads after its program lock, so it must see what committed before it.
+            transaction(
+                transactionIsolation = Connection.TRANSACTION_READ_COMMITTED.takeIf { Watermark.guards(open) },
+            ) {
                 maxAttempts = CLAIM_ATTEMPTS
                 abandonedRecipe = null
                 val now = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS)
-                val key = open.idempotencyKey ?: return@transaction Claim.Claimed(insertRun(open, now), startedAt = now)
+                val key =
+                    open.idempotencyKey ?: return@transaction run {
+                        Watermark.guardOpen(open)
+                        Claim.Claimed(insertRun(open, now), startedAt = now)
+                    }
                 val row =
                     Runs
                         .selectAll()
@@ -277,7 +284,10 @@ class Ledger(
                         )
                     }
                 when (val decision = IdempotencyPolicy.decide(holder, now)) {
-                    ClaimDecision.Open -> Claim.Claimed(insertRun(open, now), startedAt = now)
+                    ClaimDecision.Open -> {
+                        Watermark.guardOpen(open)
+                        Claim.Claimed(insertRun(open, now), startedAt = now)
+                    }
                     is ClaimDecision.Replay -> Claim.Replay(decision.runId)
                     is ClaimDecision.Wait -> Claim.Running(decision.runId, decision.status)
                     is ClaimDecision.AbandonThenOpen -> {
@@ -287,6 +297,8 @@ class Ledger(
                             it[error] = JsonObject(mapOf("code" to JsonPrimitive("run-abandoned")))
                         }
                         abandonedRecipe = row?.get(Runs.recipe)
+                        // After the abandon, in this transaction: the key's own stale run no longer holds the window.
+                        Watermark.guardOpen(open)
                         Claim.Claimed(insertRun(open, now), abandoned = decision.runId, startedAt = now)
                     }
                 }
@@ -824,7 +836,7 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            seal(runId, batchId, dryRun = true, now)
+            seal(runId, batchId, dryRun = true, now, row[Runs.program], row[Runs.port])
             ensureRunBudget(runId, defaultBudget, clock)
             Runs.update({ Runs.id eq runId }) {
                 it[status] = RunStatus.CLOSED.wire
@@ -974,7 +986,7 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            seal(runId, batchId, dryRun = false, now)
+            seal(runId, batchId, dryRun = false, now, row[Runs.program], row[Runs.port])
             ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             val status = if (waiting) RunStatus.WAITING else RunStatus.CLOSED
             Runs.update({ Runs.id eq runId }) {
@@ -996,6 +1008,8 @@ class Ledger(
         batchId: UUID,
         dryRun: Boolean,
         now: OffsetDateTime,
+        program: String?,
+        port: JsonElement,
     ) {
         val closure =
             kotlinx.serialization.json.buildJsonObject {
@@ -1015,9 +1029,9 @@ class Ledger(
             }
         }
         if (!dryRun) {
-            // D-143 (S3.2 T2): a wet windowed run's seal advances the program's watermark, in this transaction.
-            val r = Runs.select(Runs.program, Runs.port).where { Runs.id eq runId }.single()
-            Watermark.advanceAtSeal(runId, r[Runs.program], r[Runs.port], now)
+            // D-143 (S3.2 T2): a wet windowed run's seal advances the program's watermark, in this transaction
+            // (review-280 F7: [program] and [port] come from the row the close already holds FOR UPDATE).
+            Watermark.advanceAtSeal(runId, program, port, now)
         }
         if (onRouteSilent(runId)) {
             val exec = TransactionManager.current()

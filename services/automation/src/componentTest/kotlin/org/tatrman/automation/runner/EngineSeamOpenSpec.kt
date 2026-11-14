@@ -5,6 +5,12 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.eq
@@ -22,6 +28,7 @@ import org.tatrman.automation.bundle.Bundle
 import org.tatrman.automation.bundle.BundleKind
 import org.tatrman.automation.bundle.BundleLoader
 import org.tatrman.automation.bundle.Checkout
+import org.tatrman.automation.bundle.ManifestParameter
 import org.tatrman.automation.engine.EngineHistory
 import org.tatrman.automation.engine.HistoricTask
 import org.tatrman.automation.identity.AuthorMap
@@ -32,6 +39,8 @@ import org.tatrman.automation.ledger.*
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.atomic.AtomicInteger
 import org.tatrman.ttr.metadata.model.RunAsRef as ModelRunAs
 
 /**
@@ -39,6 +48,9 @@ import org.tatrman.ttr.metadata.model.RunAsRef as ModelRunAs
  * `[previous as_of, as_of)`; a dry run and an explicit window never advance it; count/gap windows are gated) and the
  * engine seam (D-150/D-159: the six columns and the protocol; an answer the engine's history does not back is refused
  * before any claim; a backed one goes on to the D-99 fingerprint check; the engine cannot run as its caller).
+ * review-280: one unsealed wet watermark run per program (✅R280-A `409 window-open`), answers from the engine client
+ * only (✅R280-B), only a clock `asOf` keeps the watermark (F3), the cheap refusals before the engine call (F4), the
+ * reserved window bindings (F5) and the engine predicate's token kind (F6).
  */
 class EngineSeamOpenSpec :
     StringSpec({
@@ -50,6 +62,10 @@ class EngineSeamOpenSpec :
         val clock = MutableClock(t0)
         val ledger = Ledger(Duration.ofMinutes(30), clock)
         val maya = Caller("maya-id", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "maya-token")
+        // The engine's client-credentials bearer; the fixture world grants its role the deployment's named identity.
+        val engine =
+            Caller("pe-id", "process-engine", setOf("hartland-sales-managers"), TokenKind.SERVICE, "engine-token")
+        lateinit var named: Bundle
         lateinit var plain: Bundle
         lateinit var windowed: Bundle
 
@@ -81,6 +97,7 @@ class EngineSeamOpenSpec :
                         BundleKind.SERVED,
                     ),
                 )
+            named = loaded
             plain =
                 loaded.copy(
                     deployments =
@@ -97,18 +114,26 @@ class EngineSeamOpenSpec :
         fun open(
             bundle: Bundle,
             approved: Boolean = true,
+            paused: Boolean = false,
+            watermark: (String, List<String>) -> Instant = Watermark::lastTo,
         ) = Open(
             { bundle },
             ApprovalReader { _, _, _ -> approved },
-            ServiceTokens(emptyMap(), { error("no token exchange") }),
+            ServiceTokens(mapOf("AUTOMATION_DECIDER" to "svc-hartland-automation:unused"), {
+                error("no token is fetched at Open")
+            }),
             ledger::claimRun,
             { null },
-            { false },
+            { paused },
             Duration.ofSeconds(60),
             Duration.ofMinutes(30),
             clock,
-            watermark = Watermark::lastTo,
+            watermark = watermark,
         )
+
+        fun runId(result: OpenResult): UUID = UUID.fromString(result.response.runId)
+
+        fun runs(): Long = transaction { Runs.selectAll().count() }
 
         fun windowPort(from: String? = null) =
             buildJsonObject { putJsonObject("window") { from?.let { put("from", it) } } }
@@ -191,20 +216,137 @@ class EngineSeamOpenSpec :
             window(explicitId)["watermark"] shouldBe JsonPrimitive(false)
             closeWet(explicitId)
             lastTo() shouldBe null
+        }
 
-            // Two windows opened before either closed: the later one closes first; the earlier close cannot rewind it.
-            val early =
-                UUID.fromString(
-                    open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya).response.runId,
+        "✅R280-A: a 2nd wet watermark open while the 1st is unsealed is 409 window-open; after the close it opens" {
+            val first = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            val t1 = t0 + Duration.ofMinutes(10) // inside the first run's 30 min batch budget
+            clock.now = t1
+            val refused =
+                shouldThrow<AutomationException> {
+                    open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)
+                }
+            refused.code shouldBe ErrorCode.WINDOW_OPEN
+            refused.detail!!.jsonObject.let {
+                it["program"] shouldBe JsonPrimitive(program)
+                it["run"] shouldBe JsonPrimitive(first.toString())
+                it["from"] shouldBe JsonPrimitive(Watermark.EPOCH.toString())
+                it["to"] shouldBe JsonPrimitive(t1.toString())
+            }
+            runs() shouldBe 1L
+
+            // Neither a dry watermark open nor an explicit window is blocked (and neither blocks).
+            open(windowed).open(recipe, OpenRequest(deployment, windowPort(), dryRun = true), maya).httpStatus shouldBe
+                201
+            open(windowed)
+                .open(recipe, OpenRequest(deployment, windowPort("2026-11-13T06:00:00Z")), maya)
+                .httpStatus shouldBe 201
+
+            closeWet(first)
+            val second = open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)
+            second.httpStatus shouldBe 201
+            window(runId(second))["from"] shouldBe JsonPrimitive(t0.toString())
+            window(runId(second))["to"] shouldBe JsonPrimitive(t1.toString())
+        }
+
+        "✅R280-A: a same-key retry of the unsealed run is 202, and an abandoned unsealed run does not block" {
+            val keyed = OpenRequest(deployment, windowPort(), idempotencyKey = "timer-1")
+            val first = open(windowed).open(recipe, keyed, maya)
+            first.httpStatus shouldBe 201
+            val retry = open(windowed).open(recipe, keyed, maya)
+            retry.httpStatus shouldBe 202
+            retry.response.runId shouldBe first.response.runId
+
+            ledger.markStatus(runId(first), RunStatus.ABANDONED)
+            clock.now = t0 + Duration.ofMinutes(5)
+            open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya).httpStatus shouldBe 201
+        }
+
+        "✅R280-A: a watermark that moved after Open resolved the window refuses inside the claim (stale from)" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            lastTo() shouldBe t0
+            clock.now = t0 + Duration.ofMinutes(5)
+            // An Open that read the watermark before that seal committed resolves from the epoch again.
+            val refused =
+                shouldThrow<AutomationException> {
+                    open(windowed, watermark = { _, _ -> Watermark.EPOCH })
+                        .open(recipe, OpenRequest(deployment, windowPort()), maya)
+                }
+            refused.code shouldBe ErrorCode.WINDOW_OPEN
+            refused.detail!!.jsonObject["watermark"] shouldBe JsonPrimitive(t0.toString())
+            runs() shouldBe 1L
+        }
+
+        "✅R280-A: two replicas opening one program's watermark window at once — exactly one 201, one 409" {
+            repeat(5) { round ->
+                LedgerTestDb.reset()
+                clock.now = t0 + Duration.ofMinutes(round.toLong())
+                val barrier = CyclicBarrier(2)
+                val outcomes =
+                    runBlocking(Dispatchers.IO) {
+                        List(2) {
+                            val replica = open(windowed)
+                            async {
+                                barrier.await()
+                                try {
+                                    replica.open(recipe, OpenRequest(deployment, windowPort()), maya).httpStatus
+                                } catch (e: AutomationException) {
+                                    e.code.status.value
+                                }
+                            }
+                        }.awaitAll()
+                    }
+                outcomes.sorted() shouldBe listOf(201, 409)
+                runs() shouldBe 1L
+            }
+        }
+
+        "F3: a window whose asOf is not the clock's (debug replay, fixed policy) never keeps the watermark" {
+            val debug =
+                windowed.copy(
+                    deployments =
+                        windowed.deployments +
+                            (deployment to windowed.deployments.getValue(deployment).copy(debug = true)),
                 )
-            clock.now = t0 + Duration.ofMinutes(10) // inside the early run's 30 min batch budget
-            val late =
-                UUID.fromString(
-                    open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya).response.runId,
+            val future = t0 + Duration.ofDays(365)
+            val replay = open(debug).open(recipe, OpenRequest(deployment, windowPort(), asOf = future.toString()), maya)
+            window(runId(replay))["watermark"] shouldBe JsonPrimitive(false)
+            window(runId(replay))["to"] shouldBe JsonPrimitive(future.toString())
+            closeWet(runId(replay))
+            lastTo() shouldBe null
+
+            val fixedAt = t0 - Duration.ofHours(1)
+            val fixed =
+                windowed.copy(
+                    programs =
+                        windowed.programs +
+                            (program to windowed.programs.getValue(program).copy(asOf = fixedAt.toString())),
                 )
-            closeWet(late)
-            closeWet(early)
-            lastTo() shouldBe t0 + Duration.ofMinutes(10)
+            val pinned = open(fixed).open(recipe, OpenRequest(deployment, windowPort()), maya)
+            window(runId(pinned))["watermark"] shouldBe JsonPrimitive(false)
+            closeWet(runId(pinned))
+            lastTo() shouldBe null
+
+            // asOf "now" is the clock's: the normal open still runs from the (untouched) watermark and keeps it.
+            val now = open(windowed).open(recipe, OpenRequest(deployment, windowPort(), asOf = "now"), maya)
+            window(runId(now))["from"] shouldBe JsonPrimitive(Watermark.EPOCH.toString())
+            window(runId(now))["watermark"] shouldBe JsonPrimitive(true)
+        }
+
+        "F5: a recipe parameter named window_from is 400 port with the reserved names; a non-window open still works" {
+            fun withParameter(base: Bundle): Bundle {
+                val r = base.recipes.getValue(recipe)
+                val parameters = r.recipe.parameters + ManifestParameter(WINDOW_FROM, "int", "5")
+                val withParameters = r.copy(recipe = r.recipe.copy(parameters = parameters))
+                return base.copy(recipes = base.recipes + (recipe to withParameters))
+            }
+            val refused =
+                shouldThrow<AutomationException> {
+                    open(withParameter(windowed)).open(recipe, OpenRequest(deployment, windowPort()), maya)
+                }
+            refused.code shouldBe ErrorCode.PORT
+            refused.detail!!.jsonObject["reserved"] shouldBe JsonArray(listOf(JsonPrimitive(WINDOW_FROM)))
+            open(withParameter(plain)).open(recipe, OpenRequest(deployment, keyPort()), maya).httpStatus shouldBe 201
         }
 
         "count/gap windows are gated (422); a window port needs a windowed program; an empty window refuses" {
@@ -228,8 +370,8 @@ class EngineSeamOpenSpec :
         "an engine open stores the six columns and names them in the protocol" {
             val ref = EngineRef("pi-1", "4711", "dep-7", taskId = "task-3", answeredBy = "maya")
             val history = EngineHistory { _, _ -> listOf(HistoricTask("task-3", "pi-1", "maya", null, null)) }
-            val verified = runBlocking { EngineRuns(history).verify(ref, maya) }
-            val opened = open(plain).open(recipe, OpenRequest(deployment, keyPort(), engine = ref), maya, verified)
+            val verified = runBlocking { EngineRuns(history).verify(ref, engine) }
+            val opened = open(named).open(recipe, OpenRequest(deployment, keyPort(), engine = ref), engine, verified)
             val id = UUID.fromString(opened.response.runId)
             transaction {
                 val row = Runs.selectAll().where { Runs.id eq id }.single()
@@ -243,7 +385,7 @@ class EngineSeamOpenSpec :
                 row[Runs.personVerified] shouldBe true
             }
             ledger.findRun(id)!!.open.engine shouldBe EngineColumns("pi-1", "4711", "dep-7", "task-3", "maya", true)
-            val protocol = ledger.readProtocol(id, maya.sub).sections
+            val protocol = ledger.readProtocol(id, engine.sub).sections
             protocol
                 .getValue("automation")
                 .first()
@@ -287,7 +429,7 @@ class EngineSeamOpenSpec :
             )) {
                 val refused =
                     shouldThrow<AutomationException> {
-                        runBlocking { EngineRuns { _, _ -> history }.verify(ref, maya) }
+                        runBlocking { EngineRuns({ _, _ -> history }).verify(ref, engine) }
                     }
                 refused.code shouldBe ErrorCode.IDENTITY
                 refused.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unverified-answer")
@@ -297,7 +439,7 @@ class EngineSeamOpenSpec :
                 open(plain).open(recipe, OpenRequest(deployment, keyPort(), engine = ref), maya)
             }.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unverified-answer")
             shouldThrow<AutomationException> {
-                runBlocking { EngineRuns { _, _ -> error("not read") }.verify(ref.copy(taskId = null), maya) }
+                runBlocking { EngineRuns({ _, _ -> error("not read") }).verify(ref.copy(taskId = null), engine) }
             }.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unverified-answer")
             transaction { Runs.selectAll().count() } shouldBe 0L
         }
@@ -307,23 +449,22 @@ class EngineSeamOpenSpec :
             var bearer: String? = null
             val verified =
                 runBlocking {
-                    EngineRuns { _, token ->
+                    EngineRuns({ _, token ->
                         bearer = token
                         listOf(HistoricTask("task-3", "pi-1", "maya", "2026-11-14T06:00:00Z", "completed"))
-                    }.verify(ref, maya)
+                    }).verify(ref, engine)
                 }
-            bearer shouldBe "maya-token"
+            bearer shouldBe "engine-token"
             shouldThrow<AutomationException> {
                 open(
-                    plain,
+                    named,
                     approved = false,
-                ).open(recipe, OpenRequest(deployment, keyPort(), engine = ref), maya, verified)
+                ).open(recipe, OpenRequest(deployment, keyPort(), engine = ref), engine, verified)
             }.code shouldBe ErrorCode.RECIPE_STALE
             transaction { Runs.selectAll().count() } shouldBe 0L
         }
 
         "the engine client cannot run a deployment as its caller (403 token-exchange)" {
-            val engine = Caller("pe-id", "process-engine", emptySet(), TokenKind.SERVICE, "engine-token")
             val refused =
                 shouldThrow<AutomationException> {
                     open(
@@ -333,6 +474,65 @@ class EngineSeamOpenSpec :
             refused.code shouldBe ErrorCode.IDENTITY
             refused.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("token-exchange")
             transaction { Runs.selectAll().count() } shouldBe 0L
+        }
+
+        "F6: a person whose username is the engine's client id is not the engine (runs as caller, 201)" {
+            val person = Caller("p-id", "process-engine", emptySet(), TokenKind.PERSON, "person-token")
+            open(plain).open(recipe, OpenRequest(deployment, keyPort()), person).httpStatus shouldBe 201
+        }
+
+        "✅R280-B: an answer is accepted from the engine client only — refused before the history call" {
+            val ref = EngineRef("pi-1", "4711", "dep-7", taskId = "task-3", answeredBy = "maya")
+            val calls = AtomicInteger()
+            val engineRuns =
+                EngineRuns({ _, _ ->
+                    calls.incrementAndGet()
+                    listOf(HistoricTask("task-3", "pi-1", "maya", null, null))
+                })
+            for (caller in listOf(
+                // A person, even one whose username is the engine's client id; a service of another client.
+                Caller("p-id", "process-engine", emptySet(), TokenKind.PERSON, "person-token"),
+                maya,
+                Caller("svc-id", "n8n-hartland", emptySet(), TokenKind.SERVICE, "svc-token"),
+            )) {
+                val refused = shouldThrow<AutomationException> { runBlocking { engineRuns.verify(ref, caller) } }
+                refused.code shouldBe ErrorCode.IDENTITY
+                refused.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unverified-answer")
+            }
+            calls.get() shouldBe 0
+            runBlocking { engineRuns.verify(ref, engine) }!!.personVerified shouldBe true
+            calls.get() shouldBe 1
+            // An engine block that asserts nobody is open to any caller with the grant.
+            runBlocking { engineRuns.verify(EngineRef("pi-2", "4712", "dep-7"), maya) }!!.personVerified shouldBe null
+            calls.get() shouldBe 1
+        }
+
+        "F4: a paused service refuses an answer open 503 paused without an engine round-trip" {
+            val calls = AtomicInteger()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val sessions =
+                RunSessions(
+                    open(named, paused = true),
+                    scope,
+                    { _, _ -> error("nothing is claimed") },
+                    { null },
+                    { _, _ -> },
+                    clock = clock,
+                    engineRuns =
+                        EngineRuns({ _, _ ->
+                            calls.incrementAndGet()
+                            listOf(HistoricTask("task-3", "pi-1", "maya", null, null))
+                        }),
+                )
+            val ref = EngineRef("pi-1", "4711", "dep-7", taskId = "task-3", answeredBy = "maya")
+            val refused =
+                shouldThrow<AutomationException> {
+                    runBlocking { sessions.open(recipe, OpenRequest(deployment, keyPort(), engine = ref), engine) }
+                }
+            refused.code shouldBe ErrorCode.PAUSED
+            calls.get() shouldBe 0
+            runs() shouldBe 0L
+            scope.cancel()
         }
 
         "⚑AU-EXP-5: a deployment-forced dry run answers dryRun true to a dryRun false request" {

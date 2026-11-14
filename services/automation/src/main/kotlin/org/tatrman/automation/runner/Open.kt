@@ -83,7 +83,7 @@ class Open(
         verified: EngineRun? = null,
     ): OpenResult {
         val engine = engineRun(request.engine, verified)
-        if (paused()) throw AutomationException(ErrorCode.PAUSED, "automation is paused")
+        refuseIfPaused()
         // Preview opens arrive with P4; silently running a preview request on served would mislabel the evidence.
         if (request.bundle != null) throw AutomationException(ErrorCode.BUNDLE, "preview opens are not supported yet")
         val bundle = served()
@@ -105,7 +105,7 @@ class Open(
                 DeploymentIdentity(request.deployment, programName, BundleLoader.runAs(d.runAs), bundle.author),
                 if (d.debug) DebugAs.CALLER else null,
             )
-        if (identity.runAs == RunAsRef.Caller && caller.principal == engineClient) {
+        if (identity.runAs == RunAsRef.Caller && caller.isEngine(engineClient)) {
             // D-158: the engine's own bearer is no person's — running "as the caller" would mean as the instance's
             // initiator, which needs token exchange (TTR Security, v1 refuses).
             throw AutomationException(
@@ -190,12 +190,23 @@ class Open(
         if (!dry && !d.debug && request.asOf != null && request.asOf != "now") {
             throw AutomationException(ErrorCode.AS_OF, "a replay asOf needs a debug deployment or a dry run")
         }
-        val asOf = resolveAsOf(program, request.asOf, requested.eventAt)
-        val port = requested.window?.let { requested.copy(bounds = window(recipe, programName, it, asOf)) } ?: requested
+        val (asOf, asOfFromClock) = resolveAsOf(program, request.asOf, requested.eventAt)
+        val port =
+            requested.window?.let {
+                requested.copy(bounds = window(recipe, programName, it, asOf, asOfFromClock))
+            } ?: requested
         val bindings =
             RecipeBindings.resolve(recipe.recipe, asOf, overrides(recipe, program)).let { resolved ->
                 val bounds = port.bounds ?: return@let resolved
-                require(WINDOW_FROM !in resolved && WINDOW_TO !in resolved) { "window bindings are reserved" }
+                // review-280 F5: a recipe parameter of the reserved names is the author's mistake, refused as such.
+                val reserved = listOf(WINDOW_FROM, WINDOW_TO).filter { it in resolved }
+                if (reserved.isNotEmpty()) {
+                    throw AutomationException(
+                        ErrorCode.PORT,
+                        "recipe parameters $WINDOW_FROM/$WINDOW_TO are reserved on a window open",
+                        buildJsonObject { put("reserved", JsonArray(reserved.map(::JsonPrimitive))) },
+                    )
+                }
                 resolved +
                     mapOf(
                         WINDOW_FROM to BoundValue("datetime", bounds.from),
@@ -262,6 +273,7 @@ class Open(
         ) {
             portRefused("port exceeds the deployment read ceiling")
         }
+        val storedPort = port.bounds?.let { Watermark.port(it.from, it.to, it.windows, it.watermark) }
         val run =
             RunOpen(
                 recipe = recipeName,
@@ -274,9 +286,7 @@ class Open(
                 fpDeployment = deploymentFp,
                 modelFp = bundle.modelFp,
                 // A window run stores its resolved bounds (the seal advances the watermark from them).
-                port =
-                    port.bounds?.let { Watermark.port(it.from, it.to, it.windows, it.watermark) }
-                        ?: request.port,
+                port = storedPort ?: request.port,
                 asOf = asOf,
                 author = bundle.author,
                 runAs = identity.principal,
@@ -329,14 +339,8 @@ class Open(
                         )
                         put("author", bundle.author)
                         put("port", request.port)
-                        port.bounds?.let { b ->
-                            putJsonObject("window") {
-                                put("from", b.from.toString())
-                                put("to", b.to.toString())
-                                put("windows", JsonArray(b.windows.map(::JsonPrimitive)))
-                                put("watermark", b.watermark)
-                            }
-                        }
+                        // review-280 F8: the evidence is the stored port's own window, so the two cannot drift.
+                        storedPort?.let { put(Watermark.PORT_KEY, it.getValue(Watermark.PORT_KEY)) }
                         engine?.let { put("engine", it.protocol()) }
                         put("origin", request.origin)
                         put("bundle", bundle.id)
@@ -382,6 +386,11 @@ class Open(
         }
     }
 
+    /** `503 paused`; also asked by [RunSessions] before an answer's engine round-trip (review-280 F4). */
+    fun refuseIfPaused() {
+        if (paused()) throw AutomationException(ErrorCode.PAUSED, "automation is paused")
+    }
+
     /** An engine block's record: the verified one, or an unasserted one; an answer is never recorded unverified. */
     private fun engineRun(
         ref: EngineRef?,
@@ -399,12 +408,15 @@ class Open(
     /**
      * D-143: the window's bounds. Count- and gap-closed windows need an event stream (v2) → `422 window-kind-gated`.
      * No explicit `from` = `[watermark, as_of)`, which the wet seal advances; an explicit one never advances it.
+     * review-280 F3: neither does a window whose `to` did not come from the clock (a debug or fixed `asOf`) — it would
+     * move the watermark to an arbitrary instant that no later open could pass.
      */
     private fun window(
         recipe: LoadedRecipe,
         program: String,
         request: WindowRequest,
         asOf: Instant,
+        asOfFromClock: Boolean,
     ): WindowBounds {
         val declared =
             recipe.recipe.windows.map { w ->
@@ -426,20 +438,21 @@ class Open(
         val names = declared.map { it.first }.distinct()
         val from = request.from ?: watermark(program, names)
         if (!from.isBefore(asOf)) portRefused("the window [$from, $asOf) is empty")
-        return WindowBounds(from, asOf, names, watermark = request.from == null)
+        return WindowBounds(from, asOf, names, watermark = request.from == null && asOfFromClock)
     }
 
+    /** The run's `asOf`, and whether it is the clock's (review-280 F3: only then may a window keep the watermark). */
     private fun resolveAsOf(
         program: AutomationProgram,
         requested: String?,
         eventAt: Instant?,
-    ): Instant {
-        if (requested != null && requested != "now") return parseAsOf(requested)
+    ): Pair<Instant, Boolean> {
+        if (requested != null && requested != "now") return parseAsOf(requested) to false
         val policy = requested ?: program.asOf ?: "run"
         return when (policy) {
-            "now", "run" -> clock.instant()
-            "event" -> eventAt ?: clock.instant()
-            else -> parseAsOf(policy)
+            "now", "run" -> clock.instant() to true
+            "event" -> eventAt?.let { it to false } ?: (clock.instant() to true)
+            else -> parseAsOf(policy) to false
         }
     }
 

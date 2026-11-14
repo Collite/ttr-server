@@ -12,6 +12,8 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.javatime.JavaOffsetDateTimeColumnType
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -34,16 +36,82 @@ object Watermark {
     fun lastTo(
         program: String,
         windows: List<String>,
-    ): Instant {
+    ): Instant = transaction { current(program, windows).first }
+
+    /** The watermark and the run that last advanced it (null: never advanced), read in the current transaction. */
+    private fun current(
+        program: String,
+        windows: List<String>,
+    ): Pair<Instant, UUID?> {
         require(windows.isNotEmpty())
         val rows =
-            transaction {
-                ProgramWindows
-                    .selectAll()
-                    .where { (ProgramWindows.program eq program) and (ProgramWindows.window inList windows) }
-                    .associate { it[ProgramWindows.window] to it[ProgramWindows.lastTo].toInstant() }
-            }
-        return windows.minOf { rows[it] ?: EPOCH }
+            ProgramWindows
+                .selectAll()
+                .where { (ProgramWindows.program eq program) and (ProgramWindows.window inList windows) }
+                .associate {
+                    it[ProgramWindows.window] to
+                        (it[ProgramWindows.lastTo].toInstant() to it[ProgramWindows.run])
+                }
+        return windows.map { rows[it] ?: (EPOCH to null) }.minBy { it.first }
+    }
+
+    /** A stored port's window when it keeps the watermark (its seal advances the program's rows); else null. */
+    fun keeping(port: JsonElement): JsonObject? =
+        ((port as? JsonObject)?.get(PORT_KEY) as? JsonObject)
+            ?.takeIf { (it["watermark"] as? JsonPrimitive)?.booleanOrNull == true }
+
+    /** Whether the claim of [open] must be guarded by [guardOpen] (and so read committed, after the program lock). */
+    fun guards(open: RunOpen): Boolean = !open.dryRun && keeping(open.port) != null
+
+    /**
+     * ✅R280-A (review-280 F1): called by the claim, in its transaction, before a new wet watermark run is inserted.
+     * The program's advisory lock serialises its watermark opens across replicas; the claim runs read committed, so
+     * the reads after the lock see every seal and claim committed before it. While another wet watermark run of the
+     * program is unsealed (`open · running · evaluated` — a `waiting` run sealed and advanced already), or when the
+     * watermark moved past this open's `from` since Open resolved it, the open refuses `409 window-open`: the two
+     * runs would cover the same range. A dry run and an explicit window neither block nor are blocked.
+     */
+    internal fun guardOpen(open: RunOpen) {
+        if (!guards(open)) return
+        val window = keeping(open.port) ?: return
+        val program = requireNotNull(open.program) { "a windowed run has no program" }
+        val tx = checkNotNull(TransactionManager.currentOrNull()) { "the window guard runs inside the claim" }
+        tx.exec(
+            "SELECT pg_advisory_xact_lock(hashtext(?))",
+            listOf<Pair<IColumnType<*>, Any>>(TextColumnType() to "automation/program_windows/$program"),
+        ) {}
+        val from = Instant.parse(window.getValue("from").jsonPrimitive.content)
+        val to = Instant.parse(window.getValue("to").jsonPrimitive.content)
+        val names = window.getValue("windows").jsonArray.map { it.jsonPrimitive.content }
+        val unsealed =
+            tx.exec(
+                """
+                SELECT id FROM automation.runs
+                WHERE program = ? AND NOT dry_run AND status IN ('${RunStatus.OPEN.wire}', '${RunStatus.RUNNING.wire}',
+                    '${RunStatus.EVALUATED.wire}')
+                  AND (port -> '$PORT_KEY' ->> 'watermark') = 'true'
+                ORDER BY started_at
+                LIMIT 1
+                """.trimIndent(),
+                listOf<Pair<IColumnType<*>, Any>>(TextColumnType() to program),
+            ) { rs -> if (rs.next()) rs.getObject(1, UUID::class.java) else null }
+        val (watermark, advancedBy) = current(program, names)
+        if (unsealed == null && watermark == from) return
+        throw AutomationException(
+            ErrorCode.WINDOW_OPEN,
+            if (unsealed != null) {
+                "another run of program $program holds its window until it closes"
+            } else {
+                "the watermark of program $program moved since this open resolved its window"
+            },
+            buildJsonObject {
+                put("program", program)
+                put("run", (unsealed ?: advancedBy)?.toString())
+                put("from", from.toString())
+                put("to", to.toString())
+                put("watermark", watermark.toString())
+            },
+        )
     }
 
     /** The stored port of a resolved window; [watermark] = whether its close advances the program's rows. */
@@ -73,8 +141,7 @@ object Watermark {
         port: JsonElement,
         now: OffsetDateTime,
     ) {
-        val window = (port as? JsonObject)?.get(PORT_KEY) as? JsonObject ?: return
-        if ((window["watermark"] as? JsonPrimitive)?.booleanOrNull != true) return
+        val window = keeping(port) ?: return
         requireNotNull(program) { "a windowed run has no program" }
         val to = Instant.parse(window.getValue("to").jsonPrimitive.content).atOffset(ZoneOffset.UTC)
         val names = window.getValue("windows").jsonArray.map { it.jsonPrimitive.content }

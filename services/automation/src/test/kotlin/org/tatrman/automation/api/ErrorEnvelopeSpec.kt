@@ -182,6 +182,7 @@ class ErrorEnvelopeSpec :
                 ErrorCode.ACTION,
                 ErrorCode.APPROVAL_REQUIRED,
                 ErrorCode.WINDOW_KIND_GATED,
+                ErrorCode.WINDOW_OPEN,
                 ErrorCode.ENGINE,
                 ErrorCode.ENGINE_UNREACHABLE,
             )

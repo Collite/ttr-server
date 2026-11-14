@@ -198,7 +198,7 @@ class RunRuntime(
                 ledger::startEvaluation,
                 clock,
                 closer::authorizeExecution,
-                EngineRuns(engineHistory),
+                EngineRuns(engineHistory, config.engine.clientId),
             )
         workers =
             RunWorkers(

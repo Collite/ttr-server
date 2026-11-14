@@ -69,6 +69,7 @@ class RunCloserSpec :
                 val context = seed.context!!
                 val policy = mockk<Open>()
                 every { policy.open(any(), any(), any()) } returns seed
+                every { policy.refuseIfPaused() } returns Unit
                 val runner = mockk<PartRunner>()
                 every { runner.context } returns context
                 every { runner.evaluationRecorded } returns true

@@ -76,6 +76,9 @@ enum class ErrorCode(
     // S3.2 — the engine seam: D-143's windows (count/gap-closed windows need an event stream, v2) and the engine-run
     // block of an open (D-150, D-159); the answer's verification refuses as `identity · unverified-answer`.
     WINDOW_KIND_GATED("window-kind-gated", HttpStatusCode.UnprocessableEntity, "S3.2"),
+
+    // ✅R280-A: a wet watermark open while another of the program's wet watermark runs is unsealed (same range twice).
+    WINDOW_OPEN("window-open", HttpStatusCode.Conflict, "S3.2"),
     ENGINE("engine", HttpStatusCode.BadRequest, "S3.2"),
     ENGINE_UNREACHABLE("engine-unreachable", HttpStatusCode.ServiceUnavailable, "S3.2"),
 

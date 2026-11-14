@@ -12,6 +12,7 @@ import org.tatrman.automation.engine.EngineHistory
 import org.tatrman.automation.engine.NoEngine
 import org.tatrman.automation.identity.Caller
 import org.tatrman.automation.identity.IdentityRefusal
+import org.tatrman.automation.identity.isEngine
 
 /**
  * The `engine` block of `POST /runs` (contracts "Amendment 2026-11-01", D-150/D-159): the process instance a run
@@ -65,9 +66,13 @@ data class EngineRun(
  * `GET /history/task?taskId=` as the caller must show exactly that task, in [EngineRef.instanceId], assigned to the
  * asserted person — else `403 identity · unverified-answer` and nothing is claimed. The engine unreachable is
  * `503 engine-unreachable`, never a pass.
+ * ✅R280-B: an answer is accepted from the engine client only ([engineClient], a SERVICE token): anyone else who can
+ * read the task history could otherwise name any assignee — refused before the history call. An engine block that
+ * asserts nobody stays open to any caller with the grant.
  */
 class EngineRuns(
     private val history: EngineHistory = NoEngine,
+    private val engineClient: String = "process-engine",
 ) {
     suspend fun verify(
         ref: EngineRef?,
@@ -86,6 +91,7 @@ class EngineRuns(
             throw AutomationException(ErrorCode.ENGINE, "engine.taskId and engine.answeredBy cannot be blank")
         }
         val asserted = ref.answeredBy ?: return EngineRun(ref, personVerified = null)
+        if (!caller.isEngine(engineClient)) unverified("an answer run is opened by the process engine only", ref)
         val taskId = ref.taskId ?: unverified("an answer names the engine task it answers (engine.taskId)", ref)
         val task =
             history.task(taskId, caller.token).singleOrNull { it.id == taskId }

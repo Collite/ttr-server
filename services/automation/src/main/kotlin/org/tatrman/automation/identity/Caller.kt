@@ -24,6 +24,12 @@ import org.tatrman.mcp.identity.Verification
 enum class TokenKind { PERSON, SERVICE }
 
 /**
+ * D-158 / ✅R280-B: whether this caller is the process engine itself — a SERVICE token whose principal is the
+ * engine's client id. A person whose username happens to equal the client id is never the engine (review-280 F6).
+ */
+fun Caller.isEngine(clientId: String): Boolean = kind == TokenKind.SERVICE && principal == clientId
+
+/**
  * The caller of the run API = the verified bearer (AU contracts §7, D-94) — never an asserted field. [principal]
  * is what grants and identities name: a person's `preferred_username`, a service account's client id (Keycloak
  * names its user `service-account-<client id>`). [roles] are the realm roles; [token] is the bearer itself, which

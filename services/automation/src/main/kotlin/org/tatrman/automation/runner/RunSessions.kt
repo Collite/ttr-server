@@ -69,6 +69,9 @@ class RunSessions(
         request: OpenRequest,
         caller: Caller,
     ): OpenResult {
+        // review-280 F4: the cheap refusals first — a paused or stopping service never pays an engine round-trip.
+        policy.refuseIfPaused()
+        lock.withLock { if (stopped) unavailable() }
         val verified = engineRuns.verify(request.engine, caller)
         return lock.withLock {
             parent.ensureActive()
