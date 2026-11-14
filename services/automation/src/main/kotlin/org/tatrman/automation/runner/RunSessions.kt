@@ -258,7 +258,7 @@ class RunSessions(
             session.failureLock.withLock {
                 if (session.runner.evaluationRecorded) return@withContext
                 if (session.failure == null) {
-                    session.failure = AutomationException(ErrorCode.BUDGET, "the run exceeded its batch budget")
+                    session.failure = AutomationException(ErrorCode.BUDGET, "the run exceeded its budget")
                 }
                 // Latch before cancelling every shared read/combine/dispatch child. Keep the session itself
                 // available for refusal replay; release still joins blocking IO before closing the executor.

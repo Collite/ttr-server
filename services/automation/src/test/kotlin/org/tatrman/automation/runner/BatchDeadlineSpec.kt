@@ -55,6 +55,28 @@ class BatchDeadlineSpec :
             }
         }
 
+        "⚑AU-S31-4: an on_event run's session expires at its sync budget, before the batch budget" {
+            val clock = BatchClock(t0)
+            val sync = Duration.ofSeconds(5)
+            val f = RunSessionFixture(syncDefault = sync, batchDefault = budget, clock = clock)
+            try {
+                f.bundle =
+                    f.bundle.copy(
+                        programs =
+                            f.bundle.programs.mapValues { (name, p) ->
+                                if (name == "release_on_placement") p.copy(mode = "on_event") else p
+                            },
+                    )
+                val id = UUID.fromString(f.open().response.runId)
+                f.records.getValue(id).mode shouldBe "on_event"
+                clock.now = t0 + sync
+                waitUntil { f.states[id] == RunStatus.FAILED }
+                (f.failures.getValue(id) as AutomationException).code shouldBe ErrorCode.BUDGET
+            } finally {
+                f.close()
+            }
+        }
+
         "queue wait consumes the batch budget without acquiring a claim or reading Query" {
             val clock = BatchClock(t0)
             val parent = CoroutineScope(SupervisorJob() + Dispatchers.Default)

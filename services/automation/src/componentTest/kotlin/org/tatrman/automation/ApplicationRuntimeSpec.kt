@@ -547,6 +547,15 @@ private class ApplicationRuntimeFixture(
     init {
         val world = source.resolve("model/worlds/demo.ttrm")
         world.writeText(world.readText().replace("run_as: identity.automation_decider", "run_as: caller"))
+        // ⚑AU-S31-4: an on-event run lives by its sync budget. These specs drive the async (202) path with a 50 ms
+        // sync wait and a batch deadline, so their keyed program runs in batch mode.
+        val programs = source.resolve("automation/programs.ttrm")
+        programs.writeText(
+            programs.readText().replace(
+                "release_on_placement   { recipe: release_order,   port: key,  mode: on_event",
+                "release_on_placement   { recipe: release_order,   port: key,  mode: batch",
+            ),
+        )
         commit =
             Git.init().setDirectory(source.toFile()).setInitialBranch("master").call().use { git ->
                 git.add().addFilepattern(".").call()

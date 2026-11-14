@@ -130,7 +130,7 @@ class CloseRoutesSpec :
             for ((refusal, status, code) in listOf(
                 Triple(ProtocolSealed(id), HttpStatusCode.Conflict, "run-closed"),
                 Triple(
-                    AutomationException(ErrorCode.BUDGET, "the run exceeded its batch budget"),
+                    AutomationException(ErrorCode.BUDGET, "the run exceeded its budget"),
                     HttpStatusCode.GatewayTimeout,
                     "budget",
                 ),

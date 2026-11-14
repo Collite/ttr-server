@@ -2192,6 +2192,11 @@ private class DurableRuntimeFixture(
         transformBundle(
             source.copy(
                 recipes = source.recipes + ("release_order" to recipe),
+                // ⚑AU-S31-4: an on-event run lives by its sync budget; these specs drive the batch deadline (10 s).
+                programs =
+                    source.programs.mapValues { (name, p) ->
+                        if (name == "release_on_placement") p.copy(mode = "batch") else p
+                    },
                 deployments =
                     source.deployments +
                         (
