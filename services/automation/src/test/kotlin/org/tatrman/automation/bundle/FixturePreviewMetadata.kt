@@ -3,7 +3,6 @@ package org.tatrman.automation.bundle
 
 import org.tatrman.ttr.metadata.model.AutomationColumn
 import org.tatrman.ttr.metadata.model.AutomationDuration
-import org.tatrman.ttr.metadata.model.AutomationSet
 import org.tatrman.ttr.metadata.model.ErSchema
 import org.tatrman.ttr.metadata.model.LocalizedText
 import org.tatrman.ttr.metadata.source.FileBasedSource
@@ -12,7 +11,8 @@ import java.nio.file.Path
 
 /**
  * Synthetic data for the existing typed planner tests, retained until S3.2 removes the legacy planner paths.
- * These values never pass through /refresh. Real 0.22 hero bundles keep their engine-only sinks and refusals.
+ * These values never pass through /refresh. Since S3.1 (⚑AU-D3-1, review-247 N4) the engine actions keep their real
+ * engine-only sinks: the preview projects them as `engine` actions with no batch rows, the path the hero bundles take.
  */
 fun legacyPreviewMetadata(bundle: Bundle): org.tatrman.automation.apply.PreviewMetadata {
     val er =
@@ -28,16 +28,6 @@ fun legacyPreviewMetadata(bundle: Bundle): org.tatrman.automation.apply.PreviewM
                 bundle.model.schemas + ("er" to schema.copy(entities = schema.entities + er.entities)),
         )
     val actions = bundle.actions.filterKeys { it !in setOf("release_confirmed", "decide_way") }.toMutableMap()
-    // Projection tests use a surviving native sink with an omitted optional assignment, hence no effect rows.
-    val projectionOnly = AutomationColumn("projection_only", "text", optional = true)
-    for (name in listOf("notify", "notify_customer")) {
-        actions[name] =
-            actions.getValue(name).copy(
-                columns = actions.getValue(name).columns + projectionOnly,
-                set = AutomationSet("order.held_for", "projection_only"),
-                sinks = mapOf("native" to "transition"),
-            )
-    }
     val prototype = actions.getValue("notify")
     actions["ask"] =
         prototype.copy(
@@ -50,9 +40,8 @@ fun legacyPreviewMetadata(bundle: Bundle): org.tatrman.automation.apply.PreviewM
                     AutomationColumn("about", "text"),
                     AutomationColumn("action", "action"),
                     AutomationColumn("detail", "rows", optional = true),
-                    projectionOnly,
                 ),
-            sinks = mapOf("native" to "transition"),
+            sinks = mapOf("process_engine" to "user task"),
             approval = "required",
             deliverable = false,
             due = AutomationDuration(2.0, "working_days"),
@@ -71,8 +60,8 @@ fun legacyPreviewMetadata(bundle: Bundle): org.tatrman.automation.apply.PreviewM
             internalId = "typed-preview-start",
             qname = prototype.qname.copy(name = "start"),
             properties = emptyList(),
-            columns = listOf(AutomationColumn("process", "text"), projectionOnly),
-            sinks = mapOf("native" to "transition"),
+            columns = listOf(AutomationColumn("process", "text")),
+            sinks = mapOf("process_engine" to "call activity"),
             deliverable = false,
             dryRun = LocalizedText.EMPTY,
         )

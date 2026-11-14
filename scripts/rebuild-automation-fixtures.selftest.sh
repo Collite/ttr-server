@@ -11,6 +11,10 @@ cp "$repo_root/scripts/rebuild-automation-fixtures.sh" "$probe/scripts/"
 cp "$repo_root/gradle/libs.versions.toml" "$probe/gradle/"
 cp -R "$repo_root/$resources/bundles/hartland" "$probe/$resources/bundles/"
 cp -R "$repo_root/$resources/approval-evidence" "$probe/$resources/"
+# review-247 N1: the probe is a git repo, so a failing run must leave `git status` clean on both fixture trees.
+git -C "$probe" init -q
+git -C "$probe" add -A
+git -C "$probe" -c user.name=selftest -c user.email=selftest@invalid commit -q -m probe
 export D3_TEST_MANIFEST="$repo_root/$resources/approval-evidence/fulfilment/release_order.bundle/manifest.json"
 export D3_TEST_VERSION
 D3_TEST_VERSION="$(awk -F '"' '/^tatrman-grammar[[:space:]]*=/ { print $2 }' "$probe/gradle/libs.versions.toml")"
@@ -50,11 +54,13 @@ for failure in text values superseded; do
         exit 1
     fi
     cmp "$probe/original.json" "$approvals"
+    dirty="$(git -C "$probe" status --porcelain -- "$resources/bundles" "$resources/approval-evidence")"
+    [ -z "$dirty" ] || { echo "FAIL: $failure guard left the fixture trees changed:" >&2; echo "$dirty" >&2; exit 1; }
     case "$failure" in
         text|values) grep -q "no $failure fingerprint" "$probe/output" ;;
         superseded) grep -q 'text fingerprint is still superseded' "$probe/output" ;;
     esac
-    echo "PASS: $failure guard exits non-zero; approvals.json byte-identical"
+    echo "PASS: $failure guard exits non-zero; approvals.json byte-identical; fixture trees untouched"
 done
 export D3_TEST_FAILURE=none
 # A positive control proves valid manifests still replace stale approval fingerprints.

@@ -13,6 +13,9 @@ if [ "$("$cli" --version)" != "ttrp $grammar_version" ]; then
 fi
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
+# review-247 N1: every bundle is built under $scratch, the guards run on that output, and only then is the repo
+# changed — in one install step. A failing guard leaves bundles/ and approval-evidence/ untouched.
+built=()   # pairs: <built bundle dir> <repo bundle dir it replaces>
 
 mkdir -p "$scratch/models/hartland/automation"
 cp -R "$fixture/model/." "$scratch/models/hartland/"
@@ -22,8 +25,7 @@ printf '[ttrp]\nworld = "hartland.worlds.demo"\n' > "$scratch/modeler.toml"
 for recipe in release_order decide_return monitor_inbound settle; do
     cp "$fixture/automation/$recipe/$recipe.ttrp" "$scratch/$recipe.ttrp"
     "$cli" build "$scratch/$recipe.ttrp" --out "$scratch/out/$recipe"
-    rm -rf "$fixture/automation/$recipe/$recipe.bundle"
-    cp -R "$scratch/out/$recipe/$recipe.bundle" "$fixture/automation/$recipe/"
+    built+=("$scratch/out/$recipe/$recipe.bundle" "$fixture/automation/$recipe/$recipe.bundle")
 done
 
 # Evidence-bearing writer cases use their own ER, binding and database slice.
@@ -54,12 +56,11 @@ for variant in base generated-ids obligations conflict fulfilment unqualified; d
     cp "$source" "$input/release_order.ttrp"
     cp "$scratch/modeler.toml" "$input/modeler.toml"
     "$cli" build "$input/release_order.ttrp" --out "$input/out"
-    rm -rf "$resource/release_order.bundle"
-    cp -R "$input/out/release_order.bundle" "$resource/"
+    built+=("$input/out/release_order.bundle" "$resource/release_order.bundle")
 done
 
 # The durable approval fixture must approve this exact compiler output; retain its superseded negative case.
-manifest="$evidence/fulfilment/release_order.bundle/manifest.json"
+manifest="$scratch/fulfilment/out/release_order.bundle/manifest.json"
 approvals="$evidence/fulfilment/approvals.json"
 text_fp="$(awk -F '"' '/"text": "sha256:/ { print $4; exit }' "$manifest")"
 values_fp="$(awk -F '"' '/"values": "sha256:/ { print $4; exit }' "$manifest")"
@@ -68,7 +69,7 @@ superseded="$(awk -F '"' '/"supersededText"/ { print $4 }' "$approvals")"
 [ -n "$values_fp" ] || { echo "no values fingerprint in $manifest" >&2; exit 1; }
 [ -n "$superseded" ] || { echo "no superseded text fingerprint in $approvals" >&2; exit 1; }
 [ "$text_fp" != "$superseded" ] || { echo "text fingerprint is still superseded in $manifest" >&2; exit 1; }
-cat > "$approvals" <<EOF
+cat > "$scratch/approvals.json" <<EOF
 {
   "recipe": "release_order",
   "text": "$text_fp",
@@ -76,3 +77,10 @@ cat > "$approvals" <<EOF
   "supersededText": "$superseded"
 }
 EOF
+
+# Every guard passed: install the rebuilt bundles and the approval fingerprints together.
+for ((i = 0; i < ${#built[@]}; i += 2)); do
+    rm -rf "${built[i + 1]}"
+    cp -R "${built[i]}" "${built[i + 1]}"
+done
+cp "$scratch/approvals.json" "$approvals"
