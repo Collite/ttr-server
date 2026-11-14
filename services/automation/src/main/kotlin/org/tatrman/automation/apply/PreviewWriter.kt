@@ -209,8 +209,22 @@ internal class PreviewWriter private constructor(
         internal fun targetEntities(
             action: AutomationAction,
             entities: List<Entity>,
-        ): List<Entity> =
-            targets(action.columns.filter { '.' in it.type }, entities, null).map { it.second }.distinctBy { it.qname }
+        ): List<Entity> {
+            val keyed = action.columns.filter { '.' in it.type }
+            // ⚑AU-D3-2 (S3.1): a transition writes its `transition:` entity only. A context column keyed by another
+            // entity (`decide_way`'s `request`, D-171) is context for the engine's perform, not a second target.
+            val owner =
+                action.transition
+                    ?.attribute
+                    ?.substringBeforeLast('.', "")
+                    ?.takeIf { it.isNotEmpty() }
+            val columns =
+                owner
+                    ?.let { o -> keyed.filter { it.type.substringBeforeLast('.', "") == o } }
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: keyed
+            return targets(columns, entities, null).map { it.second }.distinctBy { it.qname }
+        }
 
         private fun targets(
             columns: List<AutomationColumn>,

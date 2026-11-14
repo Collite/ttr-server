@@ -2,10 +2,7 @@
 package org.tatrman.automation.runner
 
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.string.shouldContain
-import org.tatrman.automation.api.AutomationException
-import org.tatrman.automation.api.ErrorCode
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.supervisorScope
@@ -115,11 +112,18 @@ class HartlandH3PreviewSpec :
             }
         }
 
-        "20-shape H3 records the native engine-handoff refusal" {
+        "20-shape H3 previews its handoff as the engine's: an action with no batch rows (⚑AU-D3-1)" {
             supervisorScope {
-                val error = shouldThrow<AutomationException> { preview(this, false) }
-                error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
-                error.message!! shouldContain "handoff"
+                val plan = preview(this, false)
+                val handoff = plan.actions.filter { it.action == "handoff" }
+                handoff.isNotEmpty() shouldBe true
+                handoff.forEach {
+                    it.sink shouldBe ApplyPlanner.ENGINE_SINK
+                    it.batchRows shouldBe emptyList()
+                    it.would!! shouldContain "hand the proposal"
+                }
+                // The engine's action never becomes a §4 row the Server would write.
+                plan.rows.none { row -> handoff.any { row.seq in it.batchRows } } shouldBe true
             }
         }
 

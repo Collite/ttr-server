@@ -214,7 +214,7 @@ class RunRuntimeComponentSpec :
 
         for (difference in listOf(false, true)) {
             val label = if (difference) "bound-date-difference" else "calendar"
-            "published $label preview [AU-D3-1; S3.1 engine row]".config(enabled = false) {
+            "published $label preview with an engine action (⚑AU-D3-1)" {
                 val f = calendarFixture(difference = difference)
                 val runtime = f.start()
                 try {
@@ -326,7 +326,7 @@ class RunRuntimeComponentSpec :
             }
         }
 
-        "calendar read refusals with engine row [AU-D3-1; S3.1]".config(enabled = false) {
+        "calendar read refusals with an engine action (⚑AU-D3-1)" {
             for ((warning, scope, expected) in listOf(
                 Triple(setOf("security_predicate_applied"), listOf("er.entity.date_dim"), ErrorCode.RESTRICTED_VIEW),
                 Triple(setOf("top_n_applied"), listOf("er.entity.date_dim"), ErrorCode.CANDIDATES_TRUNCATED),

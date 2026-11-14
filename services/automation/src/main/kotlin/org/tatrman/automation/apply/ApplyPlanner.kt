@@ -360,7 +360,11 @@ class ApplyPlanner(
                                 scalarArguments.getValue(name)
                             }
                     }
-                    val sink = action.sinks[Bundle.NATIVE] ?: unsupported("action ${wiring.action} has no native sink")
+                    // ⚑AU-D3-1 (S3.1, contracts §1.2 amendment 2026-11-14): an action with no native sink is the
+                    // engine's (`notify`, `handoff`, `emit` …). The preview lists it as an `engine` action — its
+                    // arguments and `would` text, no batch rows — so an engine recipe's dry run closes and the digest
+                    // can render it; the Server never performs it.
+                    val sink = action.sinks[Bundle.NATIVE] ?: ENGINE_SINK
                     val start = rows.size
                     var obligationRows: List<Int>? = null
                     when (sink) {
@@ -383,7 +387,7 @@ class ApplyPlanner(
                             writerKeys.record(insert, generated)
                             rows += insert
                         }
-                        "deliver", "task", "start", "emit" -> Unit
+                        ENGINE_SINK -> Unit
                         else -> unsupported("native $sink preview requires its writer lowering")
                     }
                     // S2.3 (Amendment 2026-11-03 `hold`): an `approval: required` action's writer-sink rows are held,
@@ -659,6 +663,9 @@ class ApplyPlanner(
     companion object {
         /** The writer sinks whose rows an `approval: required` action holds (D-142: no other sink writes §4 rows). */
         val HELD_SINKS = setOf("transition", "writer", "obligation")
+
+        /** The preview sink of an action the engine performs (no native sink, ⚑AU-D3-1). */
+        const val ENGINE_SINK = "engine"
 
         private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z_0-9.]*)}")
 
