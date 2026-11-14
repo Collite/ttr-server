@@ -919,6 +919,52 @@ def test_a_subject_step_against_a_store_without_sources_fails_permanently(
     ]
 
 
+def test_a_subject_step_keeps_each_units_source_through_its_tree(
+    runtime: tuple[ProcessorRunner, WorkItem], world_db: str
+) -> None:
+    """T8f W5-5 (job-9): the runner puts each member's tree over the units `get_unit` read, and the store prints a
+    tree's units without their `sourceId`. Every unit the kind sees keeps its source, as does every source the runner
+    read. Live, every member read as source 0, and consolidate refused `consolidate/source-unanswered` 4/4."""
+    import yaml
+
+    from docproc.sdk.models import InputSelector, RunVisibility
+    from tests.kinds.test_record_etl import prepared_etl
+    from tests.pack import context
+
+    runner, item = runtime
+    _, ctx, wh = prepared_etl(world_db)
+    original = runner.manager.processor(item.family, item.version_hash)
+    manifest = {**context("review-001.en.json", "records-review").manifest, "family": item.family}
+    assert manifest["graph"]["unit"] == "subject"
+    processor = original.model_copy(update={"kind": "record-etl", "manifest_yaml": yaml.safe_dump(manifest)})
+    assert isinstance(runner.manager, PackManager)
+    runner.manager.processors = {(item.family, item.version_hash): processor}
+    runner.warehouse = wh
+    seen: list[RunContext] = []
+
+    class Seen:
+        def run(self, c: RunContext) -> KindResult:
+            seen.append(c)
+            return KindResult()
+
+    runner.kinds.register("record-etl", Seen())
+    [member] = {wh.units[uid].source_id for uid in ctx.item.unit_ids}
+    item = item.model_copy(
+        update={
+            "kind": "record-etl",
+            "visibility": RunVisibility.ACTIVE,
+            "unit_ids": ctx.item.unit_ids,
+            "consume": InputSelector(types=["Record.review"], visibility="active"),
+        }
+    )
+    result = runner.process(enqueue(runner, item))
+    assert result is not None and result.status == CompletionStatus.SUCCEEDED, result
+    [c] = seen
+    assert set(c.units) > set(ctx.item.unit_ids)  # the tree's sections beside the DOCUMENT roots the item names
+    assert {u.source_id for u in c.units.values()} == {member}
+    assert set(c.sources) == {member}
+
+
 def test_unknown_plan_registry_is_permanent(
     runtime: tuple[ProcessorRunner, WorkItem], monkeypatch: pytest.MonkeyPatch
 ) -> None:

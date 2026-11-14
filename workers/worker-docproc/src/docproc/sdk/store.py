@@ -74,6 +74,22 @@ def _shape(r: httpx.Response, code: str, exc: ValidationError) -> StoreError:
     return StoreError(r.status_code, code, "; ".join(where))
 
 
+def own_units(tree: SourceTree, status: int = 200) -> SourceTree:
+    """The tree with each unit's `sourceId` filled in. docwh-store prints a `GET /sources/{id}/units` tree's id once, at
+    the top (unitTree.json, its `UnitRoutesSpec`); the units carry none and read as source 0. The runner puts the
+    tree's units over the ones `get_unit` read, so without this every unit of a whole-source step lost its source and
+    every live consolidate refused `consolidate/source-unanswered` for source 0 (T8f W5-5). A unit that names another
+    source is `store/units-mismatch`."""
+    for unit in tree.units:
+        if unit.source_id not in (0, tree.source_id):
+            raise StoreError(
+                status,
+                "store/units-mismatch",
+                f"GET /sources/{tree.source_id}/units answered unit {unit.id} of sourceId {unit.source_id}",
+            )
+    return tree.model_copy(update={"units": [u.model_copy(update={"source_id": tree.source_id}) for u in tree.units]})
+
+
 def _error(r: httpx.Response) -> StoreError:
     code, message = "", r.text
     try:
@@ -145,7 +161,8 @@ class StoreClient:
     def source_tree(self, source_id: int, text: bool = True) -> SourceTree:
         """`GET /sources/{id}/units`: the tree and the source itself (docwh-store 0.11.14, T8f W5-4; None from an older
         store). A body of another shape is `StoreError` `store/units-shape`, its field locations only, as R2's reads;
-        one whose `sourceId` or `source.id` is another source's is `store/units-mismatch`."""
+        one whose `sourceId` or `source.id` is another source's is `store/units-mismatch`. Every unit answers with
+        this source's id (`own_units`, T8f W5-5)."""
         r = self._http.get(f"/sources/{source_id}/units", params={"text": str(text).lower()})
         try:
             tree = SourceTree.model_validate(self._ok(r))
@@ -161,7 +178,7 @@ class StoreClient:
                     "store/units-mismatch",
                     f"GET /sources/{source_id}/units answered {field_name} {answered}",
                 )
-        return tree
+        return own_units(tree, r.status_code)
 
     def load_lemmas(self, run_id: str, lemmas: list[dict[str, Any]]) -> None:
         self._ok(self._http.post("/load/lemmas", json={"runId": run_id, "lemmas": lemmas}))

@@ -449,6 +449,9 @@ def test_a_subject_step_under_another_graph_unit_blames_the_manifest(unit: str |
             subject_scope(replace(ctx, manifest={**ctx.manifest, "graph": graph}, sources=sources))
         assert refused.value.diagnostics == [{"rule": "consolidate/graph-unit"}]
     assert ctx.manifest["graph"]["unit"] == "subject" and subject_scope(ctx)[0] == "HL-1001"
+    # review-257 Q2: `document` is admitted too; the runner reads the members' trees under it as well
+    as_document = {**ctx.manifest, "graph": {**ctx.manifest["graph"], "unit": "document"}}
+    assert subject_scope(replace(ctx, manifest=as_document))[0] == "HL-1001"
 
 
 @pytest.mark.parametrize("doc", DOCS)

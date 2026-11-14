@@ -27,7 +27,7 @@ from docproc.sdk.models import (
     SourceTree,
     Unit,
 )
-from docproc.sdk.store import StoreError
+from docproc.sdk.store import StoreError, own_units
 from tests.conftest import CONTRACTS, WORKER
 
 PACK = WORKER / "tests/fixtures/packs/hartland-mini"
@@ -118,12 +118,15 @@ class FakeWarehouse:
         return Source(id=source_id, metadata=self.source_metadata.get(source_id, {}), notebook_id=self.mart)
 
     def source_tree(self, source_id: int, text: bool = True) -> SourceTree:
-        """The tree with its source, as unitTree.json's response has it (no source for an [unanswered] id)."""
+        """The tree with its source, as unitTree.json's response has it (no source for an [unanswered] id). The units
+        go out as the wire prints them, with no `sourceId` of their own, and come back through `StoreClient`'s own
+        `own_units`: before T8f W5-5 this fake answered [units] as they are, and no runner test saw the live defect."""
         units = sorted(
             (u for u in self.units.values() if u.source_id == source_id), key=lambda u: (u.parent_id is not None, u.idx)
         )
+        wire = [u.model_copy(update={"source_id": 0}, deep=True) for u in units]
         source = None if source_id in self.unanswered else self._source(source_id)
-        return SourceTree(source_id=source_id, units=units, source=source)
+        return own_units(SourceTree(source_id=source_id, units=wire, source=source))
 
     def iter_annotations(self, req: ListAnnotationsRequest) -> Iterator[Annotation]:
         for a in self.annotations:
