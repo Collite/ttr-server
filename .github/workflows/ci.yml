@@ -690,6 +690,9 @@ jobs:
       - name: self-test automation fixture fingerprint guards
         run: bash scripts/rebuild-automation-fixtures.selftest.sh
 
+      - name: self-test the dev approvals seeding script (AU S2.3, D-184)
+        run: bash scripts/approve-all.selftest.sh
+
       - name: enforce SPDX license headers
         run: bash scripts/check-spdx.sh
 

@@ -207,6 +207,9 @@ object Approvals : Table("automation.approvals") {
     val task = javaUUID("task").nullable()
     val status = text("status")
 
+    /** V9 (D-185): the toolchain the approval was given under; NULL on rows written before it. */
+    val toolchain = text("toolchain").nullable()
+
     override val primaryKey = PrimaryKey(id)
 }
 

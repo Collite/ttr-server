@@ -53,6 +53,12 @@ class RowWrites(
     private val entities: List<Entity>,
     /** The recipe's declared routes: the `_current` delete covers each of them (D-105, R217-C). */
     private val routes: List<String>,
+    /**
+     * S2.3 `-rev`: an inverse transition restores a recorded prior state, which the authored `transitions:` graph
+     * usually does not lead to (placed → held has no held → placed). Its compare-and-set on the recorded `to` still
+     * guards it; the declared graph is not consulted (D-187).
+     */
+    private val inverse: Boolean = false,
 ) {
     private var next = 0
     private val bindings = mutableListOf<ParameterBinding>()
@@ -199,6 +205,49 @@ class RowWrites(
     }
 
     /**
+     * review-258 B3 (Amendment 2026-11-11: an unknown outcome is re-read before any retry or revert): a re-read of
+     * [attributes] of the [entityName] row at [key] that changes nothing. The door reads `read_before` by key alone and
+     * answers it as `prior` even when the predicate misses (D-163; the translator's `RowWriteUnparser`). Here the
+     * predicate can never hold (`a IS NULL AND a IS NOT NULL`), so the UPDATE matches no row: `rows_affected` 0, `prior`
+     * = the row's current values, or null when no row has the key.
+     */
+    fun probe(
+        entityName: String,
+        key: JsonObject,
+        attributes: List<String>,
+    ): RowWrite {
+        val entity = entity(entityName)
+        require(attributes.isNotEmpty())
+        val first = attributes.first()
+        attribute(entity, first)
+        val never = listOf(call("is_null", column(first)), call("is_not_null", column(first)))
+        return RowWrite
+            .newBuilder()
+            .setTarget(target(entity))
+            .setOp(RowWriteOp.UPDATE)
+            .addValues(ColumnValue.newBuilder().setName(first).setValue(param(entity, first, JsonNull)))
+            .setWhere(call("and", where(entity, key), *never.toTypedArray()))
+            .addAllReadBefore(attributes)
+            .addAllPriorKeys(attributes)
+            .build()
+    }
+
+    /**
+     * review-258 B3: the states [transition]'s compare-and-set accepts besides its `to` (the action's `from:`, else the
+     * declared graph); null when no state predicate guards it, or the transition is refused.
+     */
+    fun legalFrom(transition: ApplyRow): List<String>? =
+        try {
+            val entity = entity(transition.entity)
+            allowedFrom(entity, transition, requireNotNull(transition.to as? JsonPrimitive).content)
+        } catch (_: RowRefusal) {
+            null
+        }
+
+    /** The primary-key attribute names of [entityName] (a writer insert's key, a probe's `where`). */
+    fun keyNames(entityName: String): List<String> = keys(entity(entityName))
+
+    /**
      * One `state_history` insert (stdlib shape); [values] are already the row's columns. `if_absent` on the row's
      * deterministic id: a resend finds a row that already landed instead of inserting it (review-244 B1).
      */
@@ -217,6 +266,7 @@ class RowWrites(
     ): List<String>? {
         val attribute = attribute(entity, requireNotNull(transition.attribute))
         if (attribute.states.isNotEmpty() && to !in attribute.states) bad(transition, to)
+        if (inverse) return transition.from.ifEmpty { null }
         val graph = attribute.transitions
         if (graph.isEmpty()) {
             return transition.from.ifEmpty { null }

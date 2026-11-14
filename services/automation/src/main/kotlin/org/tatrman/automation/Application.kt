@@ -82,13 +82,6 @@ fun main() {
 fun Application.module(config: Config) {
     val automation = AutomationConfig.load(config)
     log.info("automation: {}", automation)
-    if (automation.approvalsOff) {
-        log.warn(
-            "automation: DEVELOPMENT MODE — approval checks are OFF; opens approve current fingerprints " +
-                "and record this bypass in the ledger's opening protocol",
-        )
-    }
-
     installKtorServerBase(KtorConfigFactory.fromConfig(config, SERVICE, DEFAULT_PORT))
 
     val openTelemetry =

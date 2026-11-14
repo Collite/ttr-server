@@ -19,6 +19,12 @@ fun interface ApprovalReader {
         obj: String,
     ): String? = null
 
+    /** D-185: the toolchain of the most recent approved row of [kind] and [obj]; null when none, or none recorded. */
+    fun latestToolchain(
+        kind: String,
+        obj: String,
+    ): String? = null
+
     /**
      * The approvals of [objects] read once, to answer many questions from (a descriptor asks four per
      * deployment). The default asks each question of this reader.

@@ -154,7 +154,12 @@ class CloseLedgerSpec :
                 val id = open()
                 if (state != RunStatus.OPEN) ledger.markStatus(id, state)
                 val protocol = ledger.readProtocol(id, "owner")
-                shouldThrow<IllegalRunTransition> { ledger.closePreview(id, "owner") }.from shouldBe state
+                if (state == RunStatus.WAITING) {
+                    // S2.3: a waiting run is wet (its held groups wait); the preview close hands it to the wet close.
+                    shouldThrow<WetRunClose> { ledger.closePreview(id, "owner") }
+                } else {
+                    shouldThrow<IllegalRunTransition> { ledger.closePreview(id, "owner") }.from shouldBe state
+                }
                 ledger.readProtocol(id, "owner") shouldBe protocol
                 ledger.findRun(id)!!.status shouldBe state
             }

@@ -79,7 +79,8 @@ class ApplicationRuntimeSpec :
                             )
                         } + listOf("obligation", "state_history")
                     sqlRows(
-                        "SELECT table_name FROM information_schema.tables WHERE table_schema='cz' ORDER BY table_name",
+                        "SELECT table_name FROM information_schema.tables WHERE table_schema='cz' " +
+                            "AND table_type = 'BASE TABLE' ORDER BY table_name",
                     ) shouldBe
                         expected.sorted()
                     val before =

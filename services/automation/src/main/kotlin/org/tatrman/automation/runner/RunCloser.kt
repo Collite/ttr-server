@@ -65,6 +65,23 @@ class RunCloser(
             result
         }
 
+    /**
+     * S2.3: runs [block] under the same per-run gate as a close, so a `perform` and a close of one run never apply the
+     * same rows at once.
+     */
+    suspend fun <T> exclusive(
+        id: UUID,
+        block: suspend () -> T,
+    ): T =
+        withContext(NonCancellable) {
+            val gate = registry.withLock { gates.getOrPut(id) { Gate() }.also { it.users++ } }
+            try {
+                gate.mutex.withLock { block() }
+            } finally {
+                registry.withLock { if (--gate.users == 0) gates.remove(id) }
+            }
+        }
+
     private suspend fun closeOnce(
         id: UUID,
         caller: Caller,
@@ -93,7 +110,8 @@ class RunCloser(
                     context.modelFp,
                     // One absolute deadline: the run's original one, as pinned at Open and as the ledger holds it.
                     state.deadline,
-                    state.plan.rows,
+                    // S2.3: an `approval: required` action's rows wait in their groups; only the rest apply here.
+                    state.plan.rows.filter { it.group == null },
                     state.actions,
                     requireNotNull(metadata.planSource) { "apply placement was not pinned at open" },
                     metadata.entities,
@@ -104,7 +122,10 @@ class RunCloser(
                     state.recorded,
                 ),
                 object : ApplyJournal {
-                    override fun begin(seqs: List<Int>) = ledger.beginApply(state.batch, seqs)
+                    override fun begin(
+                        seqs: List<Int>,
+                        request: String,
+                    ) = ledger.beginApply(state.batch, seqs, request)
 
                     override fun release(seqs: List<Int>) = ledger.releaseApply(state.batch, seqs)
 

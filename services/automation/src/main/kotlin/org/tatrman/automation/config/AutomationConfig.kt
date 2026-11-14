@@ -170,11 +170,15 @@ data class AutomationConfig(
     val policiesFragment: String?,
     val clockSkew: Duration,
     val connections: Map<String, String>,
-    val approvalsOff: Boolean = false,
     val runner: RunnerConfig = RunnerConfig(),
     val pgDoorRole: String? = null,
     /** Explicit logical world → physical schema on the service-owned automation database. */
     val pgSchemas: Map<String, String> = emptyMap(),
+    /**
+     * `AUTOMATION_DEV_ROUTES` (Amendment 2026-11-03, §8): mounts `/automation/dev/…` (P2's held commit/reject),
+     * default off. The routes still require `role.ops`.
+     */
+    val devRoutes: Boolean = false,
 ) {
     companion object {
         const val ROOT = "automation"
@@ -267,10 +271,10 @@ data class AutomationConfig(
                 policiesFragment = c.optString("policies.fragment"),
                 clockSkew = if (c.hasPath("clock.skew")) c.getDuration("clock.skew") else Duration.ZERO,
                 connections = connections(c, env),
-                approvalsOff = approvalsOff(c),
                 runner = RunnerConfig(if (c.hasPath("runner.workers")) c.getInt("runner.workers") else 4),
                 pgDoorRole = env["AUTOMATION_PG_DOOR_ROLE"]?.ifBlank { null } ?: c.optString("pgDoorRole"),
                 pgSchemas = pgSchemas(env["AUTOMATION_PG_SCHEMAS"] ?: c.optString("pgSchemas")),
+                devRoutes = c.hasPath("devRoutes") && c.getBoolean("devRoutes"),
             )
         }
 
@@ -369,15 +373,6 @@ data class AutomationConfig(
 
         private fun Config.optString(path: String): String? =
             if (hasPath(path)) getString(path).ifBlank { null } else null
-
-        private fun approvalsOff(c: Config): Boolean {
-            val mode = if (c.hasPath("approvals")) c.getString("approvals") else "required"
-            require(mode in setOf("required", "off")) { "automation.approvals must be required or off" }
-            require(mode != "off" || c.hasPath("development") && c.getBoolean("development")) {
-                "automation.approvals=off requires automation.development=true; development use only"
-            }
-            return mode == "off"
-        }
     }
 
     /** Never prints [connections]' values or the bundle token. */
@@ -386,5 +381,5 @@ data class AutomationConfig(
             token = bundleGit.token?.let { "***" },
         )}, " +
             "previews=$previews, staging=$staging, scheduler=$scheduler, retention=$retention, budgets=$budgets, " +
-            "paused=$paused, runner=$runner, policiesFragment=$policiesFragment, clockSkew=$clockSkew, approvalsOff=$approvalsOff, connections=${connections.keys})"
+            "paused=$paused, runner=$runner, policiesFragment=$policiesFragment, clockSkew=$clockSkew, devRoutes=$devRoutes, connections=${connections.keys})"
 }

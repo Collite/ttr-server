@@ -24,6 +24,14 @@ class DdlSpec :
             )
             sql.execute("GRANT CREATE ON DATABASE automation TO au_writer_owner")
         }
+        // S2.3: the `approvals` view reads the ledger's table (in production the service owns both).
+        LedgerTestDb.db.getDataSource().connection.use { c ->
+            c.autoCommit = true
+            c.createStatement().use { sql ->
+                sql.execute("GRANT USAGE ON SCHEMA automation TO au_writer_owner")
+                sql.execute("GRANT SELECT ON automation.approvals TO au_writer_owner")
+            }
+        }
         val ds = LedgerTestDb.dataSource("automation", "au_writer_owner", "writer-test")
 
         fun adminSql(text: String) =
@@ -105,9 +113,13 @@ class DdlSpec :
                 before
             for (schema in listOf("us", "cz")) {
                 strings(
-                    "SELECT table_name FROM information_schema.tables WHERE table_schema = '$schema' ORDER BY table_name",
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = '$schema' " +
+                        "AND table_type = 'BASE TABLE' ORDER BY table_name",
                 ) shouldBe
                     expected
+                strings(
+                    "SELECT table_name FROM information_schema.views WHERE table_schema = '$schema'",
+                ) shouldBe listOf("approvals")
             }
         }
 
@@ -171,7 +183,8 @@ class DdlSpec :
             }
             ddl.refresh(changed("text", extra = true))
             strings(
-                "SELECT column_name FROM information_schema.columns WHERE table_schema='us' AND column_name='note'",
+                "SELECT column_name FROM information_schema.columns WHERE table_schema='us' AND column_name='note' " +
+                    "AND table_name <> 'approvals'",
             ) shouldBe
                 listOf("note")
             val error = shouldThrow<AutomationException> { ddl.refresh(changed("bigint", extra = true)) }
@@ -245,7 +258,9 @@ class DdlSpec :
             strings(
                 "SELECT table_name || ':' || privilege_type FROM information_schema.role_table_grants " +
                     "WHERE grantee='au_door_test' AND table_schema='us' ORDER BY table_name, privilege_type",
-            ) shouldBe expected.flatMap { table -> listOf("DELETE", "INSERT", "SELECT", "UPDATE").map { "$table:$it" } }
+            ) shouldBe
+                listOf("approvals:SELECT") +
+                expected.flatMap { table -> listOf("DELETE", "INSERT", "SELECT", "UPDATE").map { "$table:$it" } }
             strings("SELECT has_schema_privilege('au_door_test','us','USAGE')::text") shouldBe listOf("true")
             Ddl(ds, { listOf("cz") }).refresh(bundle)
             strings(

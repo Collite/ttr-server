@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.runner
 
+import org.tatrman.automation.writer.applyContext
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -42,6 +44,8 @@ class RunRuntime(
     store: StagingStore,
     queue: RunWorkQueue = RunQueue(clock = clock, defaultBudget = config.budgets.batchDefault),
     retention: StagingRetention = StagingRetention(config.retention, clock),
+    /** D-184: the approvals writer behind the dev seeding route; the ledger's reader is also its book. */
+    book: org.tatrman.automation.bundle.ApprovalBook? = approvals as? org.tatrman.automation.bundle.ApprovalBook,
 ) {
     private val shutdownLock = Mutex()
     private var shutdownComplete = false
@@ -59,6 +63,49 @@ class RunRuntime(
                 .Apply(door, clock),
             { id, caller -> sessions.context(id, caller) },
         ) { sessions.release(it) }
+
+    private val deferred =
+        org.tatrman.automation.writer
+            .BundleDeferredContexts(served, tokens) { sessions.pinned(it) }
+
+    /** S2.3: held groups (commit/reject after the close) and their dev routes (`AUTOMATION_DEV_ROUTES`). */
+    val held =
+        org.tatrman.automation.writer.Held(
+            ledger,
+            org.tatrman.automation.writer
+                .Apply(door, clock),
+            deferred,
+            served,
+            clock,
+        )
+
+    /** S2.3: `perform`/`outcome` (under the close's per-run gate) and `-rev`. */
+    val perform =
+        org.tatrman.automation.writer.Perform(
+            ledger,
+            org.tatrman.automation.writer
+                .Apply(door, clock),
+            { id, caller ->
+                sessions.context(id, caller)?.applyContext()
+            },
+            { id, block -> closer.exclusive(id, block) },
+        )
+    val revert =
+        org.tatrman.automation.writer.Revert(
+            ledger,
+            org.tatrman.automation.writer
+                .Apply(door, clock),
+            deferred,
+            held,
+            clock,
+        )
+    val devRoutes = config.devRoutes
+    val served: () -> Bundle? = served
+    val approver =
+        book?.let {
+            org.tatrman.automation.bundle
+                .Approver(served, it, clock::instant)
+        }
     val sweeper = StagingSweeper(retention, store) { sessions.release(it) }
     val displayRows = config.budgets.displayRows
     val owner: UUID get() = workers.owner
@@ -80,7 +127,6 @@ class RunRuntime(
                 config.budgets.syncDefault,
                 config.budgets.batchDefault,
                 clock,
-                config.approvalsOff,
                 config.budgets.detailLimit,
                 config.door.routes.keys
                     .toSet(),

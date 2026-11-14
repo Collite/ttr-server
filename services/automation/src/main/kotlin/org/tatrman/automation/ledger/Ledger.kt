@@ -32,6 +32,8 @@ import org.tatrman.automation.runner.RunFingerprints
 import org.tatrman.automation.runner.RunBatch
 import org.tatrman.automation.runner.CloseResult
 import org.tatrman.automation.apply.*
+import org.tatrman.automation.apply.ApplyRow.Companion.DECIDED
+import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_AT
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_OUTCOME
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
@@ -146,6 +148,57 @@ class WetRunClose(
 class ProtocolSealed(
     val runId: UUID,
 ) : RuntimeException("the protocol of run `$runId` is sealed (D-110)")
+
+/** S2.3: the run's batch holds no row of this group. */
+class NoHeldGroup(
+    val runId: UUID,
+    val group: JsonObject,
+) : RuntimeException("run `$runId` holds no group $group")
+
+/** S2.3: what a held-group decision reads (see [Ledger.heldGroup]). */
+data class HeldGroup(
+    val run: UUID,
+    val batch: UUID,
+    val status: RunStatus,
+    val batchState: String,
+    val names: RunNames,
+    val fingerprints: RunFingerprints,
+    val rows: List<ApplyRow>,
+    val statuses: List<BatchRowStatus>,
+    val actions: List<DryRunAction>,
+    val budget: Duration,
+)
+
+/** S2.3: what a revert reads (see [Ledger.revertState]). */
+data class RevertState(
+    val run: UUID,
+    val batch: UUID,
+    val names: RunNames,
+    val plan: RunBatchPlan,
+    val actions: List<DryRunAction>,
+    /** A revert batch an interrupted attempt already journaled. */
+    val rev: RunBatchPlan?,
+    val budget: Duration,
+)
+
+/** S2.3: the names a run pinned at Open — what a deferred apply re-resolves and D-99 compares. */
+data class RunNames(
+    val recipe: String,
+    val program: String?,
+    val deployment: String?,
+    val bundle: String?,
+    val runAs: String?,
+)
+
+/** S2.3: one decision's answer (the dev routes' `{ batch, group, applied | discarded }`). */
+data class HeldDecision(
+    val batch: String,
+    val group: JsonObject,
+    val decision: String,
+    val applied: Int,
+    val discarded: Int,
+    val runStatus: String,
+)
 
 /**
  * The ledger (AU contracts §2) — every write the service makes to schema `automation`. The operations the
@@ -466,8 +519,9 @@ class Ledger(
         val mode =
             when (batch[Batches.state]) {
                 "preview" -> "preview"
-                "committed" -> "auto"
-                else -> error("only preview and committed batch reads are implemented in S2.2")
+                "committed", "reverted" -> "auto"
+                "held" -> "hold"
+                else -> error("unknown batch state ${batch[Batches.state]}")
             }
         val stored =
             BatchRows
@@ -497,6 +551,13 @@ class Ledger(
                     it[BatchRows.error],
                     (it[BatchRows.row] as? JsonObject)?.get("prior") as? JsonObject,
                     ((it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) as? JsonPrimitive)?.content,
+                    ((it[BatchRows.row] as? JsonObject)?.get(HISTORY_AT) as? JsonPrimitive)?.content,
+                    (it[BatchRows.row] as? JsonObject)?.get(DECIDED) as? JsonObject,
+                    (
+                        (it[BatchRows.row] as? JsonObject)?.get(
+                            org.tatrman.automation.apply.ApplyRow.REQUEST,
+                        ) as? JsonPrimitive
+                    )?.content,
                 )
             }
         return RunBatchPlan(id.toString(), runId.toString(), rows, mode, statuses)
@@ -521,7 +582,7 @@ class Ledger(
                     .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
                     .firstOrNull() ?: throw NoSuchRun(runId)
             val status = RunStatus.of(row[Runs.status])
-            if (status !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED)) {
+            if (status !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED, RunStatus.WAITING)) {
                 throw IllegalRunTransition(runId, status, RunStatus.CLOSED)
             }
             val batchId = row[Runs.batchId] ?: throw NoRunBatch(runId)
@@ -541,8 +602,15 @@ class Ledger(
                     .filter { it.status != "staged" || it.error != null }
                     .associate {
                         it.seq to
-                            org.tatrman.automation.writer
-                                .RowOutcome(it.seq, it.status, it.error, it.prior, it.history)
+                            org.tatrman.automation.writer.RowOutcome(
+                                it.seq,
+                                it.status,
+                                it.error,
+                                it.prior,
+                                it.history,
+                                it.historyAt?.let(Instant::parse),
+                                it.request,
+                            )
                     },
                 runDeadline(runId, defaultBudget),
             )
@@ -553,12 +621,26 @@ class Ledger(
     fun beginApply(
         batch: UUID,
         seqs: List<Int>,
+        /** review-258 B3: the door request's id, kept with each row ([ApplyRow.REQUEST]); null = not recorded. */
+        request: String? = null,
     ) {
         outermost("beginApply")
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
-            BatchRows.update({
-                (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged")
-            }) { it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT }
+            val staged = (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged")
+            if (request == null) {
+                BatchRows.update({ staged }) { it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT }
+                return@transaction
+            }
+            for (r in BatchRows.selectAll().where { staged }.toList()) {
+                BatchRows.update({ (BatchRows.batch eq batch) and (BatchRows.seq eq r[BatchRows.seq]) }) {
+                    it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT
+                    it[row] =
+                        JsonObject(
+                            (r[BatchRows.row] as? JsonObject).orEmpty() +
+                                (org.tatrman.automation.apply.ApplyRow.REQUEST to JsonPrimitive(request)),
+                        )
+                }
+            }
         }
     }
 
@@ -600,6 +682,7 @@ class Ledger(
                             listOfNotNull(
                                 outcome.prior?.let { p -> "prior" to p },
                                 outcome.history?.let { h -> HISTORY_OUTCOME to JsonPrimitive(h) },
+                                outcome.committedAt?.let { a -> HISTORY_AT to JsonPrimitive(a.toString()) },
                             )
                         it[row] = JsonObject(stored + evidence)
                     }
@@ -678,6 +761,8 @@ class Ledger(
                     .forUpdate()
                     .firstOrNull() ?: throw NoSuchRun(runId)
             val from = RunStatus.of(row[Runs.status])
+            // S2.3: a waiting run is a wet run whose close already committed its `auto` rows and held the rest.
+            if (from == RunStatus.WAITING) throw WetRunClose(runId)
             if (from !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED)) {
                 throw IllegalRunTransition(runId, from, RunStatus.CLOSED)
             }
@@ -748,7 +833,7 @@ class Ledger(
                     .forUpdate()
                     .firstOrNull() ?: throw NoSuchRun(runId)
             val from = RunStatus.of(row[Runs.status])
-            if (from !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED)) {
+            if (from !in setOf(RunStatus.EVALUATED, RunStatus.CLOSED, RunStatus.WAITING)) {
                 throw IllegalRunTransition(runId, from, RunStatus.CLOSED)
             }
             check(!row[Runs.dryRun]) { "a committed close requires a wet run" }
@@ -757,17 +842,31 @@ class Ledger(
             val protocolRef = row[Runs.protocolRef] ?: "/automation/runs/$runId/protocol"
             if (from == RunStatus.CLOSED) {
                 check(isSealed(runId) && row[Runs.endedAt] != null) { "closed run is missing its seal/end time" }
-                check(batch[Batches.state] == "committed") { "a closed wet run has an uncommitted batch" }
+                check(batch[Batches.state] in setOf("committed", "reverted")) {
+                    "a closed wet run has an uncommitted batch"
+                }
                 return@transaction CloseResult(
                     RunStatus.CLOSED.wire,
-                    RunBatch(batchId.toString(), "committed", batch[Batches.rows]),
+                    RunBatch(batchId.toString(), batch[Batches.state], batch[Batches.rows]),
+                    protocolRef,
+                )
+            }
+            if (from == RunStatus.WAITING) {
+                // S2.3: the close already committed the auto rows and sealed; the held groups await their decisions.
+                check(isSealed(runId) && batch[Batches.state] == "held") { "a waiting run has no held batch" }
+                return@transaction CloseResult(
+                    RunStatus.WAITING.wire,
+                    RunBatch(batchId.toString(), "held", batch[Batches.rows]),
                     protocolRef,
                 )
             }
             if (isSealed(runId)) throw ProtocolSealed(runId)
             check(batch[Batches.state] == "preview") { "the run's batch was already committed" }
             ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
-            val rows = BatchRows.selectAll().where { BatchRows.batch eq batchId }.toList()
+            val all = BatchRows.selectAll().where { BatchRows.batch eq batchId }.toList()
+            // S2.3: the rows of an `approval: required` action wait in their groups; the close applied only the rest.
+            val held = all.filter(::undecidedHeld)
+            val rows = all - held.toSet()
             check(rows.none { it[BatchRows.status] == "staged" && it[BatchRows.error] == null }) {
                 "the apply did not finish: a row was never sent"
             }
@@ -778,10 +877,14 @@ class Ledger(
                 },
             ) { "the apply did not finish: a transition's history request is unanswered" }
             val now = clock.instant().utc()
+            val waiting = held.isNotEmpty()
+            val outcome = if (waiting) "held" else "committed"
             Batches.update({ Batches.id eq batchId }) {
-                it[state] = "committed"
-                it[committedBy] = row[Runs.runAs]
-                it[committedAt] = now
+                it[state] = outcome
+                if (!waiting) {
+                    it[committedBy] = row[Runs.runAs]
+                    it[committedAt] = now
+                }
             }
 
             fun bucket(r: org.jetbrains.exposed.v1.core.ResultRow) =
@@ -807,8 +910,8 @@ class Ledger(
                 kotlinx.serialization.json.buildJsonObject {
                     put("event", JsonPrimitive("closed"))
                     put("batch", JsonPrimitive(batchId.toString()))
-                    put("state", JsonPrimitive("committed"))
-                    put("rows", JsonPrimitive(rows.size))
+                    put("state", JsonPrimitive(outcome))
+                    put("rows", JsonPrimitive(all.size))
                     for (name in listOf("applied", "failed", "skipped", "unknown")) {
                         put(
                             name,
@@ -819,6 +922,11 @@ class Ledger(
                     }
                     put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == "stale-state" }))
                     put("history", historyCounts(rows))
+                    if (waiting) {
+                        // S2.3: held rows are counted apart, with their groups; each decision appends after the seal.
+                        put("held", JsonPrimitive(held.size))
+                        put("groups", JsonPrimitive(held.map { it[BatchRows.groupKey] }.distinct().size))
+                    }
                     put(
                         "entities",
                         JsonObject(
@@ -844,11 +952,13 @@ class Ledger(
             }
             seal(runId, batchId, dryRun = false, now)
             ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
+            val status = if (waiting) RunStatus.WAITING else RunStatus.CLOSED
             Runs.update({ Runs.id eq runId }) {
-                it[status] = RunStatus.CLOSED.wire
-                it[endedAt] = now
+                it[Runs.status] = status.wire
+                // D-97: a waiting run is never abandoned and has not ended; the last group's decision ends it.
+                if (!waiting) it[endedAt] = now
             }
-            CloseResult(RunStatus.CLOSED.wire, RunBatch(batchId.toString(), "committed", rows.size), protocolRef)
+            CloseResult(status.wire, RunBatch(batchId.toString(), outcome, all.size), protocolRef)
         }
     }
 
@@ -909,6 +1019,316 @@ class Ledger(
             name != "none" &&
                 (((summary as? JsonObject)?.get("rowCount") as? JsonPrimitive)?.content?.toLongOrNull() ?: 1L) > 0
         }
+    }
+
+    /**
+     * S2.3: a held row whose group has no recorded decision — `group_key` set and no `decided` evidence, whatever its
+     * apply progress (review-258 B4): a commit interrupted after journaling its rows `applied` (or in flight) is still
+     * undecided, so another group's decision never closes the run without it (D-97).
+     */
+    private fun undecidedHeld(r: org.jetbrains.exposed.v1.core.ResultRow): Boolean =
+        r[BatchRows.groupKey] != null && (r[BatchRows.row] as? JsonObject)?.get(DECIDED) == null
+
+    /**
+     * S2.3: what a decision on one held group reads — the run (its pinned fps and names, for D-99), the batch, every
+     * row of the group with its recorded outcome, and the action evidence. The run is not owner-filtered: the decider
+     * is an operator (`role.ops`), not the run's caller. A group the batch does not hold is [NoHeldGroup].
+     */
+    fun heldGroup(
+        runId: UUID,
+        group: JsonObject,
+    ): HeldGroup {
+        outermost("heldGroup")
+        return transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            val run = Runs.selectAll().where { Runs.id eq runId }.firstOrNull() ?: throw NoSuchRun(runId)
+            val batchId = run[Runs.batchId] ?: throw NoRunBatch(runId)
+            val plan = batchPlan(runId, batchId)
+            val seqs =
+                plan.rows
+                    .filter { it.group == group }
+                    .map { it.seq }
+                    .toSet()
+            if (seqs.isEmpty()) throw NoHeldGroup(runId, group)
+            val batch = Batches.selectAll().where { Batches.id eq batchId }.single()
+            HeldGroup(
+                runId,
+                batchId,
+                RunStatus.of(run[Runs.status]),
+                batch[Batches.state],
+                RunNames(
+                    run[Runs.recipe],
+                    run[Runs.program],
+                    run[Runs.deployment],
+                    run[Runs.bundle],
+                    run[Runs.runAs],
+                ),
+                RunFingerprints(
+                    run[Runs.fpText],
+                    run[Runs.fpValues],
+                    run[Runs.fpProgram],
+                    run[Runs.fpDeployment],
+                    run[Runs.modelFp],
+                ),
+                plan.rows.filter { it.seq in seqs },
+                plan.statuses.filter { it.seq in seqs },
+                previewActions(runId),
+                run[Runs.budgetBatch]?.let(Duration::ofMillis) ?: run[Runs.budgetSync]?.let(Duration::ofMillis)
+                    ?: defaultBudget,
+            )
+        }
+    }
+
+    /**
+     * S2.3 (Amendment 2026-11-03): records the decision on one held group, after its rows were applied (`commit`) or
+     * instead of applying them (`reject`: the rows become `skipped`, error `rejected`). Every row of the group gets its
+     * `decided` evidence; a `writes` entry is appended after the seal with `after_seal: true` (the seal stands, D-110).
+     * When no undecided held row remains, the batch is `committed` by [by] and the run `closed` (D-97: the last decision
+     * ends a waiting run). A group already decided answers its recorded decision and appends nothing.
+     */
+    fun decideHeld(
+        runId: UUID,
+        group: JsonObject,
+        decision: String,
+        by: String,
+    ): HeldDecision {
+        require(decision == "commit" || decision == "reject")
+        require(by.isNotBlank())
+        outermost("decideHeld")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val run = Runs.selectAll().where { Runs.id eq runId }.single()
+            val batchId = run[Runs.batchId] ?: throw NoRunBatch(runId)
+            val rows =
+                BatchRows
+                    .selectAll()
+                    .where { BatchRows.batch eq batchId }
+                    .orderBy(BatchRows.seq to SortOrder.ASC)
+                    .toList()
+            val mine = rows.filter { it[BatchRows.groupKey] == group }
+            if (mine.isEmpty()) throw NoHeldGroup(runId, group)
+            val recorded = (mine.first()[BatchRows.row] as? JsonObject)?.get(DECIDED) as? JsonObject
+            if (recorded != null) {
+                return@transaction HeldDecision(
+                    batchId.toString(),
+                    group,
+                    (recorded["decision"] as JsonPrimitive).content,
+                    mine.count { it[BatchRows.status] == "applied" },
+                    mine.count { it[BatchRows.status] == "skipped" },
+                    RunStatus.of(run[Runs.status]).wire,
+                )
+            }
+            val now = clock.instant().utc()
+            val evidence =
+                kotlinx.serialization.json.buildJsonObject {
+                    put("decision", JsonPrimitive(decision))
+                    put("by", JsonPrimitive(by))
+                    put("at", JsonPrimitive(now.toInstant().toString()))
+                }
+            for (r in mine) {
+                BatchRows.update({ (BatchRows.batch eq batchId) and (BatchRows.seq eq r[BatchRows.seq]) }) {
+                    if (decision == "reject" && r[BatchRows.status] == "staged" && r[BatchRows.error] == null) {
+                        it[status] = "skipped"
+                        it[error] = "rejected"
+                    }
+                    it[row] = JsonObject((r[BatchRows.row] as? JsonObject).orEmpty() + (DECIDED to evidence))
+                }
+            }
+            val after = BatchRows.selectAll().where { BatchRows.batch eq batchId }.toList()
+            val decided = after.filter { it[BatchRows.groupKey] == group }
+            val counts =
+                decided
+                    .groupingBy { if (it[BatchRows.status] == "staged") "unknown" else it[BatchRows.status] }
+                    .eachCount()
+            val last = after.none(::undecidedHeld)
+            RunProtocol.insert {
+                it[RunProtocol.run] = runId
+                it[section] = ProtocolSection.WRITES.wire
+                it[seq] = nextSeq(runId, ProtocolSection.WRITES)
+                it[payload] =
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("event", JsonPrimitive("held-$decision"))
+                        put("batch", JsonPrimitive(batchId.toString()))
+                        put("group", group)
+                        put("by", JsonPrimitive(by))
+                        put("rows", JsonPrimitive(decided.size))
+                        for (name in listOf("applied", "failed", "skipped", "unknown")) {
+                            put(name, JsonPrimitive(counts[name] ?: 0))
+                        }
+                        put("last", JsonPrimitive(last))
+                        put("after_seal", JsonPrimitive(true))
+                    }
+                it[at] = now
+            }
+            if (last) {
+                Batches.update({ Batches.id eq batchId }) {
+                    it[state] = "committed"
+                    it[committedBy] = by
+                    it[committedAt] = now
+                }
+                Runs.update({ Runs.id eq runId }) {
+                    it[status] = RunStatus.CLOSED.wire
+                    it[endedAt] = now
+                }
+            }
+            HeldDecision(
+                batchId.toString(),
+                group,
+                decision,
+                decided.count { it[BatchRows.status] == "applied" },
+                decided.count { it[BatchRows.status] == "skipped" },
+                if (last) RunStatus.CLOSED.wire else RunStatus.of(run[Runs.status]).wire,
+            )
+        }
+    }
+
+    /**
+     * S2.3 `-rev`: what a revert reads — the run's batch (it must be `committed`: `409 batch-not-committed`; a batch
+     * already `reverted` is `409 batch-reverted`), its rows with their recorded outcomes and `prior`, the action
+     * evidence, and a revert batch an interrupted attempt already journaled (`rev_of` = this batch). Not owner-filtered:
+     * the reverter is an operator.
+     */
+    fun revertState(runId: UUID): RevertState {
+        outermost("revertState")
+        return transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            val run = Runs.selectAll().where { Runs.id eq runId }.firstOrNull() ?: throw NoSuchRun(runId)
+            val batchId = run[Runs.batchId] ?: throw NoRunBatch(runId)
+            when (Batches.selectAll().where { Batches.id eq batchId }.single()[Batches.state]) {
+                "committed" -> Unit
+                "reverted" -> throw AutomationException(
+                    ErrorCode.BATCH_REVERTED,
+                    "the run's batch was already reverted",
+                )
+                else -> throw AutomationException(
+                    ErrorCode.BATCH_NOT_COMMITTED,
+                    "only a committed batch can be reverted",
+                )
+            }
+            val rev =
+                Batches
+                    .select(Batches.id)
+                    .where { Batches.revOf eq batchId }
+                    .firstOrNull()
+                    ?.get(Batches.id)
+            RevertState(
+                runId,
+                batchId,
+                RunNames(run[Runs.recipe], run[Runs.program], run[Runs.deployment], run[Runs.bundle], run[Runs.runAs]),
+                batchPlan(runId, batchId),
+                previewActions(runId),
+                rev?.let { batchPlan(runId, it) },
+                run[Runs.budgetBatch]?.let(Duration::ofMillis) ?: run[Runs.budgetSync]?.let(Duration::ofMillis)
+                    ?: defaultBudget,
+            )
+        }
+    }
+
+    /** Journals the revert batch (`preview`, `rev_of` = [original], rows `staged`) once; a retry answers the same one. */
+    fun beginRevert(
+        runId: UUID,
+        original: UUID,
+        rows: List<ApplyRow>,
+    ): RunBatchPlan {
+        outermost("beginRevert")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val existing =
+                Batches
+                    .select(Batches.id)
+                    .where { Batches.revOf eq original }
+                    .firstOrNull()
+                    ?.get(Batches.id)
+            if (existing != null) return@transaction batchPlan(runId, existing)
+            val id = UUID.randomUUID()
+            Batches.insert {
+                it[Batches.id] = id
+                it[run] = runId
+                it[state] = "preview"
+                it[Batches.rows] = rows.size
+                it[revOf] = original
+            }
+            BatchRows.batchInsert(rows, shouldReturnGeneratedValues = false) { item ->
+                this[BatchRows.batch] = id
+                this[BatchRows.seq] = item.seq
+                this[BatchRows.entity] = item.entity
+                this[BatchRows.op] = item.op
+                this[BatchRows.key] = item.key
+                this[BatchRows.row] = item.storedRow()
+                this[BatchRows.groupKey] = null
+                this[BatchRows.status] = "staged"
+            }
+            batchPlan(runId, id)
+        }
+    }
+
+    /**
+     * Ends a revert: the revert batch is `committed` by [by], the original `reverted`, and a `writes` entry is appended
+     * after the seal (`after_seal: true`; D-110). Answers the revert batch's row counts.
+     */
+    fun finishRevert(
+        runId: UUID,
+        original: UUID,
+        rev: UUID,
+        by: String,
+    ): RunBatchPlan {
+        outermost("finishRevert")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val now = clock.instant().utc()
+            val rows = BatchRows.selectAll().where { BatchRows.batch eq rev }.toList()
+            val counts =
+                rows
+                    .groupingBy {
+                        if (it[BatchRows.status] ==
+                            "staged"
+                        ) {
+                            "unknown"
+                        } else {
+                            it[BatchRows.status]
+                        }
+                    }.eachCount()
+            Batches.update({ Batches.id eq rev }) {
+                it[state] = "committed"
+                it[committedBy] = by
+                it[committedAt] = now
+            }
+            Batches.update({ Batches.id eq original }) { it[state] = "reverted" }
+            RunProtocol.insert {
+                it[RunProtocol.run] = runId
+                it[section] = ProtocolSection.WRITES.wire
+                it[seq] = nextSeq(runId, ProtocolSection.WRITES)
+                it[payload] =
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("event", JsonPrimitive("revert"))
+                        put("batch", JsonPrimitive(rev.toString()))
+                        put("rev_of", JsonPrimitive(original.toString()))
+                        put("by", JsonPrimitive(by))
+                        put("rows", JsonPrimitive(rows.size))
+                        for (name in listOf("applied", "failed", "skipped", "unknown")) {
+                            put(name, JsonPrimitive(counts[name] ?: 0))
+                        }
+                        put("after_seal", JsonPrimitive(isSealed(runId)))
+                    }
+                it[at] = now
+            }
+            batchPlan(runId, rev)
+        }
+    }
+
+    /**
+     * S2.3 `outcome` (Amendment 2026-11-03): appended to the `actions` section; no `deliveries` row. A sealed protocol
+     * refuses (`ProtocolSealed`), as every other append does.
+     */
+    fun appendOutcome(
+        runId: UUID,
+        subject: String,
+        payload: JsonObject,
+    ): Int {
+        require(subject.isNotBlank())
+        transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
+            Runs.select(Runs.id).where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }.firstOrNull()
+                ?: throw NoSuchRun(runId)
+        }
+        return appendProtocol(runId, ProtocolSection.ACTIONS, payload)
     }
 
     /** Durable owner/seal fence before touching a local executor, including after resource release/restart. */

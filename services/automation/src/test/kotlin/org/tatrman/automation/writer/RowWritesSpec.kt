@@ -158,7 +158,10 @@ class RowWritesSpec :
                     emptyList(),
                 ),
                 object : ApplyJournal {
-                    override fun begin(seqs: List<Int>) = Unit
+                    override fun begin(
+                        seqs: List<Int>,
+                        request: String,
+                    ) = Unit
 
                     override fun release(seqs: List<Int>) = Unit
 

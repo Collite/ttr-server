@@ -270,14 +270,19 @@ class ApplyComponentSpec :
         )
 
         /** Claim a wet run and journal plan() at evaluate; answers the run, ready for its close. */
-        fun prepare(build: (UUID) -> Planned): UUID {
+        fun prepare(
+            build: (UUID) -> Planned,
+            deployment: String? = null,
+            dryRun: Boolean = false,
+        ): UUID {
             val id =
                 ledger
                     .claimRun(
                         RunOpen(
                             "release_order",
+                            deployment = deployment,
                             runAs = principal,
-                            dryRun = false,
+                            dryRun = dryRun,
                             callerSubject = subject,
                             openingProtocol = buildJsonObject { put("event", "opened") },
                         ),
@@ -338,8 +343,11 @@ class ApplyComponentSpec :
                     state.recorded,
                 ),
                 object : ApplyJournal {
-                    override fun begin(seqs: List<Int>) {
-                        ledger.beginApply(state.batch, seqs)
+                    override fun begin(
+                        seqs: List<Int>,
+                        request: String,
+                    ) {
+                        ledger.beginApply(state.batch, seqs, request)
                         afterBegin()
                     }
 
@@ -846,7 +854,10 @@ class ApplyComponentSpec :
                     state.recorded,
                 ),
                 object : ApplyJournal {
-                    override fun begin(seqs: List<Int>) = ledger.beginApply(state.batch, seqs)
+                    override fun begin(
+                        seqs: List<Int>,
+                        request: String,
+                    ) = ledger.beginApply(state.batch, seqs, request)
 
                     override fun release(seqs: List<Int>) = ledger.releaseApply(state.batch, seqs)
 
@@ -888,6 +899,447 @@ class ApplyComponentSpec :
                 ).of("er.entity.order")
                 .map { Triple(it.status, it.error, it.history) } shouldBe
                 listOf(Triple("applied", null, null), Triple("applied", null, "applied"))
+        }
+
+        "S2.3 F-3 (R244-F): a history retry 20 min later stamps the transition's commit time, not its own" {
+            val id = prepare({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
+            val committedAt = clock.now
+            shouldThrow<IllegalStateException> {
+                applyOnce(id) { outcomes ->
+                    check(outcomes.none { it.history == RowOutcome.HISTORY_PENDING }) { "acknowledgement lost" }
+                }
+            }
+            ledger
+                .readRunBatch(id, subject)
+                .of("er.entity.order", "transition")
+                .single()
+                .historyAt shouldBe committedAt.toString()
+            clock.now = committedAt.plusSeconds(20 * 60)
+            // The run's budget is 30 min, so the retry still fits its original deadline.
+            applyOnce(id)
+            rows("SELECT to_char(at, 'YYYY-MM-DD\"T\"HH24:MI:SS') FROM wet_fixture.state_history") shouldBe
+                listOf(listOf("2026-11-11T10:00:00"))
+            committedAt shouldBe Instant.parse("2026-11-11T10:00:00Z")
+        }
+
+        // ---- S2.3 T3: revert · perform ----
+
+        val ops = Caller("sub-ops", "olga", emptySet(), TokenKind.PERSON, "t", groups = setOf("hartland-ops"))
+        val contexts =
+            DeferredContexts { _, _, _ -> ApplyContext("demo", identity, "model-fp", source, bundle.entities, routes) }
+
+        fun obligationFulfil() =
+            ApplyRow(
+                1,
+                "er.entity.obligation",
+                "transition",
+                buildJsonObject { put("id", "ob-1") },
+                attribute = "state",
+                to = JsonPrimitive("fulfilled"),
+                history = true,
+            )
+
+        "S2.3 T3: revert applies the inverse of the recorded prior as a rev_of batch; verdicts stay; twice is 409" {
+            sql(
+                "INSERT INTO wet_fixture.obligation " +
+                    "(id, recipe, run, entity, key, kind, due, state, created_at) VALUES " +
+                    "('ob-1', 'release_order', 'r0', 'er.entity.order', '{\"order_number\":\"4711\"}', 'confirm', " +
+                    "'2026-11-25', 'open', '2026-11-01')",
+            )
+            val id =
+                prepare(
+                    { run ->
+                        planned(
+                            listOf(verdict(run, "4711", "hold_sales")) + hold("4711") + listOf(obligationFulfil()),
+                            actions = listOf(listOf(1, 2)),
+                            keys = listOf("4711"),
+                        )
+                    },
+                    deployment = "release_native_event",
+                )
+            applyOnce(id)
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("held", "Sales"))
+            val held = Held(ledger, Apply(door(), clock), contexts, { bundle }, clock)
+            val revert = Revert(ledger, Apply(door(), clock), contexts, held, clock)
+            val maya = Caller("sub-maya", "maya", setOf("hartland-sales-managers"), TokenKind.PERSON, "t")
+            shouldThrow<AutomationException> { revert.revert(id, maya) }.code shouldBe ErrorCode.IDENTITY
+            clock.now = clock.now.plusSeconds(3600)
+            val original = ledger.readRunBatch(id, subject).batch
+            val result = revert.revert(id, ops)
+            result.revOf shouldBe original
+            result.rows shouldBe 3
+            result.applied shouldBe 3
+            // The prior values are back; the obligation is reopened by an inverse transition with history.
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("placed", null))
+            rows("SELECT state FROM wet_fixture.obligation WHERE id = 'ob-1'") shouldBe listOf(listOf("open"))
+            rows("SELECT entity, from_state, to_state FROM wet_fixture.state_history ORDER BY at, entity") shouldBe
+                listOf(
+                    listOf("er.entity.obligation", "open", "fulfilled"),
+                    listOf("er.entity.order", "placed", "held"),
+                    listOf("er.entity.obligation", "fulfilled", "open"),
+                    listOf("er.entity.order", "held", "placed"),
+                )
+            // Verdicts are never reverted.
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE run = '$id'") shouldBe
+                listOf(listOf("1"))
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE run = '$id' AND state = 'reverted'",
+            ) shouldBe
+                1L
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE rev_of = '$original' AND state = 'committed'",
+            ) shouldBe 1L
+            writesEntry(id).let {
+                it["event"] shouldBe JsonPrimitive("revert")
+                it["after_seal"] shouldBe JsonPrimitive(true)
+                it["rev_of"] shouldBe JsonPrimitive(original)
+                it["by"] shouldBe JsonPrimitive("olga")
+            }
+            shouldThrow<AutomationException> { revert.revert(id, ops) }.code shouldBe ErrorCode.BATCH_REVERTED
+            // A batch that never committed cannot be reverted.
+            val open = prepare({ run -> planned(listOf(verdict(run, "4712", "release"))) }, "release_native_event")
+            shouldThrow<AutomationException> { revert.revert(open, ops) }.code shouldBe ErrorCode.BATCH_NOT_COMMITTED
+        }
+
+        "S2.3 D-187: a revert's history rows are its own even when its seqs repeat the reverted batch's" {
+            sql(
+                "INSERT INTO wet_fixture.obligation " +
+                    "(id, recipe, run, entity, key, kind, due, state, created_at) VALUES " +
+                    "('ob-1', 'release_order', 'r0', 'er.entity.order', '{\"order_number\":\"4711\"}', 'confirm', " +
+                    "'2026-11-25', 'open', '2026-11-01')",
+            )
+            // No verdict row: the inverse rows (update 1, transition 2, transition 3) reuse the original seqs exactly.
+            val id =
+                prepare({ planned(hold("4711") + listOf(obligationFulfil())) }, deployment = "release_native_event")
+            applyOnce(id)
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            val held = Held(ledger, Apply(door(), clock), contexts, { bundle }, clock)
+            clock.now = clock.now.plusSeconds(3600)
+            Revert(ledger, Apply(door(), clock), contexts, held, clock).revert(id, ops).applied shouldBe 3
+            rows("SELECT entity, from_state, to_state FROM wet_fixture.state_history ORDER BY at, entity") shouldBe
+                listOf(
+                    listOf("er.entity.obligation", "open", "fulfilled"),
+                    listOf("er.entity.order", "placed", "held"),
+                    listOf("er.entity.obligation", "fulfilled", "open"),
+                    listOf("er.entity.order", "held", "placed"),
+                )
+            rows("SELECT count(DISTINCT id) FROM wet_fixture.state_history") shouldBe listOf(listOf("4"))
+        }
+
+        // ---- review-258 (the S2.3 repair round) ----
+
+        fun reverter() =
+            Revert(
+                ledger,
+                Apply(door(), clock),
+                contexts,
+                Held(ledger, Apply(door(), clock), contexts, { bundle }, clock),
+                clock,
+            )
+
+        fun holdOnly(order: String) =
+            ApplyRow(
+                1,
+                "er.entity.order",
+                "transition",
+                key(order),
+                attribute = "state",
+                from = listOf("placed"),
+                to = JsonPrimitive("held"),
+                history = true,
+            )
+
+        "review-258 B1: a revert's set and transition are one guarded write; a row that moved on is not touched" {
+            val id =
+                prepare(
+                    { planned(hold("4711"), actions = listOf(listOf(0, 1)), keys = emptyList()) },
+                    deployment = "release_native_event",
+                )
+            applyOnce(id)
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            // Another transaction moves the order on after the commit.
+            sql("UPDATE erp_fixture.sales_order SET state = 'cancelled', held_for = 'AR' WHERE order_number = '4711'")
+            clock.now = clock.now.plusSeconds(3600)
+            val result = reverter().revert(id, ops)
+            result.rows shouldBe 2
+            result.failed shouldBe 2
+            result.applied shouldBe 0
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("cancelled", "AR"))
+            rows("SELECT count(*) FROM wet_fixture.state_history WHERE to_state = 'placed'") shouldBe
+                listOf(listOf("0"))
+        }
+
+        "review-258 B2: successive writes to one order unwind last-first, to the values before the batch" {
+            val id =
+                prepare(
+                    {
+                        planned(
+                            hold("4711") +
+                                listOf(
+                                    ApplyRow(
+                                        1,
+                                        "er.entity.order",
+                                        "update",
+                                        key("4711"),
+                                        set = buildJsonObject { put("held_for", "AR") },
+                                    ),
+                                    release("4711"),
+                                ),
+                            actions = listOf(listOf(0, 1), listOf(2), listOf(3)),
+                            keys = emptyList(),
+                        )
+                    },
+                    deployment = "release_native_event",
+                )
+            applyOnce(id)
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("released", "AR"))
+            clock.now = clock.now.plusSeconds(3600)
+            val result = reverter().revert(id, ops)
+            result.rows shouldBe 4
+            result.applied shouldBe 4
+            result.failed shouldBe 0
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("placed", null))
+            rows("SELECT from_state, to_state FROM wet_fixture.state_history ORDER BY at, from_state") shouldBe
+                listOf(
+                    listOf("held", "released"),
+                    listOf("placed", "held"),
+                    listOf("held", "placed"),
+                    listOf("released", "held"),
+                )
+        }
+
+        "review-258 B3: a lost acknowledgement is re-read before a revert; what cannot be restored is not certified" {
+            val id =
+                prepare(
+                    { planned(hold("4711"), actions = listOf(listOf(0, 1)), keys = emptyList()) },
+                    deployment = "release_native_event",
+                )
+            fake.loseCommit = { it.world == "w-erp" }
+            applyOnce(id)
+            fake.loseCommit = { false }
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("held", "Sales"))
+            val sent = fake.writes.size
+            clock.now = clock.now.plusSeconds(3600)
+            val refused = shouldThrow<AutomationException> { reverter().revert(id, ops) }
+            refused.code shouldBe ErrorCode.BATCH_NOT_COMMITTED
+            refused.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
+            refused.detail!!.jsonObject["rows"] shouldBe JsonArray(listOf(JsonPrimitive(1), JsonPrimitive(2)))
+            // One re-read went to the ERP and changed nothing; the hold was not resent, nothing was reverted.
+            fake.writes.size shouldBe sent + 1
+            fake.writes
+                .last()
+                .context.correlationId shouldBe "$id/reconcile/erp_db/1"
+            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("held", "Sales"))
+            // The re-read settled the rows as applied, but the set's prior was never read: it cannot be restored.
+            ledger.readRunBatch(id, subject).statuses.map { it.status to it.error } shouldBe
+                listOf("applied" to RowOutcome.RECONCILED, "applied" to RowOutcome.RECONCILED)
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE run = '$id' AND state = 'reverted'",
+            ) shouldBe
+                0L
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE run = '$id' AND rev_of IS NOT NULL",
+            ) shouldBe
+                0L
+        }
+
+        // ⚑AU-P2-12: a lost request whose last effect is there is applied, but the state before it is not known — a
+        // transition's CAS accepts its `to` as well, and a CAS miss commits too. The revert refuses; nothing moves.
+        suspend fun lostThenRefused(
+            plan: List<ApplyRow>,
+            before: String,
+            seqs: List<Int>,
+        ) {
+            sql("UPDATE erp_fixture.sales_order SET state = '$before' WHERE order_number = '4711'")
+            val id =
+                prepare(
+                    { planned(plan, keys = emptyList()) },
+                    deployment = "release_native_event",
+                )
+            fake.loseCommit = { it.world == "w-erp" }
+            applyOnce(id)
+            fake.loseCommit = { false }
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            val after = rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'")
+            val sent = fake.writes.size
+            clock.now = clock.now.plusSeconds(3600)
+            val refused = shouldThrow<AutomationException> { reverter().revert(id, ops) }
+            refused.code shouldBe ErrorCode.BATCH_NOT_COMMITTED
+            refused.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
+            refused.detail!!.jsonObject["rows"] shouldBe JsonArray(seqs.map { JsonPrimitive(it) })
+            // One re-read, nothing resent, no inverse applied, the state untouched.
+            fake.writes.size shouldBe sent + 1
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe after
+            ledger.readRunBatch(id, subject).statuses.map { Triple(it.status, it.error, it.prior) } shouldBe
+                seqs.map { Triple("applied", RowOutcome.RECONCILED, null) }
+            rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("0"))
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE run = '$id' AND (state = 'reverted' OR rev_of IS NOT NULL)",
+            ) shouldBe
+                0L
+        }
+
+        "review-258 B3 (⚑AU-P2-12): a lost chain placed → held → released has no known first prior: refused" {
+            lostThenRefused(listOf(holdOnly("4711"), release("4711")), before = "placed", seqs = listOf(1, 2))
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("released"))
+        }
+
+        "review-258 B3 (⚑AU-P2-12): a lost silent self-transition from held is never reverted to placed" {
+            lostThenRefused(listOf(holdOnly("4711")), before = "held", seqs = listOf(1))
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("held"))
+        }
+
+        "review-258 B3 (⚑AU-P2-12): a lost chain on a key already released (CAS counts 0, 1) stays released" {
+            lostThenRefused(listOf(holdOnly("4711"), release("4711")), before = "released", seqs = listOf(1, 2))
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("released"))
+        }
+
+        "review-258 B3 (D-188): a re-read value that differs proves nothing — the revert refuses and writes nothing" {
+            val id =
+                prepare({ planned(listOf(holdOnly("4711")), keys = emptyList()) }, deployment = "release_native_event")
+            fake.loseCommit = { it.world == "w-erp" }
+            applyOnce(id)
+            fake.loseCommit = { false }
+            ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
+            // The lost hold landed; another writer moved the order on since.
+            sql("UPDATE erp_fixture.sales_order SET state = 'cancelled' WHERE order_number = '4711'")
+            val sent = fake.writes.size
+            clock.now = clock.now.plusSeconds(3600)
+            val refused = shouldThrow<AutomationException> { reverter().revert(id, ops) }
+            refused.code shouldBe ErrorCode.BATCH_NOT_COMMITTED
+            refused.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
+            refused.detail!!.jsonObject["rows"] shouldBe JsonArray(listOf(JsonPrimitive(1)))
+            fake.writes.size shouldBe sent + 1
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("cancelled"))
+            ledger.readRunBatch(id, subject).statuses.map { it.status to it.error } shouldBe
+                listOf("staged" to RowOutcome.UNKNOWN)
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE run = '$id' AND state = 'reverted'",
+            ) shouldBe
+                0L
+            transactionCount(
+                "SELECT count(*) FROM automation.batches WHERE run = '$id' AND rev_of IS NOT NULL",
+            ) shouldBe
+                0L
+        }
+
+        "R254-E: perform answers per key — a grouped key is held on a dry run too; the rest dry-run; nothing sent" {
+            val id =
+                prepare(
+                    {
+                        planned(
+                            hold("4711").map { it.copy(group = key("4711")) } + hold("4712"),
+                            actions = listOf(listOf(0, 1), listOf(2, 3)),
+                            keys = emptyList(),
+                        )
+                    },
+                    dryRun = true,
+                )
+            val perform =
+                Perform(
+                    ledger,
+                    Apply(door(), clock),
+                    { _, _ -> error("a dry run resolves no context") },
+                    { _, b -> b() },
+                )
+            val answer = perform.perform(id, "hold", PerformRequest(), identity.caller)
+            answer.performed shouldBe emptyList()
+            answer.skipped shouldBe listOf(SkippedKey(key("4711"), "held"), SkippedKey(key("4712"), "dry-run"))
+            fake.writes shouldBe emptyList()
+        }
+
+        "S2.3 T3: perform {keys} applies only those keys' rows of the action; an identical call answers the first" {
+            val id =
+                prepare({ run ->
+                    planned(
+                        listOf(verdict(run, "4711", "hold_sales"), verdict(run, "4712", "hold_sales")) +
+                            hold("4711") + hold("4712"),
+                        actions = listOf(listOf(2, 3), listOf(4, 5)),
+                    )
+                })
+            val perform =
+                Perform(
+                    ledger,
+                    Apply(door(), clock),
+                    { _, _ -> contexts.resolve(id, RunNames("", null, null, null, null), identity.caller) },
+                    { _, b -> b() },
+                )
+            val first = perform.perform(id, "hold", PerformRequest(keys = listOf(key("4711"))), identity.caller)
+            first.performed.map { it.key } shouldBe listOf(key("4711"))
+            first.skipped shouldBe emptyList()
+            rows(
+                "SELECT order_number, state FROM erp_fixture.sales_order WHERE order_number IN ('4711','4712') ORDER BY 1",
+            ) shouldBe
+                listOf(listOf("4711", "held"), listOf("4712", "placed"))
+            val sent = fake.writes.size
+            perform.perform(id, "hold", PerformRequest(keys = listOf(key("4711"))), identity.caller) shouldBe first
+            fake.writes.size shouldBe sent
+            // The close applies the rest and never resends the performed key's rows.
+            applyOnce(id)
+            ledger.closeCommitted(id, subject).status shouldBe "closed"
+            fake.writes.count { it.world == "w-erp" } shouldBe 2
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4712'") shouldBe
+                listOf(listOf("held"))
+            // outcome appends to the actions section of an open protocol only; the sealed one refuses.
+            shouldThrow<AutomationException> {
+                perform.outcome(
+                    id,
+                    "hold",
+                    OutcomeRequest(listOf(OutcomeItem(key("4711"), "delivered", "2026-11-11T10:05:00Z"))),
+                    identity.caller,
+                )
+            }.code shouldBe ErrorCode.RUN_CLOSED
+        }
+
+        "S2.3 T3: outcome appends the engine's per-key outcomes to the actions section; bad keys/status refuse" {
+            val id =
+                prepare({ run ->
+                    planned(listOf(verdict(run, "4711", "hold_sales")) + hold("4711"), actions = listOf(listOf(1, 2)))
+                })
+            val perform = Perform(ledger, Apply(door(), clock), { _, _ -> null }, { _, b -> b() })
+            perform.outcome(
+                id,
+                "hold",
+                OutcomeRequest(listOf(OutcomeItem(key("4711"), "delivered", "2026-11-11T10:05:00Z"))),
+                identity.caller,
+            )["outcomes"] shouldBe JsonPrimitive(1)
+            ledger
+                .readProtocol(id, subject)
+                .sections
+                .getValue("actions")
+                .last()
+                .payload
+                .jsonObject["event"] shouldBe JsonPrimitive("outcome")
+            shouldThrow<AutomationException> {
+                perform.outcome(
+                    id,
+                    "hold",
+                    OutcomeRequest(listOf(OutcomeItem(key("4799"), "delivered", "x"))),
+                    identity.caller,
+                )
+            }.code shouldBe ErrorCode.BAD_REQUEST
+            shouldThrow<AutomationException> {
+                perform.outcome(
+                    id,
+                    "hold",
+                    OutcomeRequest(listOf(OutcomeItem(key("4711"), "sent", "x"))),
+                    identity.caller,
+                )
+            }.code shouldBe ErrorCode.BAD_REQUEST
         }
 
         "B1: a history row that landed unacknowledged is found by the retry's re-read, not inserted again" {
