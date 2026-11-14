@@ -16,10 +16,10 @@ from typing import Any
 import yaml
 from jsonschema import ValidationError
 
-from docproc.kinds.common import annotation, meta, utc_instant, verdict
+from docproc.kinds.common import annotation, source_meta, utc_instant, verdict
 from docproc.kinds.rule_dsl import pack_file, related
 from docproc.runtime.predicate import _MISSING, path_value
-from docproc.runtime.registry import KindResult, RunContext, TypeRegistryClient
+from docproc.runtime.registry import WHOLE_SOURCE_UNITS, KindRefused, KindResult, RunContext, TypeRegistryClient
 from docproc.sdk.models import Annotation, ListAnnotationsRequest, Span, Unit, UnitKind, canonical, json_text
 from docproc.sdk.store import Warehouse
 
@@ -31,13 +31,48 @@ def digest(*parts: Any) -> str:
 
 
 def subject_scope(ctx: RunContext) -> tuple[str, list[Unit]]:
+    """The one subject a subject step's members share, and their DOCUMENT roots. Each member's subject is its
+    Source's `metadata.subjectId`: split writes it there, and the DOCUMENT unit carries only `title` and `lang` (T8f
+    W5-4). The runner reads the sources with the members' trees (`RunContext.sources`).
+
+    `consolidate/single-subject-required` refuses the step unless every member names the same subject, with one
+    diagnostic per member at fault (review-257 F11, F13): `consolidate/source-unanswered` when the store answered no
+    source for it (a docwh-store before 0.11.14), `consolidate/no-subject` when its Source names none, and
+    `consolidate/subjects-differ` for each member naming a subject when they name more than one. No members at all is
+    `consolidate/no-members`. A unit outside the members' sources is `consolidate/unit-outside-subject`. All are
+    `KindRefused`: the same on every immediate retry, so the step fails at once.
+
+    The runner reads the members' trees, and so their sources, only for a `graph.unit` of `document` or `subject`.
+    Under any other unit no member can be judged, and every one would read as `source-unanswered` against a current
+    store, so the step is refused `consolidate/graph-unit` first: the manifest is at fault (review-257 R7)."""
+    if ctx.manifest.get("graph", {}).get("unit") not in WHOLE_SOURCE_UNITS:
+        raise KindRefused("consolidate/single-subject-required", [{"rule": "consolidate/graph-unit"}])
     roots = [u for u in ctx.units.values() if u.kind == UnitKind.DOCUMENT]
-    subjects = {meta(u, "subjectId") for u in roots}
-    if not roots or len(subjects) != 1 or not next(iter(subjects)):
-        raise ValueError("consolidate/single-subject-required")
-    if any(u.source_id not in {r.source_id for r in roots} for u in ctx.units.values()):
-        raise ValueError("consolidate/unit-outside-subject")
-    return next(iter(subjects)), roots
+    members = sorted({r.source_id for r in roots})
+    if not members:
+        raise KindRefused("consolidate/single-subject-required", [{"rule": "consolidate/no-members"}])
+    subjects = {sid: source_meta(ctx, sid, "subjectId") for sid in members}
+    named = {s for s in subjects.values() if s}
+    if len(named) != 1 or not all(subjects.values()):
+        raise KindRefused(
+            "consolidate/single-subject-required",
+            [
+                {"sourceId": sid, "rule": member_fault(ctx, sid, subject)}
+                for sid, subject in subjects.items()
+                if not subject or len(named) > 1
+            ],
+        )
+    outside = sorted(u.id for u in ctx.units.values() if u.source_id not in subjects)
+    if outside:
+        raise KindRefused("consolidate/unit-outside-subject", [{"unitId": uid} for uid in outside])
+    return named.pop(), roots
+
+
+def member_fault(ctx: RunContext, source_id: int, subject: str) -> str:
+    """Why a member keeps its subject step from one subject (see `subject_scope`)."""
+    if source_id not in ctx.sources:
+        return "consolidate/source-unanswered"
+    return "consolidate/subjects-differ" if subject else "consolidate/no-subject"
 
 
 def record_decision(record: Annotation, decisions: list[Annotation], subject: str) -> dict[str, Any]:
@@ -305,8 +340,10 @@ class Consolidator:
             used_keys.add((entity, key))
 
             def time_of(a: Annotation) -> datetime:
-                root = next((u for u in roots if u.source_id == ctx.units[a.unit_id].source_id), ctx.units[a.unit_id])
-                value = str(a.payload().get("attributes", {}).get("recorded_at", meta(root, "recordedAt")))
+                # a statement without its own recorded_at takes its document's, from the member's Source as split
+                # wrote it — never the DOCUMENT unit, which carries none (T8f W5-4)
+                recorded = source_meta(ctx, ctx.units[a.unit_id].source_id, "recordedAt")
+                value = str(a.payload().get("attributes", {}).get("recorded_at", recorded))
                 return utc_instant(value, "consolidate/evidence-time")
 
             evidence.sort(key=lambda a: (time_of(a), a.id))

@@ -26,7 +26,7 @@ from docproc.bus.pgmq import DONE, Message, PgmqBus, work_queue
 from docproc.config import Config
 from docproc.probes import duration, queue_age, queue_depth, runs, verdicts
 from docproc.runtime.failures import diagnostic, transient
-from docproc.runtime.registry import KindRefused, KindRegistry, RunContext, TypeRegistryClient
+from docproc.runtime.registry import WHOLE_SOURCE_UNITS, KindRefused, KindRegistry, RunContext, TypeRegistryClient
 from docproc.runtime.validators import Validators
 from docproc.sdk.models import (
     Annotation,
@@ -35,6 +35,7 @@ from docproc.sdk.models import (
     ListAnnotationsRequest,
     LoadAnnotationsRequest,
     Processor,
+    Source,
     WorkItem,
     json_text,
     unspecified_fields,
@@ -290,9 +291,13 @@ class ProcessorRunner:
                 completion.status, completion.error = CompletionStatus.FAILED, "retries exhausted"
             else:
                 units = {uid: self.warehouse.get_unit(uid) for uid in item.unit_ids}
-                if item.kind in ("import", "diff") or manifest["graph"]["unit"] in ("document", "subject"):
+                sources: dict[int, Source] = {}
+                if item.kind in ("import", "diff") or manifest["graph"]["unit"] in WHOLE_SOURCE_UNITS:
                     for source_id in {u.source_id for u in list(units.values())}:
-                        units.update((u.id, u) for u in self.warehouse.units_of_source(source_id))
+                        tree = self.warehouse.source_tree(source_id)
+                        units.update((u.id, u) for u in tree.units)
+                        if tree.source is not None:
+                            sources[source_id] = tree.source
                 annotations: list[Annotation] = []
                 if item.consume.visibility not in ("active", "active+generation"):
                     completion.status, completion.error = CompletionStatus.FAILED, "unsupported consume visibility"
@@ -318,7 +323,7 @@ class ProcessorRunner:
                             for key, kind in selectors
                         )
                     )
-                ctx = RunContext(item, processor, manifest, units, annotations)
+                ctx = RunContext(item, processor, manifest, units, annotations, sources)
                 try:
                     with time_budget(float(manifest["budget"]["timeout_s"])):
                         result = self.kinds.kinds[item.kind].run(ctx)
@@ -350,8 +355,10 @@ class ProcessorRunner:
                     completion.usage = result.usage
                     completion.child_unit_ids = result.child_unit_ids
                 except KindRefused as exc:
+                    # deterministic: the planner fails the step at once instead of retrying it (T8f W5-4)
                     output = []
                     completion.status, completion.error = CompletionStatus.FAILED, str(exc)
+                    completion.permanent = True
                     sections = {"errors": {"diagnosticsJson": json_text(exc.diagnostics)}}
                 except RunTimeout:
                     output = []

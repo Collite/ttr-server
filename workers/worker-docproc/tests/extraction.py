@@ -9,8 +9,8 @@ from typing import Any
 
 from docproc.kinds.common import annotation
 from docproc.runtime.registry import RunContext, TypeRegistryClient
-from docproc.sdk.models import MetadataValue, UnitKind
-from tests.fakes import PACK, FakeWarehouse, PackManager
+from docproc.sdk.models import Source, UnitKind
+from tests.fakes import PACK, FakeWarehouse, PackManager, split_source_metadata
 from tests.pack import bundle_of, context, units_of
 
 
@@ -22,10 +22,8 @@ def registry(manager: PackManager | None = None) -> TypeRegistryClient:
 
 def complete_subject(doc: str = "review-001.en.json") -> tuple[RunContext, FakeWarehouse]:
     units = units_of(doc)
-    reg = json.loads((PACK / "registrations" / (doc.rsplit(".", 1)[0] + ".json")).read_text())
-    subject = reg["document"]["subjectId"]
-    units[0].metadata["subjectId"] = MetadataValue(single=subject)
-    wh = FakeWarehouse(units)
+    wh = FakeWarehouse(units).register(doc, units[0].source_id)
+    subject = split_source_metadata(doc)["subjectId"].single
     facts = bundle_of(doc, units)
     for n, fact in enumerate(facts):
         fact.id = 200 + n
@@ -62,4 +60,5 @@ def complete_subject(doc: str = "review-001.en.json") -> tuple[RunContext, FakeW
         units={u.id: u for u in units},
         annotations=statements,
         item=ctx.item.model_copy(update={"unit_ids": [u.id for u in units if u.kind == UnitKind.DOCUMENT]}),
+        sources={units[0].source_id: wh.source_tree(units[0].source_id).source or Source()},
     ), wh

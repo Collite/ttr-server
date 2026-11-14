@@ -4,6 +4,23 @@
     "sourceId": 7
   },
   "response": {
+    "source": {
+      "assetRef": "stage/hartland/reviews/review-000123.json",
+      "createdAt": "2026-11-05T15:15:19.343400Z",
+      "embeddingStatus": "PENDING",
+      "id": 7,
+      "metadata": {
+        "documentId": {
+          "single": "hartland-review-000123"
+        },
+        "version": {
+          "single": "1"
+        }
+      },
+      "mimeType": "application/json",
+      "notebookId": "hartland-reviews",
+      "title": "Recenze — Sluchátka Voltaic"
+    },
     "sourceId": 7,
     "units": [
       {

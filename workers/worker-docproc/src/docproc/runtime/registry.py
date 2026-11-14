@@ -13,8 +13,12 @@ from typing import Any, Protocol
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
-from docproc.sdk.models import Annotation, Processor, Unit, Usage, WorkItem
+from docproc.sdk.models import Annotation, Processor, Source, Unit, Usage, WorkItem
 from docproc.sdk.pipeline import Manager
+
+# The `graph.unit`s whose steps the runner reads whole trees for, and with them the units' sources
+# (`RunContext.sources`); a subject kind under another unit can judge no member (review-257 R7).
+WHOLE_SOURCE_UNITS = ("document", "subject")
 
 
 @dataclass(frozen=True)
@@ -24,6 +28,9 @@ class RunContext:
     manifest: dict[str, Any]
     units: dict[int, Unit]
     annotations: list[Annotation]
+    # The sources of a whole-source step's units (document, subject, import, diff), from the same `GET
+    # /sources/{id}/units` reads that load their trees (T8f W5-4); a source an older store did not answer is absent.
+    sources: dict[int, Source] = field(default_factory=dict)
 
 
 @dataclass
@@ -42,7 +49,8 @@ class Kind(Protocol):
 
 
 class KindRefused(ValueError):
-    """A kind refused all writes; diagnostics contain only annotation ids and rule codes."""
+    """A kind refused all writes; diagnostics contain only ids (annotation, source, unit) and rule codes. The runner
+    posts it FAILED and `permanent` (T8f W5-4): deterministic, so the planner does not retry it."""
 
     def __init__(self, code: str, diagnostics: list[dict[str, Any]]) -> None:
         super().__init__(f"{code}: {len(diagnostics)} records")

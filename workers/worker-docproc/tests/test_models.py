@@ -19,7 +19,10 @@ from docproc.sdk.models import (
 from tests.conftest import CONTRACTS, kantheon_dir
 
 
-@pytest.mark.parametrize(("name", "model"), [("workItem.json", WorkItem), ("completion.json", Completion)])
+@pytest.mark.parametrize(
+    ("name", "model"),
+    [("workItem.json", WorkItem), ("completion.json", Completion), ("completion.refused.json", Completion)],
+)
 def test_fixture_round_trips_byte_equal(name: str, model: type[WorkItem] | type[Completion]) -> None:
     text = (CONTRACTS / name).read_text(encoding="utf-8")
     parsed = model.strict(text)
@@ -31,6 +34,14 @@ def test_completion_defaults_are_absent() -> None:
     assert c.status is CompletionStatus.SUCCEEDED
     assert c.child_unit_ids == [] and c.usage.tokens_in == 0
     assert "childUnitIds" not in c.dump() and "tokensIn" not in c.dump()["usage"]
+    assert c.permanent is False and "permanent" not in c.dump()
+
+
+def test_a_refusal_is_a_permanent_failed() -> None:
+    """T8f W5-4: `permanent` tells the planner not to spend `budget.retries` on a deterministic refusal."""
+    c = Completion.strict((CONTRACTS / "completion.refused.json").read_text(encoding="utf-8"))
+    assert c.status is CompletionStatus.FAILED and c.permanent is True
+    assert c.error == "consolidate/single-subject-required: 2 records"
 
 
 def test_work_item_is_pointers_only_under_4kb() -> None:

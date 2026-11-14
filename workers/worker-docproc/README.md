@@ -27,6 +27,19 @@ mart fails the run `link/no-mart` rather than linking without kNN. Each hit page
 `GET /pages/{id}?notebookId=` (`conceptRef.metadataQname`, compile's), once per page per run. No concept page yet
 answers nothing, and the links are `lexicon` (S3.3).
 
+A subject step (`consolidate`, `record-etl`; 0.11.4, T8f W5-4) takes each member's subject from its Source,
+`Source.metadata.subjectId`, where split writes it; the DOCUMENT unit carries only `title` and `lang`. The runner reads
+each member's source with its tree from `GET /sources/{id}/units` (docwh-store ≥ 0.11.14 answers the source). Unless
+every member names the same subject, the run fails `consolidate/single-subject-required`, with one diagnostic per member
+at fault: `consolidate/source-unanswered` (the store answered no source: **docwh-store < 0.11.14**, roll the store
+first), `consolidate/no-subject` (its Source names none), or `consolidate/subjects-differ` (members name more than
+one). Two carry no `sourceId`: `consolidate/no-members` (the step has no DOCUMENT root), and `consolidate/graph-unit`
+(the kind's manifest declares a `graph.unit` other than `subject` or `document`, so the runner read no member's source:
+fix the manifest, not the store). A kind's `KindRefused` is a permanent FAILED (`Completion.permanent`):
+docwh-pipeline ≥ 0.11.15 fails the step at once instead of spending `budget.retries` on a deterministic error. `diff`
+takes a source's `recordedAt` from its Source too, when the store does not list it; a source the store neither lists nor
+answered fails `diff/source-unanswered` (docwh-store < 0.11.14).
+
 Kinds run synchronously on the main thread on Linux/macOS. A POSIX interval timer
 interrupts a timed-out kind; no executor thread continues writing afterward.
 Heartbeat renewal runs separately. SIGTERM stops fetches and finishes the current

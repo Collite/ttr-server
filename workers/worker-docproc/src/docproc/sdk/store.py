@@ -28,6 +28,7 @@ from docproc.sdk.models import (
     LoadAnnotationsResponse,
     Page,
     SimilarRequest,
+    SourceTree,
     Unit,
 )
 
@@ -141,9 +142,26 @@ class StoreClient:
             seen.add(page.next_page_token)
             req = req.model_copy(update={"page_token": page.next_page_token})
 
-    def units_of_source(self, source_id: int, text: bool = True) -> list[Unit]:
-        body = self._ok(self._http.get(f"/sources/{source_id}/units", params={"text": str(text).lower()}))
-        return [Unit.model_validate(u) for u in body["units"]]
+    def source_tree(self, source_id: int, text: bool = True) -> SourceTree:
+        """`GET /sources/{id}/units`: the tree and the source itself (docwh-store 0.11.14, T8f W5-4; None from an older
+        store). A body of another shape is `StoreError` `store/units-shape`, its field locations only, as R2's reads;
+        one whose `sourceId` or `source.id` is another source's is `store/units-mismatch`."""
+        r = self._http.get(f"/sources/{source_id}/units", params={"text": str(text).lower()})
+        try:
+            tree = SourceTree.model_validate(self._ok(r))
+        except ValidationError as exc:
+            raise _shape(r, "store/units-shape", exc) from None
+        # the tree's id and its source's (review-257 F12): never another source's subject read as this member's. Each
+        # says which it is (R9): a wrong tree and a broken source join read differently
+        answers = [("sourceId", tree.source_id)] + ([("source.id", tree.source.id)] if tree.source is not None else [])
+        for field_name, answered in answers:
+            if answered != source_id:
+                raise StoreError(
+                    r.status_code,
+                    "store/units-mismatch",
+                    f"GET /sources/{source_id}/units answered {field_name} {answered}",
+                )
+        return tree
 
     def load_lemmas(self, run_id: str, lemmas: list[dict[str, Any]]) -> None:
         self._ok(self._http.post("/load/lemmas", json={"runId": run_id, "lemmas": lemmas}))
@@ -185,7 +203,7 @@ class StoreClient:
 
 class Warehouse(Protocol):
     def get_unit(self, unit_id: int, notebook_id: str = "") -> Unit: ...
-    def units_of_source(self, source_id: int, text: bool = True) -> list[Unit]: ...
+    def source_tree(self, source_id: int, text: bool = True) -> SourceTree: ...
     def list_annotations(self, req: ListAnnotationsRequest) -> ListAnnotationsPage: ...
     def iter_annotations(self, req: ListAnnotationsRequest) -> Iterator[Annotation]: ...
     def load_annotations(self, req: LoadAnnotationsRequest) -> LoadAnnotationsResponse: ...
