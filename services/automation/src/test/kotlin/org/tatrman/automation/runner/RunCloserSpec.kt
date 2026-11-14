@@ -83,6 +83,7 @@ class RunCloserSpec :
                         { RunStatus.EVALUATED },
                         { _, _ -> },
                         clock = org.tatrman.automation.bundle.BundleFixture.clock,
+                        engineRuns = EngineRuns(org.tatrman.automation.engine.NoEngine, "process-engine"),
                     )
                 sessions.open(
                     "release_order",

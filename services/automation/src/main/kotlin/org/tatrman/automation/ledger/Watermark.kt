@@ -3,6 +3,7 @@ package org.tatrman.automation.ledger
 
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.IColumnType
+import org.jetbrains.exposed.v1.core.IntegerColumnType
 import org.jetbrains.exposed.v1.core.TextColumnType
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
@@ -64,9 +65,30 @@ object Watermark {
     fun guards(open: RunOpen): Boolean = !open.dryRun && keeping(open.port) != null
 
     /**
-     * ✅R280-A (review-280 F1): called by the claim, in its transaction, before a new wet watermark run is inserted.
-     * The program's advisory lock serialises its watermark opens across replicas; the claim runs read committed, so
-     * the reads after the lock see every seal and claim committed before it. While another wet watermark run of the
+     * The first int4 of a program lock's two-key form (`pg_advisory_xact_lock(int4, int4)` lives in a key space of its
+     * own, apart from the single-`int8` `hashtext` locks of the bundles, review-280 N5); the second is `hashtext(program)`.
+     */
+    const val LOCK_NAMESPACE: Int = 0x4155574D
+
+    /**
+     * ✅R280-A / review-280 N1: the claim of a guarded open takes its program's lock as its FIRST statement, before
+     * the idempotency key's holder is read. Read committed, the holder read then sees a same-key claim that won the
+     * lock and committed, so a retry racing its own first attempt answers `202` (or `200`), never `409 window-open`.
+     */
+    internal fun lockProgram(open: RunOpen) {
+        if (!guards(open)) return
+        val program = requireNotNull(open.program) { "a windowed run has no program" }
+        val tx = checkNotNull(TransactionManager.currentOrNull()) { "the program lock is taken inside the claim" }
+        tx.exec(
+            "SELECT pg_advisory_xact_lock(?, hashtext(?))",
+            listOf<Pair<IColumnType<*>, Any>>(IntegerColumnType() to LOCK_NAMESPACE, TextColumnType() to program),
+        ) {}
+    }
+
+    /**
+     * ✅R280-A (review-280 F1): called by the claim, in its transaction, after [lockProgram] and before a new wet
+     * watermark run is inserted. The program lock serialises its watermark opens across replicas; the claim runs read
+     * committed, so these reads see every seal and claim committed before it. While another wet watermark run of the
      * program is unsealed (`open · running · evaluated` — a `waiting` run sealed and advanced already), or when the
      * watermark moved past this open's `from` since Open resolved it, the open refuses `409 window-open`: the two
      * runs would cover the same range. A dry run and an explicit window neither block nor are blocked.
@@ -76,10 +98,6 @@ object Watermark {
         val window = keeping(open.port) ?: return
         val program = requireNotNull(open.program) { "a windowed run has no program" }
         val tx = checkNotNull(TransactionManager.currentOrNull()) { "the window guard runs inside the claim" }
-        tx.exec(
-            "SELECT pg_advisory_xact_lock(hashtext(?))",
-            listOf<Pair<IColumnType<*>, Any>>(TextColumnType() to "automation/program_windows/$program"),
-        ) {}
         val from = Instant.parse(window.getValue("from").jsonPrimitive.content)
         val to = Instant.parse(window.getValue("to").jsonPrimitive.content)
         val names = window.getValue("windows").jsonArray.map { it.jsonPrimitive.content }
@@ -133,9 +151,9 @@ object Watermark {
     /**
      * Called by the seal of a wet run, inside its transaction: when the run's stored port is a window that keeps the
      * watermark, every window's `last_to` moves to the run's `to` — never backwards, so a late close of an earlier
-     * window cannot rewind a later one.
+     * window cannot rewind a later one. Public for the component spec's direct never-rewind case (review-280 N4).
      */
-    internal fun advanceAtSeal(
+    fun advanceAtSeal(
         runId: UUID,
         program: String?,
         port: JsonElement,

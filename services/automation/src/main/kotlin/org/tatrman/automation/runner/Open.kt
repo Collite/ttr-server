@@ -74,7 +74,8 @@ class Open(
     private val detailLimit: Int = 200,
     private val doorRoutes: Set<String> = emptySet(),
     private val watermark: (String, List<String>) -> Instant = { _, _ -> Watermark.EPOCH },
-    private val engineClient: String = "process-engine",
+    /** `automation.engine.clientId` — required, so no construction site can silently enforce a literal (N6). */
+    private val engineClient: String,
 ) {
     fun open(
         recipeName: String,
@@ -193,7 +194,17 @@ class Open(
         val (asOf, asOfFromClock) = resolveAsOf(program, request.asOf, requested.eventAt)
         val port =
             requested.window?.let {
-                requested.copy(bounds = window(recipe, programName, it, asOf, asOfFromClock))
+                requested.copy(
+                    bounds =
+                        window(
+                            recipe,
+                            programName,
+                            it,
+                            asOf,
+                            asOfFromClock,
+                            request.asOf ?: program.asOf ?: "run",
+                        ),
+                )
             } ?: requested
         val bindings =
             RecipeBindings.resolve(recipe.recipe, asOf, overrides(recipe, program)).let { resolved ->
@@ -408,8 +419,9 @@ class Open(
     /**
      * D-143: the window's bounds. Count- and gap-closed windows need an event stream (v2) → `422 window-kind-gated`.
      * No explicit `from` = `[watermark, as_of)`, which the wet seal advances; an explicit one never advances it.
-     * review-280 F3: neither does a window whose `to` did not come from the clock (a debug or fixed `asOf`) — it would
-     * move the watermark to an arbitrary instant that no later open could pass.
+     * ✅R280-F (review-280 N2): a watermark window runs as of the clock only. Its `to` is what the seal advances to, so
+     * a debug or fixed `as_of` would either move the watermark to an arbitrary instant or, kept off it, rerun the same
+     * `[last_to, as_of)` on every open → `400 as-of`; a replay names its range with `{ window: { from } }`.
      */
     private fun window(
         recipe: LoadedRecipe,
@@ -417,7 +429,18 @@ class Open(
         request: WindowRequest,
         asOf: Instant,
         asOfFromClock: Boolean,
+        policy: String,
     ): WindowBounds {
+        if (request.from == null && !asOfFromClock) {
+            throw AutomationException(
+                ErrorCode.AS_OF,
+                "a watermark window runs as of now; give window.from for a replay",
+                buildJsonObject {
+                    put("asOf", asOf.toString())
+                    put("policy", policy)
+                },
+            )
+        }
         val declared =
             recipe.recipe.windows.map { w ->
                 val context =
@@ -438,10 +461,10 @@ class Open(
         val names = declared.map { it.first }.distinct()
         val from = request.from ?: watermark(program, names)
         if (!from.isBefore(asOf)) portRefused("the window [$from, $asOf) is empty")
-        return WindowBounds(from, asOf, names, watermark = request.from == null && asOfFromClock)
+        return WindowBounds(from, asOf, names, watermark = request.from == null)
     }
 
-    /** The run's `asOf`, and whether it is the clock's (review-280 F3: only then may a window keep the watermark). */
+    /** The run's `asOf`, and whether it is the clock's (✅R280-F: a watermark window needs the clock's). */
     private fun resolveAsOf(
         program: AutomationProgram,
         requested: String?,

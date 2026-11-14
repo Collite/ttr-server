@@ -262,6 +262,8 @@ class Ledger(
             ) {
                 maxAttempts = CLAIM_ATTEMPTS
                 abandonedRecipe = null
+                // review-280 N1: the program lock before the key's holder read — a same-key retry then sees its winner.
+                Watermark.lockProgram(open)
                 val now = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS)
                 val key =
                     open.idempotencyKey ?: return@transaction run {

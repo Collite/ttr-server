@@ -39,7 +39,7 @@ class RunSessions(
     private val clock: Clock,
     private val authorizeExecution: suspend (UUID, Caller) -> Unit = { _, _ -> },
     /** S3.2 (D-159): an answer run's engine check, done before the claim lock so a slow engine blocks no other open. */
-    private val engineRuns: EngineRuns = EngineRuns(),
+    private val engineRuns: EngineRuns,
 ) {
     private class Session(
         val runner: PartRunner,
@@ -62,7 +62,9 @@ class RunSessions(
 
     private val lock = Mutex()
     private val sessions = mutableMapOf<UUID, Session>()
-    private var stopped = false
+
+    /** Written under [lock]; read bare by [open]'s pre-check (review-280 N3) so it never queues behind an open. */
+    @Volatile private var stopped = false
 
     suspend fun open(
         recipe: String,
@@ -71,7 +73,7 @@ class RunSessions(
     ): OpenResult {
         // review-280 F4: the cheap refusals first — a paused or stopping service never pays an engine round-trip.
         policy.refuseIfPaused()
-        lock.withLock { if (stopped) unavailable() }
+        if (stopped) unavailable()
         val verified = engineRuns.verify(request.engine, caller)
         return lock.withLock {
             parent.ensureActive()

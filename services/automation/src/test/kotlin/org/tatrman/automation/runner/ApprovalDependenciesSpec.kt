@@ -96,6 +96,7 @@ class ApprovalDependenciesSpec :
                 Duration.ofSeconds(60),
                 Duration.ofMinutes(30),
                 BundleFixture.clock,
+                engineClient = "process-engine",
             ).open(recipeName, request ?: OpenRequest(deployment, buildJsonObject { put("key", "4711") }), principal)
 
         fun approvals(b: Bundle): ApprovalReader {
@@ -322,6 +323,7 @@ class ApprovalDependenciesSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    engineClient = "process-engine",
                 ).open(
                     "monitor_inbound",
                     OpenRequest(
@@ -359,6 +361,7 @@ class ApprovalDependenciesSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    engineClient = "process-engine",
                 ).open("monitor_inbound", OpenRequest(deploymentName, buildJsonObject { put("none", true) }), caller)
                     .httpStatus shouldBe 201
             }
@@ -396,6 +399,7 @@ class ApprovalDependenciesSpec :
                             Duration.ofSeconds(60),
                             Duration.ofMinutes(30),
                             BundleFixture.clock,
+                            engineClient = "process-engine",
                         ).open(recipeName, OpenRequest(deployment, buildJsonObject { put("key", "4711") }), caller)
                     }
                 e.code shouldBe ErrorCode.RECIPE_STALE
@@ -533,6 +537,7 @@ def action release { columns: [def column order { type: text }] sinks: { native:
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    engineClient = "process-engine",
                 ).open(recipeName, OpenRequest(deployment, buildJsonObject { put("key", "4711") }), caller)
             (result.context!!.previewMetadata!!.targets === cached.targets) shouldBe true
             (result.context!!.previewMetadata!!.planSource === source) shouldBe true

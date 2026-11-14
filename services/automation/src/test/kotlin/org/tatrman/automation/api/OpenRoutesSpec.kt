@@ -64,6 +64,7 @@ class OpenRoutesSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    engineClient = "process-engine",
                 )
             testApplication {
                 application {

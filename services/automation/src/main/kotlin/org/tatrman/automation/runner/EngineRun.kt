@@ -9,7 +9,6 @@ import kotlinx.serialization.json.put
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.engine.EngineHistory
-import org.tatrman.automation.engine.NoEngine
 import org.tatrman.automation.identity.Caller
 import org.tatrman.automation.identity.IdentityRefusal
 import org.tatrman.automation.identity.isEngine
@@ -71,8 +70,9 @@ data class EngineRun(
  * asserts nobody stays open to any caller with the grant.
  */
 class EngineRuns(
-    private val history: EngineHistory = NoEngine,
-    private val engineClient: String = "process-engine",
+    private val history: EngineHistory,
+    /** `automation.engine.clientId` — required (review-280 N6). */
+    private val engineClient: String,
 ) {
     suspend fun verify(
         ref: EngineRef?,
