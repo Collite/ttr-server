@@ -11,7 +11,8 @@ import java.security.MessageDigest
 
 /**
  * D-130: pgmq is vendored UNCHANGED as a Flyway migration. The header records the upstream file's sha256; the
- * body below the header must still hash to it, so a hand edit — or a half-applied upgrade — fails here.
+ * body below the header must still hash to it, so a hand edit — or a half-applied upgrade — fails here. Since D-142
+ * (S3.2) V12 drops what V2/V3 installed; the files stay as applied history, so their checksums must not move.
  */
 class PgmqVendorSpec :
     StringSpec({
@@ -47,7 +48,7 @@ class PgmqVendorSpec :
             File("src/main/resources/db/LICENSE-pgmq").readText() shouldContain "The PostgreSQL License"
         }
 
-        "the ordered migrations include the ledger, queues, dispatch, verified subject and staging retention" {
+        "the ordered migrations: the ledger … V10, then S3.2's windows/engine runs (V11) and D-142's removals (V12)" {
             migrations.list()!!.sortedBy { it.substringAfter("V").substringBefore("__").toInt() } shouldContainExactly
                 listOf(
                     "V1__ledger.sql",
@@ -60,6 +61,8 @@ class PgmqVendorSpec :
                     "V8__batch_current_delete.sql",
                     "V9__approvals_toolchain.sql",
                     "V10__runs_mode.sql",
+                    "V11__windows_engine_runs.sql",
+                    "V12__d142_removals.sql",
                 )
         }
     })

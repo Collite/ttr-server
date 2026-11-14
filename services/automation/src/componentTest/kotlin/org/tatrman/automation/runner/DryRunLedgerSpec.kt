@@ -132,8 +132,8 @@ class DryRunLedgerSpec :
                     rs.next()
                     rs.getString(1)
                 } shouldBe "placed"
-                Tasks.selectAll().count() shouldBe 0L
-                Deliveries.selectAll().count() shouldBe 0L
+                // D-142: no task/delivery rows exist to write; a dry close never touches the watermark (D-143).
+                ProgramWindows.selectAll().count() shouldBe 0L
             }
 
         "a durable preview commits with decision/action/write evidence and never touches model or connector rows" {

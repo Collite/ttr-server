@@ -48,7 +48,6 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
 class RunRuntimeSpec :
     StringSpec({
@@ -609,7 +608,6 @@ private class RuntimeFixture(
 
 private class RuntimeQueue : RunWorkQueue {
     private val tickets = ConcurrentHashMap<UUID, ConcurrentLinkedQueue<RunDelivery>>()
-    private val sequence = AtomicLong()
     val enqueues = AtomicInteger()
     val claims = AtomicInteger()
     val cleanups = AtomicInteger()
@@ -625,7 +623,7 @@ private class RuntimeQueue : RunWorkQueue {
             .computeIfAbsent(
                 owner,
             ) { ConcurrentLinkedQueue() }
-            .add(RunDelivery(sequence.incrementAndGet(), run, owner))
+            .add(RunDelivery(run, owner))
     }
 
     override fun read(

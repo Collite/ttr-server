@@ -95,6 +95,20 @@ data class RunOpen(
     val openingProtocol: JsonElement? = null,
     /** Verified JWT subject; never infer this from the caller's display principal. Legacy rows stay null. */
     val callerSubject: String? = null,
+    /** S3.2 (D-150/D-159): the six engine-run columns; null on a run the engine did not open. */
+    val engine: EngineColumns? = null,
+    /** S3.2: the `people` entry of an answer run (asserted vs verified, D-159), written with the claim. */
+    val identityProtocol: JsonElement? = null,
+)
+
+/** The ledger columns of an engine run (V11). [assertedPerson] = `answeredBy`; [personVerified] null = none asserted. */
+data class EngineColumns(
+    val instanceId: String,
+    val businessKey: String,
+    val deploymentId: String,
+    val taskId: String?,
+    val assertedPerson: String?,
+    val personVerified: Boolean?,
 )
 
 const val RUN_KIND_RECIPE = "recipe"
@@ -134,23 +148,6 @@ data class RunOutput(
     val bytes: Long,
     val path: String?,
     val sha256: String?,
-)
-
-/** What an `ask` (or another outbound task) opens (`tasks`; D-97 snapshot, D-98 one open, D-101 run nullable). */
-data class TaskOpen(
-    val run: UUID?,
-    val recipe: String?,
-    val key: JsonElement?,
-    val kind: String,
-    val action: String?,
-    val targetRole: String?,
-    val targetPerson: String?,
-    val about: String?,
-    val options: JsonElement?,
-    val detail: JsonElement?,
-    val due: Instant?,
-    val dryRun: Boolean,
-    val origin: String?,
 )
 
 class NoSuchRun(
@@ -990,7 +987,7 @@ class Ledger(
     }
 
     /**
-     * The closure entry and the seal. Then D-80: a program with `protocol: on_route` whose run fired no non-`none`
+     * The closure entry and the seal (and, for a wet run over a resolved window, the watermark's advance). Then D-80: a program with `protocol: on_route` whose run fired no non-`none`
      * route keeps no protocol document — every entry but the seal is removed (the D-73 retention opt-in, in this
      * transaction). The `runs` row and the batch stay: the ledger still knows the run, the 400-day record is omitted.
      */
@@ -1016,6 +1013,11 @@ class Ledger(
                 it[payload] = evidence
                 it[at] = now
             }
+        }
+        if (!dryRun) {
+            // D-143 (S3.2 T2): a wet windowed run's seal advances the program's watermark, in this transaction.
+            val r = Runs.select(Runs.program, Runs.port).where { Runs.id eq runId }.single()
+            Watermark.advanceAtSeal(runId, r[Runs.program], r[Runs.port], now)
         }
         if (onRouteSilent(runId)) {
             val exec = TransactionManager.current()
@@ -1629,6 +1631,17 @@ class Ledger(
                         budgetBatch = row[Runs.budgetBatch]?.let(Duration::ofMillis),
                         mode = row[Runs.mode],
                         kind = row[Runs.kind],
+                        engine =
+                            row[Runs.engineInstanceId]?.let { instance ->
+                                EngineColumns(
+                                    instance,
+                                    row[Runs.businessKey] ?: "",
+                                    row[Runs.engineDeploymentId] ?: "",
+                                    row[Runs.engineTaskId],
+                                    row[Runs.assertedPerson],
+                                    row[Runs.personVerified],
+                                )
+                            },
                     ),
                     RunStatus.of(row[Runs.status]),
                     row[Runs.protocolRef],
@@ -1783,22 +1796,6 @@ class Ledger(
         }
     }
 
-    /** Opens a task; one open per (recipe, key, action) (D-98). */
-    fun openTask(task: TaskOpen): UUID = TODO("S3.3 — ask/start/deliver tasks")
-
-    /** Records a task's answer (D-99's fingerprint check is the caller's). */
-    fun answerTask(
-        taskId: UUID,
-        answer: JsonElement,
-        by: String,
-    ): Unit = TODO("S3.3 — POST /tasks/{t}/answer")
-
-    /** The tasks a person sees (`GET /tasks?for=me`, D-101). */
-    fun listTasksFor(
-        person: String,
-        status: String?,
-    ): List<UUID> = TODO("S3.3 — GET /tasks?for=me")
-
     private fun insertRun(
         open: RunOpen,
         now: Instant,
@@ -1832,11 +1829,28 @@ class Ledger(
             it[budgetBatch] = open.budgetBatch?.toMillis()
             it[mode] = open.mode
             it[kind] = open.kind
+            open.engine?.let { e ->
+                it[engineInstanceId] = e.instanceId
+                it[businessKey] = e.businessKey
+                it[engineDeploymentId] = e.deploymentId
+                it[engineTaskId] = e.taskId
+                it[assertedPerson] = e.assertedPerson
+                it[personVerified] = e.personVerified
+            }
         }
         open.openingProtocol?.let { payload ->
             RunProtocol.insert {
                 it[run] = runId
                 it[section] = ProtocolSection.AUTOMATION.wire
+                it[seq] = 1
+                it[RunProtocol.payload] = payload
+                it[at] = now.utc()
+            }
+        }
+        open.identityProtocol?.let { payload ->
+            RunProtocol.insert {
+                it[run] = runId
+                it[section] = ProtocolSection.PEOPLE.wire
                 it[seq] = 1
                 it[RunProtocol.payload] = payload
                 it[at] = now.utc()

@@ -20,10 +20,9 @@ import kotlinx.serialization.json.jsonObject
 /** `GET /automation/health` (AU contracts §1.1, D-72's hardcoded set) and the two probes. */
 class HealthRoutesSpec :
     StringSpec({
-        "a healthy ledger answers UP with the contract's keys, queues keyed by their short names" {
+        "a healthy ledger answers UP with the contract's keys" {
             val report = healthReport(FakeSources())
             report.status shouldBe "UP"
-            report.queues shouldBe mapOf("runs" to 0L, "tasks" to 2L, "windows" to 0L, "signals" to 1L)
             report.abandoned shouldBe 0L
         }
 
@@ -35,18 +34,9 @@ class HealthRoutesSpec :
             healthReport(FakeSources(refreshFailed = true)).status shouldBe "DEGRADED"
         }
 
-        "a stopped scheduler degrades; no scheduler in the build (before S3.2) does not" {
-            healthReport(FakeSources(scheduler = SchedulerHealth(alive = false, lastTick = "t"))).status shouldBe
-                "DEGRADED"
-            val noScheduler = healthReport(FakeSources(scheduler = null))
-            noScheduler.status shouldBe "UP"
-            noScheduler.scheduler shouldBe SchedulerHealth(alive = false, lastTick = null)
-        }
-
         "an unreachable ledger is DOWN, with no counts it cannot read" {
             val report = healthReport(FakeSources(db = false))
             report.status shouldBe "DOWN"
-            report.queues shouldBe emptyMap()
             report.abandoned shouldBe null
         }
 
@@ -60,7 +50,7 @@ class HealthRoutesSpec :
                 health.status shouldBe HttpStatusCode.OK
                 val body = Json.parseToJsonElement(health.bodyAsText()).jsonObject
                 body.keys shouldContainExactly
-                    setOf("status", "served", "scheduler", "queues", "abandoned", "refreshFailed", "paused")
+                    setOf("status", "served", "abandoned", "refreshFailed", "paused") // D-142: no scheduler, no queues
                 body["served"] shouldBe JsonNull
                 body["paused"] shouldBe JsonPrimitive(true)
                 client.get("/health").status shouldBe HttpStatusCode.OK
@@ -81,7 +71,7 @@ class HealthRoutesSpec :
             testApplication {
                 application {
                     install(ContentNegotiation) { json() }
-                    routing { healthRoutes(FakeSources(queueFailure = true)) }
+                    routing { healthRoutes(FakeSources(abandonedFailure = true)) }
                 }
                 val response = client.get("/automation/health")
                 response.status shouldBe HttpStatusCode.ServiceUnavailable
@@ -94,29 +84,14 @@ private class FakeSources(
     private val db: Boolean = true,
     private val abandoned: Long = 0,
     private val refreshFailed: Boolean = false,
-    private val scheduler: SchedulerHealth? = SchedulerHealth(alive = true, lastTick = "2026-10-18T10:00:00Z"),
     private val paused: Boolean = false,
-    private val queueFailure: Boolean = false,
+    private val abandonedFailure: Boolean = false,
 ) : HealthSources {
     override fun dbReachable() = db
 
-    override fun queueDepths(): Map<String, Long> =
-        if (queueFailure) {
-            error("pgmq.metrics failed")
-        } else {
-            mapOf(
-                "runs" to 0L,
-                "tasks" to 2L,
-                "windows" to 0L,
-                "signals" to 1L,
-            )
-        }
-
-    override fun abandoned() = abandoned
+    override fun abandoned() = if (abandonedFailure) error("ledger count failed") else abandoned
 
     override fun served(): ServedBundle? = null
-
-    override fun scheduler() = scheduler
 
     override fun refreshFailed() = refreshFailed
 

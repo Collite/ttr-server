@@ -6,7 +6,6 @@ import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.postgresql.ds.PGSimpleDataSource
 import org.testcontainers.postgresql.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
-import org.tatrman.automation.queue.LedgerQueue
 import shared.libs.db.common.DatabaseConnection
 import java.time.Clock
 import java.time.Instant
@@ -17,7 +16,7 @@ import javax.sql.DataSource
 /**
  * One Postgres for the component specs, migrated once by the service's own [migrateLedger] (so the specs test
  * the bootstrap's Flyway configuration, not a copy). `postgres:18` = the major the clusters' CNPG images run;
- * pgmq needs nothing of the image (D-130). Each spec calls [reset] for a clean ledger.
+ * Each spec calls [reset] for a clean ledger.
  */
 object LedgerTestDb {
     private val container: PostgreSQLContainer by lazy {
@@ -77,17 +76,16 @@ object LedgerTestDb {
         return db
     }
 
-    /** Empties the ledger and the queues. The retention opt-in lets the TRUNCATE past run_protocol's guard. */
+    /** Empties the ledger. The retention opt-in lets the TRUNCATE past run_protocol's guard. */
     fun reset() {
         ready()
         transaction {
             exec("SET LOCAL automation.retention = 'on'")
             exec(
-                "TRUNCATE automation.bundles, automation.runs, automation.run_outputs, automation.tasks, " +
-                    "automation.windows, automation.window_events, automation.deliveries, automation.callbacks, " +
-                    "automation.approvals, automation.batches, automation.batch_rows, automation.run_protocol CASCADE",
+                "TRUNCATE automation.bundles, automation.runs, automation.run_outputs, automation.run_evaluations, " +
+                    "automation.program_windows, automation.approvals, automation.batches, automation.batch_rows, " +
+                    "automation.run_protocol CASCADE",
             )
-            LedgerQueue.entries.forEach { exec("SELECT pgmq.purge_queue('${it.queueName}')") }
         }
     }
 }

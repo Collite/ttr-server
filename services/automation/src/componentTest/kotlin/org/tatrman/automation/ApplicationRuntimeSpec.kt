@@ -120,6 +120,15 @@ class ApplicationRuntimeSpec :
                     val health = client.get("/automation/health").bodyAsText()
                     health.contains(additive) shouldBe true
                     Json.parseToJsonElement(health).jsonObject["refreshFailed"] shouldBe JsonPrimitive(true)
+                    // S3.2 T1 (D-142): no queue or scheduler in /health; the task API and the webhooks are gone.
+                    Json.parseToJsonElement(health).jsonObject.keys shouldBe
+                        setOf("status", "served", "abandoned", "refreshFailed", "paused")
+                    for (path in listOf("/automation/tasks", "/automation/tasks/t-1")) {
+                        client.get(path) { bearerAuth(operator) }.status shouldBe HttpStatusCode.NotFound
+                    }
+                    for (path in listOf("/automation/tasks", "/automation/webhooks", "/automation/webhooks/events")) {
+                        client.post(path) { bearerAuth(operator) }.status shouldBe HttpStatusCode.NotFound
+                    }
                     sqlRows(
                         "SELECT data_type FROM information_schema.columns WHERE table_schema='cz' AND table_name='release_order_verdict' AND column_name='order_number'",
                     ) shouldBe

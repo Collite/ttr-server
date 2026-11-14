@@ -12,10 +12,28 @@ import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
 
-/** Validated port values; null keys means batch, an empty list means an explicitly empty selection. */
+/** D-143: a `port: window` open — explicit [from], or null = the program's watermark. */
+data class WindowRequest(
+    val from: Instant?,
+)
+
+/** A window's resolved bounds `[from, to)`; [watermark] = whether the run's wet seal advances the program's rows. */
+data class WindowBounds(
+    val from: Instant,
+    val to: Instant,
+    val windows: List<String>,
+    val watermark: Boolean,
+)
+
+/**
+ * Validated port values; null keys means batch, an empty list means an explicitly empty selection. A windowed
+ * program's open carries [window] (a set-level run over `[from, to)`); Open resolves it into [bounds].
+ */
 data class OpenPort(
     val keys: List<Map<String, Any?>>?,
     val eventAt: Instant?,
+    val window: WindowRequest? = null,
+    val bounds: WindowBounds? = null,
 ) {
     /** Canonical, resolved values for D-46; scalar/object key spellings and timestamp offsets are equivalent. */
     fun canonical(): JsonObject =
@@ -43,6 +61,13 @@ data class OpenPort(
             // D-46 retains the empty event key after the event port's grammar cut.
             put("event", JsonObject(emptyMap()))
             put("at", eventAt?.toString()?.let(::JsonPrimitive) ?: JsonNull)
+            // S3.2: only a window port carries bounds, so every other port's canonical form (and key) is unchanged.
+            bounds?.let { b ->
+                putJsonObject("window") {
+                    put("from", b.from.toString())
+                    put("to", b.to.toString())
+                }
+            }
         }
 
     companion object {
@@ -53,6 +78,8 @@ data class OpenPort(
             program: AutomationProgram,
             port: JsonObject,
         ): OpenPort {
+            if (program.mode == WINDOWED_MODE) return OpenPort(null, null, window = window(port))
+            if ("window" in port.keys) portRefused("a window port needs a windowed program")
             val kind = program.port ?: "none"
             if (port.keys != setOf(kind) &&
                 port.keys != setOf(kind, "at")
@@ -109,6 +136,24 @@ data class OpenPort(
                     }
                 }
             return OpenPort(keys, at)
+        }
+
+        /** `{ window: {} }` (the watermark's bounds) or `{ window: { from } }` (explicit; never advances). */
+        private fun window(port: JsonObject): WindowRequest {
+            if (port.keys != setOf("window")) portRefused("a windowed program opens with exactly a window port")
+            val body = port["window"] as? JsonObject ?: portRefused("window must be an object")
+            if (!setOf("from").containsAll(body.keys)) portRefused("window carries only an optional from")
+            val from =
+                body["from"]?.let { value ->
+                    val text = value as? JsonPrimitive
+                    if (text == null || !text.isString) portRefused("window.from must be an instant string")
+                    try {
+                        Instant.parse(text.content)
+                    } catch (_: java.time.DateTimeException) {
+                        portRefused("window.from must include a UTC offset")
+                    }
+                }
+            return WindowRequest(from)
         }
 
         internal fun attributeType(
@@ -190,3 +235,6 @@ data class OpenPort(
 }
 
 internal fun portRefused(message: String): Nothing = throw AutomationException(ErrorCode.PORT, message)
+
+/** The program `mode` of D-143's windows (grammar 0.22: `batch · on_event · windowed`). */
+const val WINDOWED_MODE = "windowed"

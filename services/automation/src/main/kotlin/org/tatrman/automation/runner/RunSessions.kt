@@ -38,6 +38,8 @@ class RunSessions(
     private val running: (UUID) -> Unit = { error("running journal unavailable") },
     private val clock: Clock,
     private val authorizeExecution: suspend (UUID, Caller) -> Unit = { _, _ -> },
+    /** S3.2 (D-159): an answer run's engine check, done before the claim lock so a slow engine blocks no other open. */
+    private val engineRuns: EngineRuns = EngineRuns(),
 ) {
     private class Session(
         val runner: PartRunner,
@@ -66,12 +68,13 @@ class RunSessions(
         recipe: String,
         request: OpenRequest,
         caller: Caller,
-    ): OpenResult =
-        lock.withLock {
+    ): OpenResult {
+        val verified = engineRuns.verify(request.engine, caller)
+        return lock.withLock {
             parent.ensureActive()
             if (stopped) unavailable()
             withContext(NonCancellable) {
-                val result = withContext(Dispatchers.IO) { policy.open(recipe, request, caller) }
+                val result = withContext(Dispatchers.IO) { policy.open(recipe, request, caller, verified) }
                 val context = result.context ?: return@withContext result
                 val job = SupervisorJob(parent.coroutineContext[Job])
                 val scope = CoroutineScope(parent.coroutineContext + job)
@@ -89,6 +92,7 @@ class RunSessions(
                 result
             }
         }
+    }
 
     /** No lookup or door read is allowed until the initiating subject matches. */
     suspend fun <S, T> read(

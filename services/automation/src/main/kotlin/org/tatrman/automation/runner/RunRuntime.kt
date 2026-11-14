@@ -48,6 +48,8 @@ class RunRuntime(
     book: org.tatrman.automation.bundle.ApprovalBook? = approvals as? org.tatrman.automation.bundle.ApprovalBook,
     /** S3.1: the Golem lane of `POST /automation/query` (iris-bff); none configured = that lane refuses. */
     golem: org.tatrman.automation.query.Golem = org.tatrman.automation.query.NoGolem,
+    /** S3.2 (D-159): the engine's task history for answer runs; none configured = answer opens refuse (503). */
+    engineHistory: org.tatrman.automation.engine.EngineHistory = org.tatrman.automation.engine.NoEngine,
 ) {
     private val shutdownLock = Mutex()
     private var shutdownComplete = false
@@ -169,6 +171,8 @@ class RunRuntime(
                 config.budgets.detailLimit,
                 config.door.routes.keys
                     .toSet(),
+                org.tatrman.automation.ledger.Watermark::lastTo,
+                config.engine.clientId,
             )
         // The registry exists before a consumer or its maintenance job can start. The dispatcher is only
         // called by a session created after construction returns, when workers has been assigned.
@@ -194,6 +198,7 @@ class RunRuntime(
                 ledger::startEvaluation,
                 clock,
                 closer::authorizeExecution,
+                EngineRuns(engineHistory),
             )
         workers =
             RunWorkers(

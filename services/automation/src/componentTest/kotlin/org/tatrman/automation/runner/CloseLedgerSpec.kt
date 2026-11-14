@@ -102,8 +102,8 @@ class CloseLedgerSpec :
             transaction {
                 BatchRows.selectAll().single()[BatchRows.status] shouldBe "staged"
                 Batches.selectAll().single()[Batches.committedAt] shouldBe null
-                Tasks.selectAll().count() shouldBe 0L
-                Deliveries.selectAll().count() shouldBe 0L
+                // D-142: no task/delivery rows exist to write; a dry close never touches the watermark (D-143).
+                ProgramWindows.selectAll().count() shouldBe 0L
             }
         }
 

@@ -11,8 +11,6 @@ import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.MutableClock
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
-import org.tatrman.automation.queue.Pgmq
-import org.tatrman.automation.queue.LedgerQueue
 import org.tatrman.automation.runner.EvaluationResult
 import org.tatrman.automation.runner.VerdictSummary
 import java.time.Duration
@@ -29,7 +27,7 @@ class RunBudgetSpec :
         val clock = MutableClock(t0)
         val budget = Duration.ofSeconds(10)
         val ledger = Ledger(budget, clock)
-        val queue = RunQueue(Pgmq(), clock, budget)
+        val queue = RunQueue(clock, budget)
         val owner = UUID.randomUUID()
         val result = EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList())
         beforeEach {
@@ -119,7 +117,7 @@ class RunBudgetSpec :
             val delivery = queue.read(owner, 30)!!
             clock.now = t0 + budget
             queue.claim(delivery.copy(owner = UUID.randomUUID())) shouldBe false
-            queue.claim(delivery.copy(messageId = delivery.messageId + 1)) shouldBe false
+            queue.claim(delivery.copy(run = notQueued)) shouldBe false
             budgetRefusal { queue.claim(delivery) }
             budgetRefusal { queue.enqueue(queued, owner) }
             shouldThrow<AutomationException> { queue.enqueue(queued, UUID.randomUUID()) }.code shouldBe
@@ -127,7 +125,7 @@ class RunBudgetSpec :
             budgetRefusal { queue.enqueue(notQueued, owner) }
             transaction { RunEvaluations.selectAll().single()[RunEvaluations.claimedAt] } shouldBe null
             status(queued) shouldBe RunStatus.OPEN
-            Pgmq().metrics(LedgerQueue.RUNS).queueLength shouldBe 1L
+            transaction { RunEvaluations.selectAll().count() } shouldBe 1L
         }
 
         "a blocked publication or dispatch claim checks the clock after acquiring its run lock" {
