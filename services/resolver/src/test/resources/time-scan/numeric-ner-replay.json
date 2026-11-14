@@ -1,0 +1,455 @@
+[
+  {
+    "text": "Marketplace revenue 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 20,
+          "end": 24,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Store revenue 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 14,
+          "end": 18,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Marketplace revenue, 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 21,
+          "end": 25,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Marketplace revenue in 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 23,
+          "end": 27,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Marketplace revenue for 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 24,
+          "end": 28,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "2025 marketplace revenue",
+    "scan": {
+      "spans": [
+        {
+          "end": 4,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Revenue 2025 by channel",
+    "scan": {
+      "spans": [
+        {
+          "start": 8,
+          "end": 12,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Store revenue in 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 17,
+          "end": 21,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Revenue of store 1042",
+    "scan": {}
+  },
+  {
+    "text": "Marketplace order 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 18,
+          "end": 22,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Store sales 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 12,
+          "end": 16,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Top 10 products by revenue",
+    "scan": {}
+  },
+  {
+    "text": "Revenue over 1000000",
+    "scan": {}
+  },
+  {
+    "text": "Stock on hand and revenue 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 26,
+          "end": 30,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Stock on hand and revenue in 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 29,
+          "end": 33,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Revenue and stock on hand 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 26,
+          "end": 30,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby z tržiště 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 16,
+          "end": 20,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 6,
+          "end": 10,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby z tržiště v roce 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 18,
+          "end": 27,
+          "text": "roce 2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby z prodejen za 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 20,
+          "end": 24,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby z tržiště za 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 19,
+          "end": 23,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby ve 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 9,
+          "end": 13,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby během 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 12,
+          "end": 16,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby v 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 8,
+          "end": 12,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby do 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 9,
+          "end": 13,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby za 2000 Kč",
+    "scan": {}
+  },
+  {
+    "text": "Tržby za 1500 Kč",
+    "scan": {}
+  },
+  {
+    "text": "Objednávky v 2025 kusech",
+    "scan": {}
+  },
+  {
+    "text": "Prodejna 1042",
+    "scan": {}
+  },
+  {
+    "text": "Revenue for 2000 dollars",
+    "scan": {}
+  },
+  {
+    "text": "Tržby prodejny 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 15,
+          "end": 19,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby za účet 501001",
+    "scan": {}
+  },
+  {
+    "text": "Stav zásob a tržby 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 19,
+          "end": 23,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "Tržby a stav zásob 2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 19,
+          "end": 23,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "😀 Revenue 2024-2025",
+    "scan": {
+      "spans": [
+        {
+          "start": 11,
+          "end": 20,
+          "text": "2024-2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "2000",
+    "scan": {
+      "spans": [
+        {
+          "end": 4,
+          "text": "2000",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  },
+  {
+    "text": "2025",
+    "scan": {
+      "spans": [
+        {
+          "end": 4,
+          "text": "2025",
+          "kind": "DATE_TIME",
+          "confidence": 0.9,
+          "trigger": "calendar_year"
+        }
+      ]
+    }
+  }
+]

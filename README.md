@@ -48,6 +48,8 @@ built) · **parked** (deliberately deferred).
 - **[docs/operations.md](docs/operations.md)** — operating the open Server: the read-only
   health & status page (version, model fingerprint, per-service health), the config
   reference, and the "no admin app" stance (FO-28).
+- **[services/resolver/README.md](services/resolver/README.md)** — deterministic resolution and
+  chrono time-span scanning, grounding and failure behavior.
 - **[docs/superset.md](docs/superset.md)** — BI via the semantic layer: self-serve Superset
   over the Flight SQL edge on the open tier (`pip install ttr-sqlalchemy`, a compose
   convenience), and the operated Superset add-on (operate tier).

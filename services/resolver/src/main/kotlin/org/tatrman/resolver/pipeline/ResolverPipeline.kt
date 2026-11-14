@@ -5,6 +5,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import org.slf4j.LoggerFactory
 import org.tatrman.diagnostics.RgDiagnostics
+import org.tatrman.grounding.v1.GroundingContext
 import org.tatrman.nlp.v1.AnalyzeRequest
 import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.NlpOp
@@ -40,6 +41,7 @@ import org.tatrman.resolver.v1.ResolveRequest
 import org.tatrman.resolver.v1.ResolveResponse
 import org.tatrman.resolver.v1.Resolution
 import org.tatrman.resolver.v1.ResolutionState
+import org.tatrman.resolver.v1.RungLogEntry
 import org.tatrman.resolver.v1.Span
 import org.tatrman.resolver.v1.Universal
 import org.tatrman.resolver.v1.UniversalEntityType
@@ -145,11 +147,28 @@ class ResolverPipeline(
         val analyzed = nlp.analyze(analyzeRequest(fresh.text, locale))
         val status = runCatching { nlp.getStatus() }.getOrNull()
         val assessment = assess(analyzed, status)
-        // A period stated relative to today („minulý měsíc“, „letos“) is typed a date beside NER's
-        // own, so it is grounded rather than left an unbound FILTER word (`RelativePeriods`). Only
-        // where NER runs: without it there are no universals, and a span taken out of the mention
-        // layer would reach neither a value nor a gap.
-        val parse = if (assessment.csNer) RelativePeriods.augment(analyzed, fresh.text) else analyzed
+        val literals = Literals.of(fresh.text, analyzed)
+        // Scan runs once, before any reader of the parse. Without NER, universals remain off;
+        // taking their words out of the mention path would leave neither a value nor a gap.
+        val scan =
+            if (assessment.csNer && grounding != null) {
+                TimeScan.augment(
+                    grounding,
+                    analyzed,
+                    fresh.text,
+                    literals,
+                    GroundingContext
+                        .newBuilder()
+                        .setReferenceDatetime(request.context.referenceDatetime)
+                        .setLocale(locale)
+                        .addAllPriorQuestions(request.context.priorQuestionsList)
+                        .build(),
+                    request.context.`package`.ifBlank { defaultPackage },
+                )
+            } else {
+                TimeScan.Outcome(analyzed)
+            }
+        val parse = scan.parse
 
         val declared =
             if (request.hasRegistry()) {
@@ -161,9 +180,6 @@ class ResolverPipeline(
                 registry.current()
             }
 
-        // LP contracts §2 — scanned once, here, because this is the last place the raw text
-        // exists: everything below works from the parse, which carries tokens and not the string.
-        val literals = Literals.of(fresh.text, parse)
         // ttr-server#58 — the operator words no nominal path reaches (an imperative verb, an adjective
         // beside a count), asked about in the operator class BEFORE proposal, because a confirmed one
         // is an anchor and a count beside it is its argument: both are proposal's decisions. The
@@ -544,7 +560,9 @@ class ResolverPipeline(
             rounds.lattice
                 .toBuilder()
                 .addAllRungLog(rounds.log)
-                .build()
+                .also {
+                    if (scan.failed) it.addRungLog(RungLogEntry.newBuilder().setRung("core").setAction("scan_failed"))
+                }.build()
 
         val builder =
             ResolveResponse

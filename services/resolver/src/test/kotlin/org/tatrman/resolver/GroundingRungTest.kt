@@ -16,9 +16,9 @@ import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
 import org.tatrman.grounding.v1.GroundingResult
 import org.tatrman.grounding.v1.Normalized
+import org.tatrman.grounding.v1.ValueBinding
 import org.tatrman.plan.v1.QualifiedName
 import org.tatrman.plan.v1.SchemaCode
-import org.tatrman.resolver.client.GroundingClient
 import org.tatrman.resolver.pipeline.GroundingRung
 import org.tatrman.resolver.pipeline.UniversalBinding
 import org.tatrman.resolver.v1.UniversalEntityType
@@ -99,7 +99,7 @@ private fun month(
 
 private class FakeKernel(
     val answer: (GroundRequest) -> GroundResponse,
-) : GroundingClient {
+) : GroundOnlyKernel {
     val seen = mutableListOf<GroundRequest>()
 
     override suspend fun ground(request: GroundRequest): GroundResponse {
@@ -112,6 +112,32 @@ private class FakeKernel(
 
 class GroundingRungTest :
     StringSpec({
+
+        "a values application yields Grounded with its interval and a blank column" {
+            val answer = okWith("2025-01-01", "2026-01-01").toBuilder()
+            answer.result =
+                answer.result
+                    .toBuilder()
+                    .setValues(ValueBinding.getDefaultInstance())
+                    .build()
+            val out =
+                runBlocking {
+                    GroundingRung.ground(
+                        FakeKernel { answer.build() },
+                        listOf(date("2025", 0, 4)),
+                        "2025",
+                        "no-date-role",
+                        "",
+                    )
+                }
+            out.getValue(0 to 4) shouldBe
+                GroundingRung.Grounded(
+                    "2025-01-01/2026-01-01",
+                    "",
+                    "2025-01-01",
+                    "2026-01-01",
+                )
+        }
 
         "⚑ a grounded date yields the interval AND the attribute to apply it to" {
             val kernel = FakeKernel { okWith("2025-01-01", "2026-01-01", erColumn("date_dim", "cal_date")) }

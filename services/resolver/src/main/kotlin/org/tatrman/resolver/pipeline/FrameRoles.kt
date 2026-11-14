@@ -28,7 +28,7 @@ import org.tatrman.resolver.v1.UniversalEntityType
  * R3' prep in DISTRIBUTIVE_PREPS, a model object, not capable  -> A/B (below)
  * R4  prep in FILTER_PREPS   and not capable(m)     -> +FILTER
  * R5  no prep, deprel == compound, not capable      -> +FILTER     # "WEB revenue"
- * R6  no prep, deprel starts "obl", not capable     -> +FILTER     # "minulý TÝDEN"
+ * R6  no prep, deprel starts "obl", not capable     -> +FILTER     # an oblique noun
  * R6' no prep, deprel == advmod, binds an attribute -> +FILTER     # "LONI" (spike F-1)
  * R6" no prep, amod (or its conjunct), an attribute, a grain word -> +GROUPING  # "MONTHLY revenue" (#152)
  * R7  deprel == conj  -> inherit the head mention's FILTER / GROUPING
@@ -142,7 +142,7 @@ object FrameRoles {
                         // A noun premodifying another noun restricts it: "WEB revenue".
                         relation == "compound" -> roles.getValue(m.id) += FrameRole.FRAME_ROLE_FILTER
                         // A bare oblique with no preposition is an adverbial restriction:
-                        // "minulý TÝDEN". With a preposition it was caught above.
+                        // With a preposition it was caught above.
                         relation.startsWith("obl") -> roles.getValue(m.id) += FrameRole.FRAME_ROLE_FILTER
                         // Spike F-1: a temporal adverb has no nominal head at all — `loni`
                         // ("last year") is ADV/advmod, and `obl` is a nominal relation. The

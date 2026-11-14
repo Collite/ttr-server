@@ -1,0 +1,669 @@
+[
+  {
+    "id": "reserve",
+    "text": "Tržby z tržiště za minulý měsíc pro Brno DC",
+    "locale": "cs-CZ",
+    "scan": {
+      "spans": [
+        {
+          "start": 19,
+          "end": 31,
+          "text": "minulý měsíc",
+          "kind": "DATE_TIME",
+          "confidence": 0.99,
+          "trigger": "fixture"
+        }
+      ]
+    },
+    "ground": {
+      "minulý měsíc": {
+        "status": "OK",
+        "result": {
+          "normalized": {
+            "interval": {
+              "start": "2026-09-01T00:00:00Z",
+              "end": "2026-10-01T00:00:00Z"
+            }
+          },
+          "filter": {
+            "anchorColumn": {
+              "schemaCode": "ER",
+              "namespace": "entity",
+              "name": "date_dim.cal_date"
+            }
+          }
+        }
+      }
+    },
+    "tokens": [
+      {
+        "text": "Tržby",
+        "lemma": "tržba",
+        "charStart": 0,
+        "charEnd": 5,
+        "upos": "NOUN",
+        "depHead": 0,
+        "depRelation": "root"
+      },
+      {
+        "text": "z",
+        "lemma": "z",
+        "charStart": 6,
+        "charEnd": 7,
+        "upos": "ADP",
+        "depHead": 3,
+        "depRelation": "case"
+      },
+      {
+        "text": "tržiště",
+        "lemma": "tržiště",
+        "charStart": 8,
+        "charEnd": 15,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "za",
+        "lemma": "za",
+        "charStart": 16,
+        "charEnd": 18,
+        "upos": "ADP",
+        "depHead": 6,
+        "depRelation": "case"
+      },
+      {
+        "text": "minulý",
+        "lemma": "minulý",
+        "charStart": 19,
+        "charEnd": 25,
+        "upos": "ADJ",
+        "depHead": 6,
+        "depRelation": "amod"
+      },
+      {
+        "text": "měsíc",
+        "lemma": "měsíc",
+        "charStart": 26,
+        "charEnd": 31,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "pro",
+        "lemma": "pro",
+        "charStart": 32,
+        "charEnd": 35,
+        "upos": "ADP",
+        "depHead": 8,
+        "depRelation": "case"
+      },
+      {
+        "text": "Brno",
+        "lemma": "Brno",
+        "charStart": 36,
+        "charEnd": 40,
+        "upos": "PROPN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "DC",
+        "lemma": "DC",
+        "charStart": 41,
+        "charEnd": 43,
+        "upos": "PROPN",
+        "depHead": 8,
+        "depRelation": "flat"
+      }
+    ]
+  },
+  {
+    "id": "declined",
+    "text": "Kolik jsme prodali v minulém měsíci?",
+    "locale": "cs-CZ",
+    "scan": {
+      "spans": [
+        {
+          "start": 21,
+          "end": 35,
+          "text": "minulém měsíci",
+          "kind": "DATE_TIME",
+          "confidence": 0.99,
+          "trigger": "fixture"
+        }
+      ]
+    },
+    "ground": {
+      "minulém měsíci": {
+        "status": "OK",
+        "result": {
+          "normalized": {
+            "interval": {
+              "start": "2026-09-01T00:00:00Z",
+              "end": "2026-10-01T00:00:00Z"
+            }
+          },
+          "filter": {
+            "anchorColumn": {
+              "schemaCode": "ER",
+              "namespace": "entity",
+              "name": "date_dim.cal_date"
+            }
+          }
+        }
+      }
+    },
+    "tokens": [
+      {
+        "text": "Kolik",
+        "lemma": "kolik",
+        "charStart": 0,
+        "charEnd": 5,
+        "upos": "NOUN",
+        "depHead": 0,
+        "depRelation": "root"
+      },
+      {
+        "text": "jsme",
+        "lemma": "jsme",
+        "charStart": 6,
+        "charEnd": 10,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "prodali",
+        "lemma": "prodali",
+        "charStart": 11,
+        "charEnd": 18,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "v",
+        "lemma": "v",
+        "charStart": 19,
+        "charEnd": 20,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "minulém",
+        "lemma": "minulém",
+        "charStart": 21,
+        "charEnd": 28,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "měsíci",
+        "lemma": "měsíci",
+        "charStart": 29,
+        "charEnd": 35,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "?",
+        "lemma": "?",
+        "charStart": 35,
+        "charEnd": 36,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      }
+    ]
+  },
+  {
+    "id": "current-month",
+    "text": "Tržby z webu tohoto měsíce",
+    "locale": "cs-CZ",
+    "scan": {
+      "spans": [
+        {
+          "start": 13,
+          "end": 26,
+          "text": "tohoto měsíce",
+          "kind": "DATE_TIME",
+          "confidence": 0.99,
+          "trigger": "fixture"
+        }
+      ]
+    },
+    "ground": {
+      "tohoto měsíce": {
+        "status": "OK",
+        "result": {
+          "normalized": {
+            "interval": {
+              "start": "2026-10-01T00:00:00Z",
+              "end": "2026-11-01T00:00:00Z"
+            }
+          },
+          "filter": {
+            "anchorColumn": {
+              "schemaCode": "ER",
+              "namespace": "entity",
+              "name": "date_dim.cal_date"
+            }
+          }
+        }
+      }
+    },
+    "tokens": [
+      {
+        "text": "Tržby",
+        "lemma": "tržby",
+        "charStart": 0,
+        "charEnd": 5,
+        "upos": "NOUN",
+        "depHead": 0,
+        "depRelation": "root"
+      },
+      {
+        "text": "z",
+        "lemma": "z",
+        "charStart": 6,
+        "charEnd": 7,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "webu",
+        "lemma": "webu",
+        "charStart": 8,
+        "charEnd": 12,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "tohoto",
+        "lemma": "tohoto",
+        "charStart": 13,
+        "charEnd": 19,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "měsíce",
+        "lemma": "měsíce",
+        "charStart": 20,
+        "charEnd": 26,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      }
+    ]
+  },
+  {
+    "id": "current-year",
+    "text": "Vratky v tomto roce",
+    "locale": "cs-CZ",
+    "scan": {
+      "spans": [
+        {
+          "start": 9,
+          "end": 19,
+          "text": "tomto roce",
+          "kind": "DATE_TIME",
+          "confidence": 0.99,
+          "trigger": "fixture"
+        }
+      ]
+    },
+    "ground": {
+      "tomto roce": {
+        "status": "OK",
+        "result": {
+          "normalized": {
+            "interval": {
+              "start": "2026-01-01T00:00:00Z",
+              "end": "2027-01-01T00:00:00Z"
+            }
+          },
+          "filter": {
+            "anchorColumn": {
+              "schemaCode": "ER",
+              "namespace": "entity",
+              "name": "date_dim.cal_date"
+            }
+          }
+        }
+      }
+    },
+    "tokens": [
+      {
+        "text": "Vratky",
+        "lemma": "vratky",
+        "charStart": 0,
+        "charEnd": 6,
+        "upos": "NOUN",
+        "depHead": 0,
+        "depRelation": "root"
+      },
+      {
+        "text": "v",
+        "lemma": "v",
+        "charStart": 7,
+        "charEnd": 8,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "tomto",
+        "lemma": "tomto",
+        "charStart": 9,
+        "charEnd": 14,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "roce",
+        "lemma": "roce",
+        "charStart": 15,
+        "charEnd": 19,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      }
+    ]
+  },
+  {
+    "id": "current-week",
+    "text": "Tržby tento týden",
+    "locale": "cs-CZ",
+    "scan": {
+      "spans": [
+        {
+          "start": 6,
+          "end": 17,
+          "text": "tento týden",
+          "kind": "DATE_TIME",
+          "confidence": 0.99,
+          "trigger": "fixture"
+        }
+      ]
+    },
+    "ground": {
+      "tento týden": {
+        "status": "OK",
+        "result": {
+          "normalized": {
+            "interval": {
+              "start": "2026-10-05T00:00:00Z",
+              "end": "2026-10-12T00:00:00Z"
+            }
+          },
+          "filter": {
+            "anchorColumn": {
+              "schemaCode": "ER",
+              "namespace": "entity",
+              "name": "date_dim.cal_date"
+            }
+          }
+        }
+      }
+    },
+    "tokens": [
+      {
+        "text": "Tržby",
+        "lemma": "tržby",
+        "charStart": 0,
+        "charEnd": 5,
+        "upos": "NOUN",
+        "depHead": 0,
+        "depRelation": "root"
+      },
+      {
+        "text": "tento",
+        "lemma": "tento",
+        "charStart": 6,
+        "charEnd": 11,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "týden",
+        "lemma": "týden",
+        "charStart": 12,
+        "charEnd": 17,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      }
+    ]
+  },
+  {
+    "id": "narrowing",
+    "text": "Q2 sales last year",
+    "locale": "en-GB",
+    "scan": {
+      "spans": [
+        {
+          "start": 0,
+          "end": 2,
+          "text": "Q2",
+          "kind": "DATE_TIME",
+          "confidence": 0.99,
+          "trigger": "fixture"
+        },
+        {
+          "start": 9,
+          "end": 18,
+          "text": "last year",
+          "kind": "DATE_TIME",
+          "confidence": 0.99,
+          "trigger": "fixture"
+        }
+      ]
+    },
+    "ground": {
+      "Q2": {
+        "status": "OK",
+        "result": {
+          "normalized": {
+            "interval": {
+              "start": "2025-04-01T00:00:00Z",
+              "end": "2025-07-01T00:00:00Z"
+            }
+          },
+          "filter": {
+            "anchorColumn": {
+              "schemaCode": "ER",
+              "namespace": "entity",
+              "name": "date_dim.cal_date"
+            }
+          }
+        }
+      },
+      "last year": {
+        "status": "OK",
+        "result": {
+          "normalized": {
+            "interval": {
+              "start": "2025-01-01T00:00:00Z",
+              "end": "2026-01-01T00:00:00Z"
+            }
+          },
+          "filter": {
+            "anchorColumn": {
+              "schemaCode": "ER",
+              "namespace": "entity",
+              "name": "date_dim.cal_date"
+            }
+          }
+        }
+      }
+    },
+    "tokens": [
+      {
+        "text": "Q2",
+        "lemma": "q2",
+        "charStart": 0,
+        "charEnd": 2,
+        "upos": "NOUN",
+        "depHead": 0,
+        "depRelation": "root"
+      },
+      {
+        "text": "sales",
+        "lemma": "sales",
+        "charStart": 3,
+        "charEnd": 8,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "last",
+        "lemma": "last",
+        "charStart": 9,
+        "charEnd": 13,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "year",
+        "lemma": "year",
+        "charStart": 14,
+        "charEnd": 18,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      }
+    ]
+  },
+  {
+    "id": "comparison",
+    "text": "Revenue this year vs last year",
+    "locale": "en-GB",
+    "scan": {
+      "spans": [
+        {
+          "start": 8,
+          "end": 17,
+          "text": "this year",
+          "kind": "DATE_TIME",
+          "confidence": 0.99,
+          "trigger": "fixture"
+        },
+        {
+          "start": 21,
+          "end": 30,
+          "text": "last year",
+          "kind": "DATE_TIME",
+          "confidence": 0.99,
+          "trigger": "fixture"
+        }
+      ]
+    },
+    "ground": {
+      "this year": {
+        "status": "OK",
+        "result": {
+          "normalized": {
+            "interval": {
+              "start": "2026-01-01T00:00:00Z",
+              "end": "2027-01-01T00:00:00Z"
+            }
+          },
+          "filter": {
+            "anchorColumn": {
+              "schemaCode": "ER",
+              "namespace": "entity",
+              "name": "date_dim.cal_date"
+            }
+          }
+        }
+      },
+      "last year": {
+        "status": "OK",
+        "result": {
+          "normalized": {
+            "interval": {
+              "start": "2025-01-01T00:00:00Z",
+              "end": "2026-01-01T00:00:00Z"
+            }
+          },
+          "filter": {
+            "anchorColumn": {
+              "schemaCode": "ER",
+              "namespace": "entity",
+              "name": "date_dim.cal_date"
+            }
+          }
+        }
+      }
+    },
+    "tokens": [
+      {
+        "text": "Revenue",
+        "lemma": "revenue",
+        "charStart": 0,
+        "charEnd": 7,
+        "upos": "NOUN",
+        "depHead": 0,
+        "depRelation": "root"
+      },
+      {
+        "text": "this",
+        "lemma": "this",
+        "charStart": 8,
+        "charEnd": 12,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "year",
+        "lemma": "year",
+        "charStart": 13,
+        "charEnd": 17,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "vs",
+        "lemma": "vs",
+        "charStart": 18,
+        "charEnd": 20,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "last",
+        "lemma": "last",
+        "charStart": 21,
+        "charEnd": 25,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      },
+      {
+        "text": "year",
+        "lemma": "year",
+        "charStart": 26,
+        "charEnd": 30,
+        "upos": "NOUN",
+        "depHead": 1,
+        "depRelation": "nmod"
+      }
+    ]
+  }
+]

@@ -14,7 +14,10 @@ import org.tatrman.grounding.v1.GetStatusRequest as GroundingStatusRequest
 import org.tatrman.grounding.v1.GetStatusResponse as GroundingStatusResponse
 import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
+import org.tatrman.grounding.v1.GroundingContext
 import org.tatrman.grounding.v1.GroundingServiceGrpcKt
+import org.tatrman.grounding.v1.ScanRequest
+import org.tatrman.grounding.v1.ScanResponse
 import org.tatrman.nlp.v1.AnalyzeRequest
 import org.tatrman.nlp.v1.AnalyzeResponse
 import org.tatrman.nlp.v1.NlpServiceGrpcKt
@@ -81,6 +84,12 @@ interface FuzzyClient {
  * is why the whole rung is off by default (`resolver.grounding.enabled`).
  */
 interface GroundingClient {
+    suspend fun scan(
+        text: String,
+        context: GroundingContext,
+        pkg: String,
+    ): ScanResponse
+
     suspend fun ground(request: GroundRequest): GroundResponse
 
     suspend fun getStatus(): GroundingStatusResponse
@@ -94,6 +103,20 @@ class GrpcGroundingClient(
     AutoCloseable {
     private val channel: ManagedChannel = openChannel(host, port)
     private val stub = GroundingServiceGrpcKt.GroundingServiceCoroutineStub(channel)
+
+    override suspend fun scan(
+        text: String,
+        context: GroundingContext,
+        pkg: String,
+    ): ScanResponse =
+        stub.withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS).scan(
+            ScanRequest
+                .newBuilder()
+                .setText(text)
+                .setContext(context)
+                .setPackage(pkg)
+                .build(),
+        )
 
     override suspend fun ground(request: GroundRequest): GroundResponse =
         stub.withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS).ground(request)

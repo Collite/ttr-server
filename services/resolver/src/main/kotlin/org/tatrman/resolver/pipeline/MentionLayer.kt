@@ -182,7 +182,7 @@ object MentionLayer {
      * attribute R6" (`FrameRoles`) makes the GROUPING, as it makes `Monthly`. Anything else stays a G1,
      * so no fast path answers the question without the word. It is never the SUBJECT (R9): it modifies
      * what the question is about. The caller keeps it out of the grounding-trigger annotation: a word
-     * the NER (or `RelativePeriods`) did not type a date is no period of its own.
+     * the NER or chrono Scan did not type a date is no period of its own.
      *
      * **What else stays out:** a word in an operator slot, which `OperatorWords` asked the operator
      * class about and which leaves no trace when it is none (ttr-server#58: `dalších 10 prodejen`); a
