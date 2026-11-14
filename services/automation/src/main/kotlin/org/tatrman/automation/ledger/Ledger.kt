@@ -84,6 +84,8 @@ data class RunOpen(
     val replayOf: UUID? = null,
     val budgetSync: Duration? = null,
     val budgetBatch: Duration? = null,
+    /** The program's `mode` (`batch · on_event · windowed`); `on_event` clocks the run by [budgetSync] (D-192). */
+    val mode: String? = null,
     /** Written in the same transaction as a new claim; never appended again for a replay/live handle. */
     val openingProtocol: JsonElement? = null,
     /** Verified JWT subject; never infer this from the caller's display principal. Legacy rows stay null. */
@@ -249,7 +251,7 @@ class Ledger(
                             runId = it[Runs.id],
                             status = RunStatus.of(it[Runs.status]),
                             startedAt = it[Runs.startedAt].toInstant(),
-                            budget = budgetOf(it[Runs.budgetBatch], it[Runs.budgetSync]),
+                            budget = runBudget(it[Runs.mode], it[Runs.budgetSync], it[Runs.budgetBatch], defaultBudget),
                         )
                     }
                 when (val decision = IdempotencyPolicy.decide(holder, now)) {
@@ -1369,7 +1371,8 @@ class Ledger(
 
     /**
      * D-46's clock sweep, including runs without an idempotency key. Only OPEN/RUNNING/EVALUATED can expire;
-     * WAITING belongs to its tasks (D-97). The strict boundary and batch → sync → default budget match claimRun.
+     * WAITING belongs to its tasks (D-97). The strict boundary and [runBudget] (an `on_event` run by its sync
+     * budget, any other by its batch budget, D-192) match claimRun.
      *
      * Locks and updates commit together. Concurrent pods skip each other's locked rows, and a close/waiting
      * transition holding the row wins before the next sweep. Counters run only after commit. The caller must
@@ -1388,11 +1391,14 @@ class Ledger(
                         SELECT id, recipe FROM automation.runs
                         WHERE status IN ('open', 'running', 'evaluated')
                           AND EXTRACT(EPOCH FROM (?::timestamptz - started_at)) * 1000
-                              > COALESCE(budget_batch, budget_sync, ?)::numeric + ?
+                              > (CASE WHEN mode = ? THEN COALESCE(budget_sync, budget_batch, ?)
+                                      ELSE COALESCE(budget_batch, budget_sync, ?) END)::numeric + ?
                         ORDER BY started_at, id LIMIT ? FOR UPDATE SKIP LOCKED
                         """.trimIndent(),
                         listOf(
                             TextColumnType() to now.utc().toString(),
+                            TextColumnType() to ON_EVENT_MODE,
+                            LongColumnType() to defaultBudget.toMillis(),
                             LongColumnType() to defaultBudget.toMillis(),
                             LongColumnType() to IdempotencyPolicy.GRACE.toMillis(),
                             IntegerColumnType() to limit,
@@ -1509,6 +1515,7 @@ class Ledger(
                         replayOf = row[Runs.replayOf],
                         budgetSync = row[Runs.budgetSync]?.let(Duration::ofMillis),
                         budgetBatch = row[Runs.budgetBatch]?.let(Duration::ofMillis),
+                        mode = row[Runs.mode],
                     ),
                     RunStatus.of(row[Runs.status]),
                     row[Runs.protocolRef],
@@ -1710,6 +1717,7 @@ class Ledger(
             it[startedAt] = now.utc()
             it[budgetSync] = open.budgetSync?.toMillis()
             it[budgetBatch] = open.budgetBatch?.toMillis()
+            it[mode] = open.mode
         }
         open.openingProtocol?.let { payload ->
             RunProtocol.insert {
@@ -1759,11 +1767,6 @@ class Ledger(
             .firstOrNull()
             ?.let { it[RunProtocol.seq] + 1 }
             ?: 1
-
-    private fun budgetOf(
-        batchMs: Long?,
-        syncMs: Long?,
-    ): Duration = (batchMs ?: syncMs)?.let(Duration::ofMillis) ?: defaultBudget
 
     private fun Instant.utc(): OffsetDateTime = atOffset(ZoneOffset.UTC)
 

@@ -48,7 +48,7 @@ class PgmqVendorSpec :
         }
 
         "the ordered migrations include the ledger, queues, dispatch, verified subject and staging retention" {
-            migrations.list()!!.sorted() shouldContainExactly
+            migrations.list()!!.sortedBy { it.substringAfter("V").substringBefore("__").toInt() } shouldContainExactly
                 listOf(
                     "V1__ledger.sql",
                     vendored.name,
@@ -59,6 +59,7 @@ class PgmqVendorSpec :
                     "V7__staging_retention.sql",
                     "V8__batch_current_delete.sql",
                     "V9__approvals_toolchain.sql",
+                    "V10__runs_mode.sql",
                 )
         }
     })

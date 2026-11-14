@@ -254,6 +254,7 @@ class Open(
                 governed = true,
                 budgetSync = sync,
                 budgetBatch = batch,
+                mode = program.mode,
                 idempotencyKey =
                     idempotency(
                         bundle,

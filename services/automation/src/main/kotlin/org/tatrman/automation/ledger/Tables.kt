@@ -84,6 +84,9 @@ object Runs : Table("automation.runs") {
     val stagingCheckedAt = timestampWithTimeZone("staging_checked_at").nullable()
     val budgetSync = long("budget_sync").nullable()
     val budgetBatch = long("budget_batch").nullable()
+
+    /** The program's `mode` at Open (V10); `on_event` selects [budgetSync] for the run's clock (D-192). */
+    val mode = text("mode").nullable()
     val error = json("error").nullable()
 
     override val primaryKey = PrimaryKey(id)
