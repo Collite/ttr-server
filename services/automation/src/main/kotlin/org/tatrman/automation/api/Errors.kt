@@ -73,6 +73,21 @@ enum class ErrorCode(
     IDENTITY_NOT_RESUMABLE("identity-not-resumable", HttpStatusCode.Conflict, "S2.3"),
     CONNECTOR_UNAVAILABLE("connector-unavailable", HttpStatusCode.ServiceUnavailable, "S3.1"),
 
+    // S3.1 — `POST /automation/query` (D-146): the request, its variables and the Golem lane.
+    STATEMENT("statement", HttpStatusCode.BadRequest, "S3.1"),
+    QUERY("query", HttpStatusCode.NotFound, "S3.1"),
+    CONFIG_INVALID("config-invalid", HttpStatusCode.BadRequest, "S3.1"),
+    VARIABLE_NAME("variable-name", HttpStatusCode.BadRequest, "S3.1"),
+    ROW_NOT_SINGLE("row-not-single", HttpStatusCode.UnprocessableEntity, "S3.1"),
+    VARIABLE_TOO_LARGE("variable-too-large", HttpStatusCode.UnprocessableEntity, "S3.1"),
+    GOLEM_NO_TABLE("golem-no-table", HttpStatusCode.UnprocessableEntity, "S3.1"),
+    GOLEM_UNAVAILABLE("golem-unavailable", HttpStatusCode.BadGateway, "S3.1"),
+
+    // S3.1 — `GET /automation/templates/{target}` and the typed-action perform (D-168).
+    TEMPLATES("templates", HttpStatusCode.NotFound, "S3.1"),
+    ACTION("action", HttpStatusCode.NotFound, "S3.1"),
+    APPROVAL_REQUIRED("approval-required", HttpStatusCode.Conflict, "S3.1"),
+
     // §6 — a deployment whose program needs a face its connector lacks (at /refresh).
     CONNECTOR_FACE("connector-face", HttpStatusCode.UnprocessableEntity, "S3.1"),
 

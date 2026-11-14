@@ -46,6 +46,8 @@ class RunRuntime(
     retention: StagingRetention = StagingRetention(config.retention, clock),
     /** D-184: the approvals writer behind the dev seeding route; the ledger's reader is also its book. */
     book: org.tatrman.automation.bundle.ApprovalBook? = approvals as? org.tatrman.automation.bundle.ApprovalBook,
+    /** S3.1: the Golem lane of `POST /automation/query` (iris-bff); none configured = that lane refuses. */
+    golem: org.tatrman.automation.query.Golem = org.tatrman.automation.query.NoGolem,
 ) {
     private val shutdownLock = Mutex()
     private var shutdownComplete = false
@@ -100,6 +102,43 @@ class RunRuntime(
             clock,
         )
     val devRoutes = config.devRoutes
+
+    /** S3.1 T2: the governed query step over the same door, under the caller (or a deployment's granted run_as). */
+    val query =
+        org.tatrman.automation.query.QueryStep(
+            served,
+            door,
+            golem,
+            ledger,
+            tokens,
+            config.door.routes.keys
+                .toSet(),
+            { config.paused },
+            org.tatrman.automation.query.QueryLimits(
+                config.query.defaultLimit,
+                config.query.maxLimit,
+                config.query.maxTableRows,
+                config.budgets.syncDefault,
+            ),
+            clock,
+        )
+    val ledger: Ledger = ledger
+
+    /** S3.1 T6: the digest renderer (D-148) and the typed-action perform (D-168) through the same writer. */
+    val digests =
+        org.tatrman.automation.protocol
+            .Digests(ledger, served)
+    val typedPerform =
+        org.tatrman.automation.writer.TypedPerform(
+            served,
+            org.tatrman.automation.writer
+                .Apply(door, clock),
+            ledger,
+            tokens,
+            config.budgets.syncDefault,
+            clock,
+            { config.paused },
+        )
     val served: () -> Bundle? = served
     val approver =
         book?.let {

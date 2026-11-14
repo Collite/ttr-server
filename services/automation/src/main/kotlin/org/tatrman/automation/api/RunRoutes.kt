@@ -17,6 +17,8 @@ fun Route.runRoutes(runtime: RunRuntime) {
     closeRoutes(runtime.closer)
     actionRoutes(runtime.perform, runtime.revert)
     devRoutes(runtime.devRoutes, runtime.held, runtime.approver, runtime.served)
+    queryRoutes(runtime.query, runtime.served, runtime.ledger)
+    engineSeamRoutes(runtime.digests, runtime.typedPerform)
 }
 
 /** Install inside bearer authentication. These readers remain usable without any execution runtime. */

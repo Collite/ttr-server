@@ -77,7 +77,8 @@ class BundleLoader(
                     it.loadedFiles
                 }.filter { it.schemaCode == "world" }
                 .map { it.storageFile.path }
-        for (e in (snapshots.flatMap { it.errors } + result.errors).distinct()) {
+        // ModelReconciler already carries every source's errors in result.errors (review-247 N3).
+        for (e in result.errors) {
             if (LAYOUT_CODES.any { e.message.startsWith(it) }) continue
             if (isAutomationFinding(e, automationRoot, worldFiles)) {
                 findings += render(e, checkout.root)

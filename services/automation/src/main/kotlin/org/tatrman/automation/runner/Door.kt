@@ -105,8 +105,43 @@ sealed class DoorWriteFailure(
     ) : DoorWriteFailure(code, message)
 }
 
+/**
+ * S3.1 (D-146): one governed ad-hoc read for `POST /automation/query` — a named `def query`'s body or an inline
+ * statement, SQL over ER entities with `{name}` parameters. Bounded by the caller's RLS and [limit] only: no
+ * declared read scope (n8n-nodes contracts §2.4 — "ad-hoc reads are bounded by RLS only").
+ */
+data class DoorQuery(
+    val run: UUID,
+    val label: String,
+    val world: String,
+    val storage: String,
+    val sql: String,
+    val bindings: Map<String, BoundValue>,
+    val identity: RunIdentity,
+    val modelFp: String,
+    val limit: Int,
+    val timeout: Duration,
+)
+
+/** [truncated]: the answer had more than the requested limit, or the validator capped it (`top_n_applied`). */
+data class QueryAnswer(
+    val table: Table,
+    val truncated: Boolean,
+    val warnings: Set<String>,
+    val world: String,
+)
+
 fun interface Door {
     suspend fun read(read: DoorRead): ReadResult
+
+    suspend fun query(query: DoorQuery): QueryAnswer =
+        throw AutomationException(
+            ErrorCode.DOOR_REFUSED,
+            "this door has no query path",
+            buildJsonObject {
+                put("code", "storage-unmapped")
+            },
+        )
 
     suspend fun write(write: DoorWrite): WriteResult =
         throw DoorWriteFailure.Refused("storage-unmapped", "this door has no write path")
@@ -226,6 +261,84 @@ class QueryDoor(
             refuse("invalid-result", "door result or identity could not be read")
         }
     }
+
+    override suspend fun query(query: DoorQuery): QueryAnswer {
+        try {
+            val world =
+                routes["${query.world}/${query.storage}"]
+                    ?: refuse("storage-unmapped", "no door route for ${query.world}/${query.storage}")
+            val context =
+                PipelineContext
+                    .newBuilder()
+                    .setCorrelationId("${query.run}/${query.label}")
+                    .setUserId(query.identity.principal)
+                    .addAllAuthRoles(roles(query.identity))
+                    .setModelVersion(query.modelFp)
+                    .addAllParameters(query.bindings.map { (name, binding) -> parameter(name, binding) })
+                    .build()
+            val request =
+                RunRequest
+                    .newBuilder()
+                    .setSource(query.sql)
+                    .setSourceLanguage(Language.SQL)
+                    .setSourceSchema(SchemaCode.ER)
+                    .setContext(context)
+                    .setWorld(world)
+                    // One row past the limit tells a complete answer from a cut one.
+                    .setRowWindow(RowWindow.newBuilder().setLimit(query.limit.toLong() + 1))
+                    .build()
+            val streams = mutableListOf<ByteArray>()
+            val warnings = linkedSetOf<String>()
+            kotlinx.coroutines.withTimeout(query.timeout.toMillis()) {
+                // The validator's verdict on the statement (translate → validate [RLS]) is the caller's to read.
+                this@QueryDoor
+                    .query
+                    .compile(request)
+                    .messagesList
+                    .firstOrNull { it.severity == Severity.ERROR }
+                    ?.let { statement(it.code, it.humanMessage) }
+                this@QueryDoor.query.run(request).collect { batch ->
+                    batch.messagesList.firstOrNull { it.severity == Severity.ERROR }?.let {
+                        refuse(it.code, it.humanMessage)
+                    }
+                    warnings += batch.context.warningsList.map { it.code }
+                    warnings += batch.messagesList.filter { it.severity == Severity.WARNING }.map { it.code }
+                    warnings += batch.noticesList.map { it.code }
+                    if (!batch.arrowIpc.isEmpty) streams += batch.arrowIpc.toByteArray()
+                }
+            }
+            val table = withContext(Dispatchers.IO) { ArrowTables.decode(streams) }
+            val cut = table.rows.size > query.limit
+            return QueryAnswer(
+                if (cut) table.copy(rows = table.rows.take(query.limit)) else table,
+                cut || "top_n_applied" in warnings,
+                warnings,
+                world,
+            )
+        } catch (e: AutomationException) {
+            throw e
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            refuse("deadline-exceeded", "the query exceeded its budget")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: StatusException) {
+            refuse(e.status.code.name, e.status.description ?: "door refused")
+        } catch (e: StatusRuntimeException) {
+            refuse(e.status.code.name, e.status.description ?: "door refused")
+        } catch (e: Exception) {
+            refuse("invalid-result", "door result or identity could not be read")
+        }
+    }
+
+    private fun statement(
+        code: String,
+        message: String,
+    ): Nothing =
+        throw AutomationException(
+            ErrorCode.STATEMENT,
+            message,
+            buildJsonObject { put("code", code) },
+        )
 
     /**
      * D-163: `RunRequest { REL_NODE, PlanNode{row_writes} }` under `run_as`'s context, no read scope (a read

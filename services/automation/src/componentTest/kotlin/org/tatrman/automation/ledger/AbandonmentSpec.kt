@@ -100,6 +100,29 @@ class AbandonmentSpec :
             counted.size shouldBe 3
         }
 
+        "an on_event run is abandoned by its sync budget plus grace, a batch run by its batch budget (D-192)" {
+            fun opened(mode: String) =
+                ledger
+                    .claimRun(
+                        RunOpen(
+                            "release_order",
+                            budgetSync = Duration.ofSeconds(60),
+                            budgetBatch = Duration.ofMinutes(30),
+                            mode = mode,
+                        ),
+                    ).runId
+            val event = opened("on_event")
+            val batch = opened("batch")
+            transaction { Runs.selectAll().where { Runs.id eq event }.single()[Runs.mode] } shouldBe "on_event"
+            clock.now = t0 + Duration.ofSeconds(60) + IdempotencyPolicy.GRACE
+            ledger.abandonExpiredRuns() shouldBe emptyList()
+            clock.now = clock.now.plusSeconds(1) // ~3 min after Open
+            ledger.abandonExpiredRuns() shouldBe listOf(event)
+            status(batch) shouldBe RunStatus.OPEN
+            clock.now = t0 + Duration.ofMinutes(30) + IdempotencyPolicy.GRACE + Duration.ofSeconds(1)
+            ledger.abandonExpiredRuns() shouldBe listOf(batch)
+        }
+
         "bounded concurrent sweepers partition expired rows, skip unexpired rows and count each commit once" {
             // An older, long-budget run must not consume a sweep's limit and starve the expired ones.
             val live = open(batch = Duration.ofDays(10))
