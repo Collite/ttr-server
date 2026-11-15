@@ -38,6 +38,7 @@ import org.tatrman.automation.apply.*
 import org.tatrman.automation.apply.ApplyRow.Companion.DECIDED
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_AT
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_OUTCOME
+import org.tatrman.automation.writer.RowOutcome
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
 import org.tatrman.automation.protocol.ProtocolEntry
@@ -114,9 +115,6 @@ data class EngineColumns(
 const val RUN_KIND_RECIPE = "recipe"
 const val RUN_KIND_QUERY = "query"
 const val RUN_KIND_PERFORM = "perform"
-
-/** The writer's error on a compare-and-set whose state already moved (`failed · stale-state`). */
-private const val STALE_STATE = "stale-state"
 
 /** One row of `GET /automation/runs` (S3.1 T4). [subject] is the recipe, the query's subject or the action. */
 data class RunListing(
@@ -295,13 +293,8 @@ class Ledger(
                         Claim.Claimed(insertRun(open, now), startedAt = now)
                     }
                     // D-195 (D): a replay and a live handle answer the dryRun the holder's row stored, like a new claim.
-                    is ClaimDecision.Replay -> Claim.Replay(decision.runId, dryRun = checkNotNull(holder).dryRun)
-                    is ClaimDecision.Wait ->
-                        Claim.Running(
-                            decision.runId,
-                            decision.status,
-                            dryRun = checkNotNull(holder).dryRun,
-                        )
+                    is ClaimDecision.Replay -> Claim.Replay(decision.runId, dryRun = decision.dryRun)
+                    is ClaimDecision.Wait -> Claim.Running(decision.runId, decision.status, dryRun = decision.dryRun)
                     is ClaimDecision.AbandonThenOpen -> {
                         Runs.update({ Runs.id eq decision.runId }) {
                             it[status] = RunStatus.ABANDONED.wire
@@ -650,7 +643,7 @@ class Ledger(
                     .filter { it.status != "staged" || it.error != null }
                     .associate {
                         it.seq to
-                            org.tatrman.automation.writer.RowOutcome(
+                            RowOutcome(
                                 it.seq,
                                 it.status,
                                 it.error,
@@ -676,12 +669,12 @@ class Ledger(
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             val staged = (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged")
             if (request == null) {
-                BatchRows.update({ staged }) { it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT }
+                BatchRows.update({ staged }) { it[error] = RowOutcome.IN_FLIGHT }
                 return@transaction
             }
             for (r in BatchRows.selectAll().where { staged }.toList()) {
                 BatchRows.update({ (BatchRows.batch eq batch) and (BatchRows.seq eq r[BatchRows.seq]) }) {
-                    it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT
+                    it[error] = RowOutcome.IN_FLIGHT
                     it[row] =
                         JsonObject(
                             (r[BatchRows.row] as? JsonObject).orEmpty() +
@@ -701,7 +694,7 @@ class Ledger(
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             BatchRows.update({
                 (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged") and
-                    (BatchRows.error eq org.tatrman.automation.writer.RowOutcome.IN_FLIGHT)
+                    (BatchRows.error eq RowOutcome.IN_FLIGHT)
             }) { it[error] = null }
         }
     }
@@ -712,7 +705,7 @@ class Ledger(
      */
     fun recordApply(
         batch: UUID,
-        outcomes: List<org.tatrman.automation.writer.RowOutcome>,
+        outcomes: List<RowOutcome>,
     ) {
         outermost("recordApply")
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
@@ -921,7 +914,7 @@ class Ledger(
             check(
                 rows.none {
                     (it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) ==
-                        JsonPrimitive(org.tatrman.automation.writer.RowOutcome.HISTORY_PENDING)
+                        JsonPrimitive(RowOutcome.HISTORY_PENDING)
                 },
             ) { "the apply did not finish: a transition's history request is unanswered" }
             val now = clock.instant().utc()
@@ -968,7 +961,7 @@ class Ledger(
                             ),
                         )
                     }
-                    put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == STALE_STATE }))
+                    put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == RowOutcome.STALE_STATE }))
                     put("history", historyCounts(rows))
                     if (waiting) {
                         // S2.3: held rows are counted apart, with their groups; each decision appends after the seal.
@@ -1005,7 +998,7 @@ class Ledger(
                 rows.any {
                     when (bucket(it)) {
                         "unknown" -> true
-                        "failed" -> it[BatchRows.error] != STALE_STATE
+                        "failed" -> it[BatchRows.error] != RowOutcome.STALE_STATE
                         else -> false
                     }
                 }

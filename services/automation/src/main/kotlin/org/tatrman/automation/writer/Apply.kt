@@ -57,6 +57,9 @@ data class RowOutcome(
         /** The durable marker set before a request leaves; found again on a retried close, it means [UNKNOWN]. */
         const val IN_FLIGHT = "in-flight"
 
+        /** A transition's compare-and-set whose state already moved: `failed · stale-state`, the verdict stands (D-67). */
+        const val STALE_STATE = "stale-state"
+
         /**
          * `history: pending` — journaled in the same write as the transition's `applied`; the `state_history` request
          * has not been answered. A retried close sends that request alone (an `if_absent` insert of the row's
@@ -330,7 +333,7 @@ class Apply(
                 WriteUnit.Kind.CAS -> {
                     val transition = requireNotNull(unit.transition)
                     if (affected == 0L) {
-                        unit.seqs.forEach { results[it] = RowOutcome(it, "failed", "stale-state", prior) }
+                        unit.seqs.forEach { results[it] = RowOutcome(it, "failed", RowOutcome.STALE_STATE, prior) }
                     } else {
                         val from = prior?.get(requireNotNull(transition.attribute))
                         val owed = transition.history == true && from != transition.to
