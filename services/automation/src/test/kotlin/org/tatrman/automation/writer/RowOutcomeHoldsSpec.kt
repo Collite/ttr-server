@@ -29,6 +29,13 @@ class RowOutcomeHoldsSpec :
                 Triple("failed", "invalid-result", true),
                 Triple("failed", "identity", true),
                 Triple("failed", "connector-unavailable", true),
+                // Transient: query's, validate's and dispatch's outages on the row_writes path (review-293 F1).
+                Triple("failed", "translator_unavailable", true),
+                Triple("failed", "validator_unavailable", true),
+                Triple("failed", "role_source_unavailable", true),
+                Triple("failed", "query_failed", true),
+                Triple("failed", "no_worker_for_connection", true),
+                Triple("failed", "no_stateful_worker_available", true),
                 Triple("failed", null, true),
                 // Settled: the verdict stands (D-67, D-201).
                 Triple("failed", RowOutcome.STALE_STATE, false),
@@ -45,6 +52,13 @@ class RowOutcomeHoldsSpec :
                 Triple("failed", "no-row", false),
                 Triple("failed", "rows-affected-0", false),
                 Triple("failed", "rows-affected-2", false),
+                // Settled: query's and dispatch's refusals of the request itself (review-293 F1).
+                Triple("failed", "out-of-scope-read", false),
+                Triple("failed", "row_writes_principal", false),
+                Triple("failed", "unknown_world", false),
+                Triple("failed", "parameter_unbound", false),
+                Triple("failed", "row_writes_schema_mismatch", false),
+                Triple("failed", "row_writes_connection_mismatch", false),
                 // Never: applied and skipped rows (a history sub-outcome is not a row status).
                 Triple("applied", null, false),
                 Triple("applied", RowOutcome.RECONCILED, false),

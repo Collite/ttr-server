@@ -83,10 +83,35 @@ data class RowOutcome(
         /**
          * D-202 (F5): the `failed` codes a later attempt may not repeat — a door or transport fault, not a verdict on the
          * row. With [TRANSIENT_PREFIXES] (`worker_*`, `connection_*`) this is the whole table of transient failures;
-         * every other `failed` code is settled.
+         * every other `failed` code is settled (✅R293-C: an unnamed code settles).
+         *
+         * Closed over today's producers of a row-write refusal (review-293 F1):
+         * - this door (`runner/Door.kt`): transient `identity`, `deadline-exceeded`, `door-transport`, `invalid-result`,
+         *   `connector-unavailable`; settled `storage-unmapped`;
+         * - query's row_writes path (`QueryServiceImpl.runRowWrites`/`compileRowWrites`): transient
+         *   `translator_unavailable`, `validator_unavailable`, `query_failed` (the catch-all, dispatch faults included);
+         *   settled `unknown_world`, `world_unspecified`, `out-of-scope-read`, `row_writes_principal`,
+         *   `parameter_unbound`, and translate's and validate's own plan refusals (`write_under_row_policy`, …);
+         * - validate: transient `role_source_unavailable` (the role enrichment source is down, fail-closed);
+         * - dispatch (`DispatchServiceImpl`): transient `no_worker_for_connection`, `no_stateful_worker_available`,
+         *   `worker_stream_failed` (a prefix); settled `row_writes_schema_mismatch`, `row_writes_connection_mismatch`,
+         *   `cross_database_not_supported`, `workspace_requires_session`, `session_lost` (no session on a row write);
+         * - the worker: `worker_*` (a prefix), transient, the duplicate key included (D-202, ~15:45).
          */
         val TRANSIENT =
-            setOf("deadline-exceeded", "door-transport", "invalid-result", "identity", "connector-unavailable")
+            setOf(
+                "deadline-exceeded",
+                "door-transport",
+                "invalid-result",
+                "identity",
+                "connector-unavailable",
+                "translator_unavailable",
+                "validator_unavailable",
+                "role_source_unavailable",
+                "query_failed",
+                "no_worker_for_connection",
+                "no_stateful_worker_available",
+            )
 
         /** D-202 (F5): door code families that are transient as a whole (the worker's and the connection's faults). */
         val TRANSIENT_PREFIXES = listOf("worker_", "connection_")

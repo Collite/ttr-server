@@ -878,6 +878,16 @@ class EngineSeamOpenSpec :
             }
         }
 
+        "review-293 F1: a close whose only failure is a door outage (translator_unavailable) holds the watermark" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            lastTo() shouldBe t0
+            clock.now += Duration.ofHours(1)
+            val id = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            closeWith(id, "failed" to "translator_unavailable", "failed" to "translator_unavailable")
+            lastTo() shouldBe t0
+            transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldNotBe id
+        }
+
         "D-202 (F3): a WAITING run whose seal did not advance blocks the next window; one that advanced does not" {
             closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
             lastTo() shouldBe t0
