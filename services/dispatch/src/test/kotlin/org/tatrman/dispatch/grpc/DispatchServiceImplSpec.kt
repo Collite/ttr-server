@@ -272,7 +272,7 @@ class DispatchServiceImplSpec :
             }
         }
 
-        "row writes refuse schema mismatches without executing but concretize a blank namespace" {
+        "row writes refuse missing default schema but preserve differing namespaces and concretize blank ones" {
             val captured = mutableListOf<ExecuteRequest>()
             val config = WorldConfig.fromConfig(ConfigFactory.parseString("world.default-connection = cz"))
             val infos =
@@ -280,7 +280,7 @@ class DispatchServiceImplSpec :
                     ConnectionInfo
                         .newBuilder()
                         .setConnectionId(it)
-                        .setDefaultSchema("cz")
+                        .setDefaultSchema("public")
                         .build()
                 }
             val (svc, _) =
@@ -318,28 +318,37 @@ class DispatchServiceImplSpec :
                         .build(),
                 ).toList()
                 .single()
-            dispatch(plan("us")).messagesList.single().code shouldBe "row_writes_schema_mismatch"
-            captured.size shouldBe 0
+            val mismatched = dispatch(plan("dbo"))
+            mismatched.messagesCount shouldBe 0
+            mismatched.context.warningsList.map { it.code } shouldContain "schema_mismatch"
+            captured
+                .single()
+                .plan.rowWrites.rowsList
+                .single()
+                .target.namespace shouldBe "dbo"
+            captured.clear()
             val (legacy, _) =
                 fixture(connections = listOf("cz"), worldConfig = config, execute = {
                     captured += it
                     defaultStream()
                 })
-            legacy
-                .dispatch(DispatchRequest.newBuilder().setPlan(plan("cz")).build())
-                .toList()
-                .single()
-                .messagesList
-                .single()
-                .code shouldBe "row_writes_schema_mismatch"
+            val refused =
+                legacy
+                    .dispatch(DispatchRequest.newBuilder().setPlan(plan("cz")).build())
+                    .toList()
+                    .single()
+                    .messagesList
+                    .single()
+            refused.code shouldBe "row_writes_schema_mismatch"
+            refused.humanMessage shouldBe "connection 'cz' advertises no default_schema"
             captured.size shouldBe 0
             dispatch(plan("")).messagesCount shouldBe 0
             captured
                 .single()
                 .plan.rowWrites.rowsList
                 .single()
-                .target.namespace shouldBe "cz"
-            dispatch(plan("cz")).messagesCount shouldBe 0
+                .target.namespace shouldBe "public"
+            dispatch(plan("public")).messagesCount shouldBe 0
             captured.size shouldBe 2
             val read = dispatch(scan(qname("db", "us", "obligation")), "other")
             read.messagesCount shouldBe 0
