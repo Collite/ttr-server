@@ -4,19 +4,15 @@ package org.tatrman.automation.writer
 import com.google.protobuf.ByteString
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import org.tatrman.automation.bundle.Bundle
 import org.tatrman.automation.bundle.ManifestColumn
 import org.tatrman.automation.runner.ArrowTables
 import org.tatrman.automation.runner.QueryRun
 import org.tatrman.automation.runner.Table
 import org.tatrman.common.v1.ResponseMessage
 import org.tatrman.common.v1.Severity
-import org.tatrman.plan.v1.ColumnValue
-import org.tatrman.plan.v1.Expression
 import org.tatrman.plan.v1.ParameterBinding
 import org.tatrman.plan.v1.PlanNode
-import org.tatrman.plan.v1.QualifiedName
-import org.tatrman.plan.v1.RowWrite
-import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.Value
 import org.tatrman.query.v1.CompileResponse
 import org.tatrman.query.v1.RunRequest
@@ -24,6 +20,8 @@ import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.SqlDialect
 import org.tatrman.translator.codec.sql.RowWriteUnparseException
 import org.tatrman.translator.codec.sql.RowWriteUnparser
+import org.tatrman.translator.schema.MapToPhysical
+import org.tatrman.translator.schema.MapToPhysicalResult
 import org.tatrman.worker.v1.ResultBatch
 import java.sql.PreparedStatement
 import java.sql.Timestamp
@@ -35,22 +33,21 @@ import java.util.Collections
 import javax.sql.DataSource
 
 /**
- * S2.2's component fake for the `QueryRun` seam (the scope fence's one file). A `row_writes` request is lowered with
- * the fixture world's binding — a test map, entity → table and `entity.attribute` → column, the identity otherwise —
- * then each row is unparsed by the **pinned translator's** `RowWriteUnparser` (primary-key columns from the
- * catalog) and the request runs in one JDBC transaction on the test Postgres, under `search_path` = the world
- * alias's schema. It answers `seq`/`rows_affected`/`prior` per row, and fails as worker-postgres does
- * (`row_writes seq N: …`, rolled back; `row_writes commit: …`). This is D2's contract; the fake writes no SQL.
+ * Query's write seam on a real Postgres: the fixture bundle supplies the model and bindings to
+ * production SnapshotModelHandle placement and the pinned MapToPhysical. Like Dispatch, fill only
+ * empty target namespaces; preserve logical namespaces on mismatches. Unparse with model keys and
+ * execute one transaction per request under the alias's search_path, as worker-postgres does.
  */
 class RowWritesQueryFake(
     private val dataSource: DataSource,
     /** Query world alias → the schema its writer connection's `default-schema` names. */
     private val worlds: Map<String, String>,
-    private val tables: Map<String, String> = emptyMap(),
-    private val columns: Map<String, String> = emptyMap(),
+    bundle: () -> Bundle,
     /** Every non-`row_writes` request (the door's reads). */
     private val reads: QueryRun? = null,
 ) : QueryRun {
+    private val model by lazy { writerModelHandle(bundle()) }
+
     /** Every `row_writes` request, as sent (a dry run must leave this empty). */
     val writes: MutableList<RunRequest> = Collections.synchronizedList(mutableListOf())
 
@@ -76,17 +73,33 @@ class RowWritesQueryFake(
         val schema = worlds[request.world] ?: return error(request, "unknown_world", "no writer world ${request.world}")
         val plan = PlanNode.parseFrom(request.source.toByteArray(Charsets.ISO_8859_1))
         check(plan.nodeCase == PlanNode.NodeCase.ROW_WRITES) { "not a row_writes root" }
+        val physical =
+            when (val result = MapToPhysical.apply(plan, model)) {
+                is MapToPhysicalResult.Success -> result.plan
+                is MapToPhysicalResult.Failure -> return error(request, result.code, result.message)
+            }
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             val statements =
-                plan.rowWrites.rowsList.mapIndexed { seq, row ->
-                    val lowered = lower(row)
+                physical.rowWrites.rowsList.mapIndexed { seq, row ->
+                    val lowered =
+                        if (row.target.namespace.isEmpty()) {
+                            row.toBuilder().setTarget(row.target.toBuilder().setNamespace(schema)).build()
+                        } else {
+                            row
+                        }
                     try {
                         RowWriteUnparser.unparse(
                             lowered,
                             SqlDialect.POSTGRESQL,
                             request.context.parametersList,
-                            primaryKey(connection, schema, lowered.target.name),
+                            model
+                                .tables(
+                                    lowered.target.schemaCode,
+                                    lowered.target.namespace,
+                                )[lowered.target]
+                                ?.primaryKey
+                                .orEmpty(),
                         )
                     } catch (e: RowWriteUnparseException) {
                         return error(request, e.code, "row_writes seq $seq: ${e.message}")
@@ -136,64 +149,6 @@ class RowWritesQueryFake(
                 .build()
         }
     }
-
-    /** Query's MapToPhysical for row writes, over the test map. `prior_keys` keep the names as sent (R219-A). */
-    private fun lower(row: RowWrite): RowWrite {
-        check(row.target.schemaCode == SchemaCode.ER) { "the writer sends ER targets" }
-        val entity = row.target.name
-
-        fun column(name: String) = columns["$entity.$name"] ?: name
-
-        fun expression(expr: Expression): Expression =
-            when {
-                expr.hasColumnRef() ->
-                    expr
-                        .toBuilder()
-                        .setColumnRef(
-                            expr.columnRef.toBuilder().setName(column(expr.columnRef.name)),
-                        ).build()
-                expr.hasFunction() ->
-                    expr
-                        .toBuilder()
-                        .setFunction(
-                            expr.function.toBuilder().clearOperands().addAllOperands(
-                                expr.function.operandsList.map(::expression),
-                            ),
-                        ).build()
-                else -> expr
-            }
-        return row
-            .toBuilder()
-            .setTarget(
-                QualifiedName.newBuilder().setSchemaCode(SchemaCode.DB).setNamespace("dbo").setName(
-                    tables[entity] ?: entity,
-                ),
-            ).clearValues()
-            .addAllValues(
-                row.valuesList.map {
-                    ColumnValue
-                        .newBuilder()
-                        .setName(column(it.name))
-                        .setValue(it.value)
-                        .build()
-                },
-            ).apply { if (row.hasWhere()) setWhere(expression(row.where)) }
-            .clearReadBefore()
-            .addAllReadBefore(row.readBeforeList.map(::column))
-            .apply { if (row.priorKeysCount == 0) addAllPriorKeys(row.readBeforeList) }
-            .build()
-    }
-
-    private fun primaryKey(
-        connection: java.sql.Connection,
-        schema: String,
-        table: String,
-    ): List<String> =
-        connection.metaData.getPrimaryKeys(null, schema, table).use { rows ->
-            buildList { while (rows.next()) add(rows.getInt("KEY_SEQ") to rows.getString("COLUMN_NAME")) }
-                .sortedBy { it.first }
-                .map { it.second }
-        }
 
     /** worker-postgres `ExecutePipeline.bindParameters`, verbatim in behaviour. */
     private fun bind(
