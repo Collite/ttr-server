@@ -3,6 +3,10 @@ package org.tatrman.automation.runner
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import org.tatrman.automation.writer.RowOutcome
+import org.tatrman.automation.apply.ApplyRow
+import io.kotest.matchers.shouldNotBe
+import io.kotest.assertions.withClue
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CoroutineScope
@@ -155,6 +159,34 @@ class EngineSeamOpenSpec :
                 id,
                 EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()),
                 PreviewPlan(UUID.randomUUID().toString(), id.toString(), emptyList(), emptyList()),
+            )
+            ledger.closeCommitted(id, maya.sub)
+        }
+
+        /** A wet close whose rows the door answered [outcomes] (status to error; `staged` + error = an unknown row). */
+        fun closeWith(
+            id: UUID,
+            vararg outcomes: Pair<String, String?>,
+        ) {
+            val rows =
+                outcomes.indices.map { i ->
+                    ApplyRow(
+                        i + 1,
+                        "er.entity.release_order_verdict",
+                        "insert",
+                        buildJsonObject { put("order_number", "47${10 + i}") },
+                        row = buildJsonObject { put("order_number", "47${10 + i}") },
+                    )
+                }
+            ledger.completeEvaluation(
+                id,
+                EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()),
+                PreviewPlan(UUID.randomUUID().toString(), id.toString(), rows, emptyList()),
+            )
+            val batch = ledger.applyState(id, maya.sub).batch
+            ledger.recordApply(
+                batch,
+                outcomes.mapIndexed { i, (status, error) -> RowOutcome(i + 1, status, error) },
             )
             ledger.closeCommitted(id, maya.sub)
         }
@@ -714,6 +746,61 @@ class EngineSeamOpenSpec :
                 release.countDown()
                 runBlocking { listOf(held, answer).awaitAll() }
                 scope.cancel()
+            }
+        }
+
+        "D-195 (C): a close with any failed or unknown row seals but holds the watermark; the next window re-reads" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            lastTo() shouldBe t0
+            for ((case, outcomes) in listOf(
+                "failed" to arrayOf("applied" to null, "failed" to "write_under_row_policy"),
+                "unknown" to arrayOf("applied" to null, "staged" to RowOutcome.UNKNOWN),
+            )) {
+                clock.now += Duration.ofHours(1)
+                val held = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+                window(held)["from"] shouldBe JsonPrimitive(t0.toString())
+                closeWith(held, *outcomes)
+                ledger.findRun(held)!!.status shouldBe RunStatus.CLOSED
+                withClue(case) { lastTo() shouldBe t0 }
+                transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldNotBe held
+            }
+            // Applied and skipped rows only: the window advances, from the held one's old last_to.
+            clock.now += Duration.ofHours(1)
+            val clean = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            window(clean)["from"] shouldBe JsonPrimitive(t0.toString())
+            closeWith(clean, "applied" to null, "skipped" to "if_absent")
+            lastTo() shouldBe clock.now
+            transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldBe clean
+        }
+
+        "D-195 (D): a same-key 202 and 200 carry the stored dryRun — true for a forced dry run, false for a wet one" {
+            val forced =
+                plain.copy(
+                    deployments =
+                        plain.deployments + (deployment to plain.deployments.getValue(deployment).copy(dryRun = true)),
+                )
+            val keyed = OpenRequest(deployment, keyPort(), dryRun = false, idempotencyKey = "engine-1")
+            val first = open(forced).open(recipe, keyed, maya)
+            first.response.dryRun shouldBe true
+            val running = open(forced).open(recipe, keyed, maya)
+            running.httpStatus shouldBe 202
+            running.response.dryRun shouldBe true
+            val id = runId(first)
+            ledger.completeEvaluation(
+                id,
+                EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()),
+                PreviewPlan(UUID.randomUUID().toString(), id.toString(), emptyList(), emptyList()),
+            )
+            ledger.closePreview(id, maya.sub)
+            val replay = open(forced).open(recipe, keyed, maya)
+            replay.httpStatus shouldBe 200
+            replay.response.dryRun shouldBe true
+
+            val wet = OpenRequest(deployment, keyPort(), idempotencyKey = "engine-2")
+            open(plain).open(recipe, wet, maya).httpStatus shouldBe 201
+            open(plain).open(recipe, wet, maya).let {
+                it.httpStatus shouldBe 202
+                it.response.dryRun shouldBe false
             }
         }
 

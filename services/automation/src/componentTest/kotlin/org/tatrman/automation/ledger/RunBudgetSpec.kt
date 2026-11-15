@@ -214,7 +214,7 @@ class RunBudgetSpec :
             queue.enqueue(id, owner)
             clock.now = t0 + budget
             budgetRefusal { ledger.completeEvaluation(id, result) }
-            ledger.claimRun(original) shouldBe Claim.Running(id, RunStatus.OPEN)
+            ledger.claimRun(original) shouldBe Claim.Running(id, RunStatus.OPEN, dryRun = false)
             ledger.abandonExpiredRuns() shouldBe emptyList()
             clock.now = t0 + budget + IdempotencyPolicy.GRACE + Duration.ofNanos(1000)
             val successor = ledger.claimRun(original) as Claim.Claimed

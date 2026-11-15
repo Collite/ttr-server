@@ -290,8 +290,10 @@ class Ledger(
                         Watermark.guardOpen(open)
                         Claim.Claimed(insertRun(open, now), startedAt = now)
                     }
-                    is ClaimDecision.Replay -> Claim.Replay(decision.runId)
-                    is ClaimDecision.Wait -> Claim.Running(decision.runId, decision.status)
+                    // D-195 (D): a replay and a live handle answer the dryRun the holder's row stored, like a new claim.
+                    is ClaimDecision.Replay -> Claim.Replay(decision.runId, dryRun = checkNotNull(row)[Runs.dryRun])
+                    is ClaimDecision.Wait ->
+                        Claim.Running(decision.runId, decision.status, dryRun = checkNotNull(row)[Runs.dryRun])
                     is ClaimDecision.AbandonThenOpen -> {
                         Runs.update({ Runs.id eq decision.runId }) {
                             it[status] = RunStatus.ABANDONED.wire
@@ -988,7 +990,10 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            seal(runId, batchId, dryRun = false, now, row[Runs.program], row[Runs.port])
+            // D-195 (C): a failed or unknown row holds the watermark — the run seals, the next window re-reads from the
+            // old last_to (the writer's compare-and-set keeps the re-apply idempotent per key). Held rows are not counted.
+            val holdsWatermark = (counts["failed"] ?: 0) + (counts["unknown"] ?: 0) > 0
+            seal(runId, batchId, dryRun = false, now, row[Runs.program], row[Runs.port], advance = !holdsWatermark)
             ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             val status = if (waiting) RunStatus.WAITING else RunStatus.CLOSED
             Runs.update({ Runs.id eq runId }) {
@@ -1012,6 +1017,7 @@ class Ledger(
         now: OffsetDateTime,
         program: String?,
         port: JsonElement,
+        advance: Boolean = !dryRun,
     ) {
         val closure =
             kotlinx.serialization.json.buildJsonObject {
@@ -1030,9 +1036,10 @@ class Ledger(
                 it[at] = now
             }
         }
-        if (!dryRun) {
+        if (!dryRun && advance) {
             // D-143 (S3.2 T2): a wet windowed run's seal advances the program's watermark, in this transaction
-            // (review-280 F7: [program] and [port] come from the row the close already holds FOR UPDATE).
+            // (review-280 F7: [program] and [port] come from the row the close already holds FOR UPDATE);
+            // D-195 (C): not when the close had a failed or unknown row ([advance] false).
             Watermark.advanceAtSeal(runId, program, port, now)
         }
         if (onRouteSilent(runId)) {

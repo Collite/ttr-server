@@ -305,12 +305,24 @@ class OpenSpec :
 
         "response matrix: closed replays 200; a live claim returns 202 and no second context" {
             val id = UUID.randomUUID()
-            val replay = service(claim = { Claim.Replay(id) }).open(recipe, request(), caller)
+            val replay = service(claim = { Claim.Replay(id, dryRun = false) }).open(recipe, request(), caller)
             replay.httpStatus shouldBe 200
             replay.response.replayed shouldBe true
             replay.response.protocolRef shouldBe "protocol:$id"
             replay.context shouldBe null
-            val running = service(claim = { Claim.Running(id, RunStatus.EVALUATED) }).open(recipe, request(), caller)
+            replay.response.dryRun shouldBe false
+            service(
+                claim = { Claim.Replay(id, dryRun = true) },
+            ).open(recipe, request(), caller).response.dryRun shouldBe
+                true
+            val running =
+                service(claim = {
+                    Claim.Running(id, RunStatus.EVALUATED, dryRun = false)
+                }).open(recipe, request(), caller)
+            running.response.dryRun shouldBe false
+            service(claim = { Claim.Running(id, RunStatus.EVALUATED, dryRun = true) })
+                .open(recipe, request(), caller)
+                .response.dryRun shouldBe true
             running.httpStatus shouldBe 202
             running.response.status shouldBe "evaluated"
             running.response.location shouldBe "/automation/runs/$id"
