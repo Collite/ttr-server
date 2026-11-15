@@ -28,6 +28,8 @@ import org.tatrman.translate.v1.UnparseRequest
 import org.tatrman.translate.v1.UnparseResponse
 import org.slf4j.LoggerFactory
 import org.tatrman.translate.model.ModelHandleProvider
+import org.tatrman.translate.snapshot.withPlanNamespaces
+import org.tatrman.translator.framework.ModelHandle
 import org.tatrman.translator.codec.transdsl.TransDslCodec
 import org.tatrman.translator.joiner.JoinerMessages
 import org.tatrman.translator.joiner.JoinerWarning
@@ -76,7 +78,7 @@ class TranslatorServiceImpl(
             } catch (e: QueryRefResolutionException) {
                 return builder.addMessages(errorMessage(e.code, e.message ?: "query_ref resolution failed")).build()
             }
-        val handle = modelProvider.current()
+        val handle = sourceHandle(modelProvider.current(), request.source, request.sourceLanguage)
         val result =
             Translator(handle).parseToRelNode(
                 source = request.source,
@@ -120,7 +122,7 @@ class TranslatorServiceImpl(
     }
 
     override suspend fun unparseFromRelNode(request: UnparseRequest): UnparseResponse {
-        val translator = Translator(modelProvider.current())
+        val translator = Translator(withPlanNamespaces(modelProvider.current(), request.plan))
         val result =
             translator.unparseFromRelNode(
                 plan = request.plan,
@@ -177,7 +179,7 @@ class TranslatorServiceImpl(
                 return builder.addMessages(errorMessage(e.code, e.message ?: "query_ref resolution failed")).build()
             }
         val result =
-            Translator(modelProvider.current()).translate(
+            Translator(sourceHandle(modelProvider.current(), request.source, request.sourceLanguage)).translate(
                 source = request.source,
                 sourceLanguage = request.sourceLanguage,
                 targetLanguage = request.targetLanguage,
@@ -196,8 +198,20 @@ class TranslatorServiceImpl(
         }
     }
 
+    private fun sourceHandle(
+        handle: ModelHandle,
+        source: String,
+        language: Language,
+    ): ModelHandle =
+        if (language == Language.REL_NODE) {
+            // Invalid wire bytes remain the pinned translator's structured decode failure.
+            runCatching { withPlanNamespaces(handle, PlanNode.parseFrom(source.toByteArray(Charsets.ISO_8859_1))) }
+                .getOrDefault(handle)
+        } else {
+            handle
+        }
+
     override suspend fun explain(request: ExplainRequest): ExplainResponse {
-        val translator = Translator(modelProvider.current())
         val (sourceLanguage, sourceText, finalKind) =
             when (request.reqCase) {
                 ExplainRequest.ReqCase.PARSE ->
@@ -218,6 +232,8 @@ class TranslatorServiceImpl(
                             ),
                         ).build()
             }
+
+        val translator = Translator(sourceHandle(modelProvider.current(), sourceText, sourceLanguage))
 
         // The option the parse that runs takes, so Explain shows that parse's refusal rather than a plan it refuses.
         val r =

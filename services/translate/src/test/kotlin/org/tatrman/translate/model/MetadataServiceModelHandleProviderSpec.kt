@@ -131,6 +131,52 @@ class MetadataServiceModelHandleProviderSpec :
             handle.tables(SchemaCode.ER, "entity") shouldBe emptyMap()
         }
 
+        "refreshOnce passes both placement allowlists to the snapshot handle" {
+            val er = QualifiedName.newBuilder().setSchemaCode(SchemaCode.ER).setNamespace("entity")
+            val snapshot = ModelSnapshot.newBuilder()
+            for ((name, pkg) in listOf("obligation" to "", "verdict" to "generated", "sales" to "hartland")) {
+                snapshot.addObjects(
+                    ObjectEntry
+                        .newBuilder()
+                        .setObjectDescriptor(
+                            ObjectDescriptor
+                                .newBuilder()
+                                .setQualifiedName(
+                                    er.clone().setName(name),
+                                ).setPackageName(pkg),
+                        ).setEntity(
+                            org.tatrman.meta.v1.EntityDetail
+                                .getDefaultInstance(),
+                        ),
+                )
+            }
+            val provider =
+                MetadataServiceModelHandleProvider(
+                    getSnapshot = {
+                        GetSnapshotResponse
+                            .newBuilder()
+                            .setSnapshot(snapshot)
+                            .setEtag("v1")
+                            .build()
+                    },
+                    placedPackages = setOf("generated"),
+                    placedEntities = setOf("obligation"),
+                )
+            provider.refreshOnce()
+            val handle = provider.current()
+            for (name in listOf("obligation", "verdict")) {
+                handle.entityMapping(er.clone().setName(name).build()) shouldBe
+                    org.tatrman.translator.framework.EntityMapping.ToTable(
+                        QualifiedName
+                            .newBuilder()
+                            .setSchemaCode(SchemaCode.DB)
+                            .setName(name)
+                            .build(),
+                    )
+            }
+            handle.entityMapping(er.clone().setName("sales").build()) shouldBe null
+        }
+
         "refreshOnce with not_modified keeps the current model" {
             val responses =
                 ArrayDeque(

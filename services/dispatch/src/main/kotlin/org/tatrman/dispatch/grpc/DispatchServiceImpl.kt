@@ -79,13 +79,14 @@ class DispatchServiceImpl(
         // hasn't advertised one (legacy / Phase-B-only workers).
         val info = worker.connectionInfo(routing.connectionId)
         val rewriteResult = PlanQnameRewriter.applyDefaultSchema(request.plan, info?.defaultSchema.orEmpty())
-        if (request.plan.nodeCase == PlanNode.NodeCase.ROW_WRITES &&
-            (info?.defaultSchema.isNullOrBlank() || rewriteResult.mismatches.isNotEmpty())
-        ) {
+        // D-199 / contracts Amendment 2026-11-15 amends R235-C: the connection's search_path
+        // selects the physical schema. A logical namespace mismatch protects nothing (review-238 H2)
+        // and must stay intact for translate's key lookup; only an unadvertised schema is refused.
+        if (request.plan.nodeCase == PlanNode.NodeCase.ROW_WRITES && info?.defaultSchema.isNullOrBlank()) {
             return flowOf(
                 errorBatch(
                     "row_writes_schema_mismatch",
-                    "Row-write targets must match connection '${routing.connectionId}' default_schema '${info?.defaultSchema.orEmpty()}'.",
+                    "connection '${routing.connectionId}' advertises no default_schema",
                 ),
             )
         }
