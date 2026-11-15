@@ -211,11 +211,16 @@ class PlacedEntitySpec :
                                     .setNamespace(namespace),
                             ),
                         ).build()
-                val result =
-                    Translator(handle)
-                        .unparseFromRelNode(concrete, Language.SQL, SqlDialect.POSTGRESQL)
-                        .shouldBeInstanceOf<UnparseResult.Success>()
-                result.output shouldContain "obligation"
+                val view = withPlanNamespaces(handle, concrete)
+                val result = Translator(view).unparseFromRelNode(concrete, Language.SQL, SqlDialect.POSTGRESQL)
+                if (namespace.isEmpty()) {
+                    result.shouldBeInstanceOf<UnparseResult.Failure>().code shouldBe "sql_unparse_failed"
+                } else {
+                    result.shouldBeInstanceOf<UnparseResult.Success>().output shouldContain "\"obligation\""
+                    view.namespaces(SchemaCode.DB) shouldBe handle.namespaces(SchemaCode.DB) + namespace
+                    handle.namespaces(SchemaCode.DB) shouldBe setOf("")
+                    view.entities(SchemaCode.ER, "entity") shouldBe handle.entities(SchemaCode.ER, "entity")
+                }
             }
         }
     })
