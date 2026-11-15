@@ -773,6 +773,30 @@ class EngineSeamOpenSpec :
             transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldBe clean
         }
 
+        "D-201: a close whose only failure is stale-state advances; any other failed or unknown row still holds" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            lastTo() shouldBe t0
+            for ((case, outcomes) in listOf(
+                "stale-state + failed" to arrayOf("failed" to "stale-state", "failed" to "write_under_row_policy"),
+                "stale-state + unknown" to arrayOf("failed" to "stale-state", "staged" to RowOutcome.UNKNOWN),
+            )) {
+                clock.now += Duration.ofHours(1)
+                val held = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+                window(held)["from"] shouldBe JsonPrimitive(t0.toString())
+                closeWith(held, *outcomes)
+                ledger.findRun(held)!!.status shouldBe RunStatus.CLOSED
+                withClue(case) { lastTo() shouldBe t0 }
+            }
+            // The re-read window: its already-applied transitions come back stale-state — settled, so it advances.
+            clock.now += Duration.ofHours(1)
+            val reread = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            window(reread)["from"] shouldBe JsonPrimitive(t0.toString())
+            closeWith(reread, "failed" to "stale-state", "applied" to null, "failed" to "stale-state")
+            ledger.findRun(reread)!!.status shouldBe RunStatus.CLOSED
+            lastTo() shouldBe clock.now
+            transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldBe reread
+        }
+
         "D-195 (D): a same-key 202 and 200 carry the stored dryRun — true for a forced dry run, false for a wet one" {
             val forced =
                 plain.copy(

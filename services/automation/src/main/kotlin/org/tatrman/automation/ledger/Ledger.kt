@@ -115,6 +115,9 @@ const val RUN_KIND_RECIPE = "recipe"
 const val RUN_KIND_QUERY = "query"
 const val RUN_KIND_PERFORM = "perform"
 
+/** The writer's error on a compare-and-set whose state already moved (`failed · stale-state`). */
+private const val STALE_STATE = "stale-state"
+
 /** One row of `GET /automation/runs` (S3.1 T4). [subject] is the recipe, the query's subject or the action. */
 data class RunListing(
     val id: UUID,
@@ -960,7 +963,7 @@ class Ledger(
                             ),
                         )
                     }
-                    put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == "stale-state" }))
+                    put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == STALE_STATE }))
                     put("history", historyCounts(rows))
                     if (waiting) {
                         // S2.3: held rows are counted apart, with their groups; each decision appends after the seal.
@@ -992,7 +995,16 @@ class Ledger(
             }
             // D-195 (C): a failed or unknown row holds the watermark — the run seals, the next window re-reads from the
             // old last_to (the writer's compare-and-set keeps the re-apply idempotent per key). Held rows are not counted.
-            val holdsWatermark = (counts["failed"] ?: 0) + (counts["unknown"] ?: 0) > 0
+            // D-201: a `failed · stale-state` row is settled (the state already moved; D-67) and does not hold — else a
+            // re-read window fails its already-applied transitions stale-state forever. History sub-outcomes do not count.
+            val holdsWatermark =
+                rows.any {
+                    when (bucket(it)) {
+                        "unknown" -> true
+                        "failed" -> it[BatchRows.error] != STALE_STATE
+                        else -> false
+                    }
+                }
             seal(runId, batchId, dryRun = false, now, row[Runs.program], row[Runs.port], advance = !holdsWatermark)
             ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             val status = if (waiting) RunStatus.WAITING else RunStatus.CLOSED
@@ -1039,7 +1051,7 @@ class Ledger(
         if (!dryRun && advance) {
             // D-143 (S3.2 T2): a wet windowed run's seal advances the program's watermark, in this transaction
             // (review-280 F7: [program] and [port] come from the row the close already holds FOR UPDATE);
-            // D-195 (C): not when the close had a failed or unknown row ([advance] false).
+            // D-195 (C): not when the close had a failed (other than stale-state, D-201) or unknown row ([advance] false).
             Watermark.advanceAtSeal(runId, program, port, now)
         }
         if (onRouteSilent(runId)) {
