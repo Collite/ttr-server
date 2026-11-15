@@ -88,12 +88,16 @@ object Watermark {
     }
 
     /**
-     * ✅R280-A (review-280 F1): called by the claim, in its transaction, after [lockProgram] and before a new wet
-     * watermark run is inserted. The program lock serialises its watermark opens across replicas; the claim runs read
-     * committed, so these reads see every seal and claim committed before it. While another wet watermark run of the
-     * program is unsealed (`open · running · evaluated` — a `waiting` run sealed and advanced already), or when the
-     * watermark moved past this open's `from` since Open resolved it, the open refuses `409 window-open`: the two
-     * runs would cover the same range. A dry run and an explicit window neither block nor are blocked.
+     * ✅R280-A (review-280 F1) + D-202 (F3): called by the claim, in its transaction, after [lockProgram] and before a
+     * new wet watermark run is inserted. The program lock serialises its watermark opens across replicas; the claim runs
+     * read committed, so these reads see every seal and claim committed before it. The open refuses `409 window-open`
+     * (the two runs would cover the same range) while another wet watermark run of the program
+     * - is unsealed (`open · running · evaluated`; detail `reason: unsealed`), or
+     * - is `waiting` and its seal did not advance (its window's `to` is past the watermark: a transient row held it,
+     *   D-195 (C)) — a re-read now would evaluate its held rows again (`reason: waiting`; a `waiting` run whose seal
+     *   advanced does not block), or
+     * when the watermark moved past this open's `from` since Open resolved it (`reason: moved`). A dry run and an
+     * explicit window neither block nor are blocked.
      */
     internal fun guardOpen(open: RunOpen) {
         if (!guards(open)) return
@@ -103,6 +107,7 @@ object Watermark {
         val from = Instant.parse(window.getValue("from").jsonPrimitive.content)
         val to = Instant.parse(window.getValue("to").jsonPrimitive.content)
         val names = window.getValue("windows").jsonArray.map { it.jsonPrimitive.content }
+        val (watermark, advancedBy) = current(program, names)
         val unsealed =
             tx.exec(
                 """
@@ -115,18 +120,41 @@ object Watermark {
                 """.trimIndent(),
                 listOf<Pair<IColumnType<*>, Any>>(TextColumnType() to program),
             ) { rs -> if (rs.next()) rs.getObject(1, UUID::class.java) else null }
-        val (watermark, advancedBy) = current(program, names)
-        if (unsealed == null && watermark == from) return
+        val waiting =
+            tx.exec(
+                """
+                SELECT id FROM automation.runs
+                WHERE program = ? AND NOT dry_run AND status = '${RunStatus.WAITING.wire}'
+                  AND (port -> '$PORT_KEY' ->> 'watermark') = 'true'
+                  AND (port -> '$PORT_KEY' ->> 'to')::timestamptz > ?
+                ORDER BY started_at
+                LIMIT 1
+                """.trimIndent(),
+                listOf<Pair<IColumnType<*>, Any>>(
+                    TextColumnType() to program,
+                    JavaOffsetDateTimeColumnType() to watermark.atOffset(ZoneOffset.UTC),
+                ),
+            ) { rs -> if (rs.next()) rs.getObject(1, UUID::class.java) else null }
+        val reason =
+            when {
+                unsealed != null -> "unsealed"
+                waiting != null -> "waiting"
+                watermark != from -> "moved"
+                else -> return
+            }
         throw AutomationException(
             ErrorCode.WINDOW_OPEN,
-            if (unsealed != null) {
-                "another run of program $program holds its window until it closes"
-            } else {
-                "the watermark of program $program moved since this open resolved its window"
+            when (reason) {
+                "unsealed" -> "another run of program $program holds its window until it closes"
+                "waiting" ->
+                    "a waiting run of program $program did not advance its watermark; it holds the window until its " +
+                        "held groups are decided"
+                else -> "the watermark of program $program moved since this open resolved its window"
             },
             buildJsonObject {
                 put("program", program)
-                put("run", (unsealed ?: advancedBy)?.toString())
+                put("run", (unsealed ?: waiting ?: advancedBy)?.toString())
+                put("reason", reason)
                 put("from", from.toString())
                 put("to", to.toString())
                 put("watermark", watermark.toString())

@@ -878,6 +878,44 @@ class EngineSeamOpenSpec :
             }
         }
 
+        "D-202 (F3): a WAITING run whose seal did not advance blocks the next window; one that advanced does not" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            lastTo() shouldBe t0
+            // Clean auto rows + an undecided group: WAITING, and the seal advanced — the next window opens.
+            clock.now += Duration.ofHours(1)
+            val advanced = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            closeWith(advanced, "applied" to null, held = 1)
+            ledger.findRun(advanced)!!.status shouldBe RunStatus.WAITING
+            lastTo() shouldBe clock.now
+            val advancedTo = clock.now
+            clock.now += Duration.ofHours(1)
+            val held = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            window(held)["from"] shouldBe JsonPrimitive(advancedTo.toString())
+            // A transient row + an undecided group: WAITING, and the seal did not advance.
+            closeWith(held, "failed" to "worker_execution_failed", held = 1)
+            ledger.findRun(held)!!.status shouldBe RunStatus.WAITING
+            lastTo() shouldBe advancedTo
+            clock.now += Duration.ofHours(1)
+            val refused =
+                shouldThrow<AutomationException> {
+                    open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)
+                }
+            refused.code shouldBe ErrorCode.WINDOW_OPEN
+            refused.detail!!.jsonObject.let {
+                it["run"] shouldBe JsonPrimitive(held.toString())
+                it["reason"] shouldBe JsonPrimitive("waiting")
+                it["watermark"] shouldBe JsonPrimitive(advancedTo.toString())
+            }
+            val before = runs()
+            // A dry open and an explicit window are never blocked.
+            open(windowed).open(recipe, OpenRequest(deployment, windowPort(), dryRun = true), maya).httpStatus shouldBe
+                201
+            open(windowed)
+                .open(recipe, OpenRequest(deployment, windowPort(from = advancedTo.toString())), maya)
+                .httpStatus shouldBe 201
+            runs() shouldBe before + 2
+        }
+
         "review-285 N3: a history sub-outcome and an undecided held group do not hold the watermark" {
             closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
             lastTo() shouldBe t0
