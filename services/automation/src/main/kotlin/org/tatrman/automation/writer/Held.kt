@@ -74,6 +74,8 @@ class Held(
                     context.entities,
                     context.routes,
                     held.statuses.mapNotNull { it.recorded() }.associateBy { it.seq },
+                    // review-293 F8 (✅R293-B): a re-read's held row an earlier run already applied is not resent.
+                    settled = held.settled,
                 )
             // review-258 B3 (D-188): a retried commit re-reads each request an earlier attempt lost the answer to. A request
             // the re-read proves applied is never resent; otherwise only a lone transition whose key is in a state its

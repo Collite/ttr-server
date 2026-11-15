@@ -14,14 +14,14 @@ import org.tatrman.automation.migrateLedger
  */
 class OwnerMigrationSpec :
     StringSpec({
-        "the ledger migrates V1–V12 as a plain database owner, and V12 leaves no queue schema behind" {
+        "the ledger migrates V1–V13 as a plain database owner, and V12 leaves no queue schema behind" {
             LedgerTestDb.asSuperuser {
                 it.execute("CREATE ROLE ledger_owner LOGIN PASSWORD 'owner' NOSUPERUSER NOCREATEDB NOCREATEROLE")
                 it.execute("CREATE DATABASE ledger_owned OWNER ledger_owner")
             }
             val owned = LedgerTestDb.dataSource("ledger_owned", "ledger_owner", "owner")
 
-            migrateLedger(owned) shouldBe 12
+            migrateLedger(owned) shouldBe 13
 
             owned.connection.use { c ->
                 c.createStatement().use { s ->

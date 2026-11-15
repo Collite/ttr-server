@@ -240,6 +240,8 @@ class TypedPerform(
                             .orEmpty()
                             .map { it.name },
                         units = listOf(rows.map { it.seq }),
+                        // review-293 F8: no `settled` — a typed perform's run is keyed (`port: {key}`), never a
+                        // watermark run, so nothing settles it (settlement is a windowed re-read's, D-202 (F2)).
                     ),
                     journal,
                 )

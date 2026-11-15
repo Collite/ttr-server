@@ -57,6 +57,9 @@ data class RowOutcome(
         /** The durable marker set before a request leaves; found again on a retried close, it means [UNKNOWN]. */
         const val IN_FLIGHT = "in-flight"
 
+        /** A transition's compare-and-set whose state already moved: `failed · stale-state`, the verdict stands (D-67). */
+        const val STALE_STATE = "stale-state"
+
         /**
          * `history: pending` — journaled in the same write as the transition's `applied`; the `state_history` request
          * has not been answered. A retried close sends that request alone (an `if_absent` insert of the row's
@@ -68,8 +71,68 @@ data class RowOutcome(
         /** review-258 B3: an unknown outcome a re-read found applied ([Apply.reconcile]). */
         const val RECONCILED = "reconciled"
 
+        /**
+         * D-202 (F2): `skipped · settled` — an earlier sealed run of this windowed program applied the row's (entity, key,
+         * op) over an overlapping window ([ApplyInput.settled]); the re-read does not send it again.
+         */
+        const val SETTLED = "settled"
+
         /** The `state_history` sub-outcomes: `pending` → `applied` | `failed` | `unknown` (a lost commit; not resent). */
         val HISTORY_STATES = setOf(HISTORY_PENDING, "applied", "failed", "unknown")
+
+        /**
+         * D-202 (F5): the `failed` codes a later attempt may not repeat — a door or transport fault, not a verdict on the
+         * row. With [TRANSIENT_PREFIXES] (`worker_*`, `connection_*`) this is the whole table of transient failures;
+         * every other `failed` code is settled (✅R293-C: an unnamed code settles).
+         *
+         * Closed over today's producers of a row-write refusal (review-293 F1):
+         * - this door (`runner/Door.kt`): transient `identity`, `deadline-exceeded`, `door-transport`, `invalid-result`,
+         *   `connector-unavailable`; settled `storage-unmapped`;
+         * - query's row_writes path (`QueryServiceImpl.runRowWrites`/`compileRowWrites`): transient
+         *   `translator_unavailable`, `validator_unavailable`, `query_failed` (the catch-all, dispatch faults included);
+         *   settled `unknown_world`, `world_unspecified`, `out-of-scope-read`, `row_writes_principal`,
+         *   `parameter_unbound`, and translate's and validate's own plan refusals (`write_under_row_policy`, …);
+         * - validate: transient `role_source_unavailable` (the role enrichment source is down, fail-closed);
+         * - dispatch (`DispatchServiceImpl`): transient `no_worker_for_connection`, `no_stateful_worker_available`,
+         *   `worker_stream_failed` (a prefix); settled `row_writes_schema_mismatch`, `row_writes_connection_mismatch`,
+         *   `cross_database_not_supported`, `workspace_requires_session`, `session_lost` (no session on a row write);
+         * - the worker: `worker_*` (a prefix), transient, the duplicate key included (D-202, ~15:45).
+         */
+        val TRANSIENT =
+            setOf(
+                "deadline-exceeded",
+                "door-transport",
+                "invalid-result",
+                "identity",
+                "connector-unavailable",
+                "translator_unavailable",
+                "validator_unavailable",
+                "role_source_unavailable",
+                "query_failed",
+                "no_worker_for_connection",
+                "no_stateful_worker_available",
+            )
+
+        /** D-202 (F5): door code families that are transient as a whole (the worker's and the connection's faults). */
+        val TRANSIENT_PREFIXES = listOf("worker_", "connection_")
+
+        /**
+         * D-202 (F5) + D-201 — the one hold rule: whether a closed row's outcome holds a windowed program's watermark.
+         * Only a transient outcome holds: a `staged` row (an unknown commit, [UNKNOWN]; never resent) and a `failed`
+         * row whose code is [TRANSIENT] or in a [TRANSIENT_PREFIXES] family. A settled failure does not hold — the
+         * verdict stands (`stale-state`, D-67) or the refusal would repeat on every re-read (`write_under_row_policy`,
+         * `not-writable`, `bad-transition`, `no-row`, `rows-affected-N`, a validation refusal). `applied` and `skipped`
+         * never hold, whatever an applied transition's `state_history` sub-outcome (not a row status, ⚑AU-S32-2).
+         */
+        fun holds(
+            status: String,
+            error: String?,
+        ): Boolean =
+            when (status) {
+                "staged" -> true
+                "failed" -> error == null || error in TRANSIENT || TRANSIENT_PREFIXES.any { error.startsWith(it) }
+                else -> false
+            }
     }
 }
 
@@ -85,6 +148,19 @@ interface ApplyJournal {
     fun release(seqs: List<Int>)
 
     fun record(outcomes: List<RowOutcome>)
+}
+
+/** D-202 (F2): a batch row's identity across runs of one program — `batch_rows` (entity, key, op); the key is non-empty. */
+data class RowIdentity(
+    val entity: String,
+    val key: JsonObject,
+    val op: String,
+) {
+    companion object {
+        /** A row's identity; null for a row without a key (an insert the plan did not key): never settled. */
+        fun of(row: ApplyRow): RowIdentity? =
+            row.key?.takeIf { it.isNotEmpty() }?.let { RowIdentity(row.entity, it, row.op) }
+    }
 }
 
 /** What a committed run applies: the journaled plan and the context pinned at Open. */
@@ -115,6 +191,11 @@ data class ApplyInput(
      * compare-and-set). A revert batch has no actions; its inverse units keep the original pairing ([Revert.inverse]).
      */
     val units: List<List<Int>> = emptyList(),
+    /**
+     * D-202 (F2): the identities an earlier sealed run of this windowed program applied over a window that overlaps this
+     * run's (the ledger's `ApplyState.settled`). A row not yet sent with one of them is `skipped · settled`, never sent.
+     */
+    val settled: Set<RowIdentity> = emptySet(),
 )
 
 /**
@@ -155,6 +236,17 @@ class Apply(
         if (lost.isNotEmpty()) {
             journal.record(lost)
             lost.forEach { outcomes[it.seq] = it }
+        }
+        // D-202 (F2): a re-read settles per row — what an earlier run of the program applied over this range is not resent.
+        if (input.settled.isNotEmpty()) {
+            val settled =
+                input.rows
+                    .filter { outcomes[it.seq] == null && RowIdentity.of(it) in input.settled }
+                    .map { RowOutcome(it.seq, "skipped", RowOutcome.SETTLED) }
+            if (settled.isNotEmpty()) {
+                journal.record(settled)
+                settled.forEach { outcomes[it.seq] = it }
+            }
         }
         val partners = partners(input.rows, input.actions, input.units)
         for (group in ApplyPlanner.groups(input.rows, input.source)) {
@@ -330,7 +422,7 @@ class Apply(
                 WriteUnit.Kind.CAS -> {
                     val transition = requireNotNull(unit.transition)
                     if (affected == 0L) {
-                        unit.seqs.forEach { results[it] = RowOutcome(it, "failed", "stale-state", prior) }
+                        unit.seqs.forEach { results[it] = RowOutcome(it, "failed", RowOutcome.STALE_STATE, prior) }
                     } else {
                         val from = prior?.get(requireNotNull(transition.attribute))
                         val owed = transition.history == true && from != transition.to

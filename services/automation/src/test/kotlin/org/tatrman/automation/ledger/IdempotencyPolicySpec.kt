@@ -26,7 +26,8 @@ class IdempotencyPolicySpec :
         }
 
         "a done (closed) run is replayed, however old" {
-            IdempotencyPolicy.decide(holder(RunStatus.CLOSED), pastBudgetAndGrace) shouldBe ClaimDecision.Replay(id)
+            IdempotencyPolicy.decide(holder(RunStatus.CLOSED), pastBudgetAndGrace) shouldBe
+                ClaimDecision.Replay(id, false)
         }
 
         "a failed or abandoned run frees its key" {
@@ -36,14 +37,14 @@ class IdempotencyPolicySpec :
 
         "a live run within its budget is waited on" {
             for (status in listOf(RunStatus.OPEN, RunStatus.RUNNING, RunStatus.EVALUATED)) {
-                IdempotencyPolicy.decide(holder(status), withinBudget) shouldBe ClaimDecision.Wait(id, status)
+                IdempotencyPolicy.decide(holder(status), withinBudget) shouldBe ClaimDecision.Wait(id, status, false)
             }
         }
 
         "a live run is still waited on at budget + grace exactly, and abandoned one second later" {
             val atTheEdge = started + budget + IdempotencyPolicy.GRACE
             IdempotencyPolicy.decide(holder(RunStatus.RUNNING), atTheEdge) shouldBe
-                ClaimDecision.Wait(id, RunStatus.RUNNING)
+                ClaimDecision.Wait(id, RunStatus.RUNNING, false)
             IdempotencyPolicy.decide(holder(RunStatus.RUNNING), pastBudgetAndGrace) shouldBe
                 ClaimDecision.AbandonThenOpen(id)
             IdempotencyPolicy.decide(holder(RunStatus.EVALUATED), pastBudgetAndGrace) shouldBe
@@ -52,10 +53,17 @@ class IdempotencyPolicySpec :
                 ClaimDecision.AbandonThenOpen(id)
         }
 
+        "a replay and a wait carry the holder's stored dryRun (D-195 (D), review-285 N7)" {
+            val dry = KeyHolder(id, RunStatus.CLOSED, started, budget, dryRun = true)
+            IdempotencyPolicy.decide(dry, withinBudget) shouldBe ClaimDecision.Replay(id, true)
+            IdempotencyPolicy.decide(dry.copy(status = RunStatus.RUNNING), withinBudget) shouldBe
+                ClaimDecision.Wait(id, RunStatus.RUNNING, true)
+        }
+
         "a waiting run is never abandoned by the clock (D-97)" {
             val aYearLater = started + Duration.ofDays(365)
             IdempotencyPolicy.decide(holder(RunStatus.WAITING), aYearLater) shouldBe
-                ClaimDecision.Wait(id, RunStatus.WAITING)
+                ClaimDecision.Wait(id, RunStatus.WAITING, false)
         }
 
         "a waiting run leaves only by its last answer or due — closed or failed, never abandoned" {

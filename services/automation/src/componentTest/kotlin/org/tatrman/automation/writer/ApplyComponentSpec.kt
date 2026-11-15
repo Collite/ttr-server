@@ -4,9 +4,13 @@ package org.tatrman.automation.writer
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.api.AutomationException
@@ -276,12 +280,16 @@ class ApplyComponentSpec :
             build: (UUID) -> Planned,
             deployment: String? = null,
             dryRun: Boolean = false,
+            program: String? = null,
+            port: JsonElement = JsonObject(emptyMap()),
         ): UUID {
             val id =
                 ledger
                     .claimRun(
                         RunOpen(
                             "release_order",
+                            program = program,
+                            port = port,
                             deployment = deployment,
                             runAs = principal,
                             dryRun = dryRun,
@@ -343,6 +351,7 @@ class ApplyComponentSpec :
                     bundle.entities,
                     routes,
                     state.recorded,
+                    settled = state.settled,
                 ),
                 object : ApplyJournal {
                     override fun begin(
@@ -1817,6 +1826,223 @@ class ApplyComponentSpec :
             shouldThrow<AutomationException> { ledger.closeCommitted(id, subject) }.code shouldBe
                 ErrorCode.CLOSE_DEADLINE_EXCEEDED
             ledger.readRunBatch(id, subject).mode shouldBe "preview"
+        }
+
+        // ---- S3.2c (D-202 F2): a watermark re-read settles per row ----
+
+        "D-202 (F2): a re-read skips what an earlier run of the program applied, resends the rest; per program" {
+            val t0 = clock.instant()
+            val held = Watermark.port(Watermark.EPOCH, t0, listOf("day"), watermark = true)
+
+            fun context(id: UUID) =
+                RunContext(
+                    id,
+                    bundle.recipes.getValue("release_order"),
+                    "demo",
+                    "model-fp",
+                    identity,
+                    emptyMap(),
+                    startedAt = clock.instant(),
+                    previewMetadata = PreviewMetadata(emptyMap(), bundle.entities, planSource = source),
+                    dryRun = false,
+                )
+            // Run 1 of P over [epoch, t0): the verdict for 4711 applies; the release of 4712 meets a transient door fault.
+            fake.refuse = { if (it.world == "w-erp") "worker_engine_unavailable" else null }
+            val first =
+                prepare(
+                    { run -> planned(listOf(verdict(run, "4711", "release"), release("4712"))) },
+                    program = "P",
+                    port = held,
+                )
+            applyOnce(first)
+            ledger.closeCommitted(first, subject)
+            Watermark.lastTo("P", listOf("day")) shouldBe Watermark.EPOCH
+            // Q, another program, applied the verdict for 4713 over the same range.
+            fake.refuse = { null }
+            val other = prepare({ run -> planned(listOf(verdict(run, "4713", "release"))) }, program = "Q", port = held)
+            applyOnce(other)
+            ledger.closeCommitted(other, subject)
+
+            // Run 2 of P re-reads [epoch, t1), through the close.
+            clock.now = t0.plus(Duration.ofHours(1))
+            fake.writes.clear()
+            val reread =
+                prepare(
+                    { run ->
+                        planned(
+                            listOf(verdict(run, "4711", "release"), release("4712"), verdict(run, "4713", "release")),
+                        )
+                    },
+                    program = "P",
+                    port = Watermark.port(Watermark.EPOCH, clock.instant(), listOf("day"), watermark = true),
+                )
+            RunCloser(ledger, Apply(door(), clock), pinned = { id, _ -> context(id) }).close(reread, identity.caller)
+
+            val batch = ledger.readRunBatch(reread, subject)
+            val outcome = batch.statuses.associate { it.seq to (it.status to it.error) }
+            val byOrder =
+                batch.rows.groupBy(
+                    { (it.key!!["order_number"] as JsonPrimitive).content },
+                    { outcome.getValue(it.seq) },
+                )
+            // Every row of 4711 (its verdict and the planner's rows beside it) is settled; 4713's are all sent (Q's run
+            // does not settle P's). 4712's transition, which failed in run 1, is sent; its rows run 1 applied are settled.
+            byOrder.getValue("4711").toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
+            byOrder.getValue("4713").toSet() shouldBe setOf("applied" to null)
+            batch.rows.filter { it.entity == "er.entity.order" }.map { outcome.getValue(it.seq) } shouldBe
+                listOf("applied" to null)
+            batch.rows
+                .filter {
+                    it.entity != "er.entity.order" &&
+                        (it.key!!["order_number"] as JsonPrimitive).content == "4712"
+                }.map { outcome.getValue(it.seq) }
+                .toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
+            // 4711's verdict was not sent again; 4713's was (Q's run does not settle P's); 4712 moved.
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4711'") shouldBe
+                listOf(listOf("1"))
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4713'") shouldBe
+                listOf(listOf("2"))
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4712'") shouldBe
+                listOf(listOf("released"))
+            // The door saw exactly the applied rows and 4712's state_history row — no settled row was sent.
+            val sent =
+                fake.writes.sumOf {
+                    org.tatrman.plan.v1.PlanNode
+                        .parseFrom(it.source.toByteArray(Charsets.ISO_8859_1))
+                        .rowWrites.rowsCount
+                }
+            sent shouldBe batch.statuses.count { it.status == "applied" } + 1
+            val settled = batch.statuses.count { it.error == RowOutcome.SETTLED }
+            ledger
+                .readProtocol(reread, subject)
+                .sections
+                .getValue("writes")
+                .last()
+                .payload.jsonObject
+                .let {
+                    it["skipped"] shouldBe JsonPrimitive(settled)
+                    it["settled"] shouldBe JsonPrimitive(settled)
+                }
+            Watermark.lastTo("P", listOf("day")) shouldBe clock.instant()
+        }
+
+        // ---- review-293 F6 · F8: settlement counts any wet run; a held commit and perform settle too ----
+
+        fun reread(
+            id: UUID,
+            recipe: String = "release_order",
+        ) = RunContext(
+            id,
+            bundle.recipes.getValue(recipe),
+            "demo",
+            "model-fp",
+            identity,
+            emptyMap(),
+            startedAt = clock.instant(),
+            previewMetadata = PreviewMetadata(emptyMap(), bundle.entities, planSource = source),
+            dryRun = false,
+        )
+
+        fun sentRows() =
+            fake.writes.sumOf {
+                org.tatrman.plan.v1.PlanNode
+                    .parseFrom(it.source.toByteArray(Charsets.ISO_8859_1))
+                    .rowWrites.rowsCount
+            }
+
+        "review-293 F6: rows a run applied before it failed close-deadline-exceeded settle the re-read" {
+            val t0 = clock.instant()
+            val first =
+                prepare(
+                    { run -> planned(listOf(verdict(run, "4711", "release"))) },
+                    program = "P",
+                    port = Watermark.port(Watermark.EPOCH, t0, listOf("day"), watermark = true),
+                )
+            applyOnce(first)
+            // The close comes too late: the run applied its rows, never sealed, and the sweep abandons it.
+            clock.now = ledger.applyState(first, subject).deadline
+            shouldThrow<AutomationException> { ledger.closeCommitted(first, subject) }.code shouldBe
+                ErrorCode.CLOSE_DEADLINE_EXCEEDED
+            clock.now = clock.now.plus(Duration.ofHours(1))
+            ledger.abandonExpiredRuns() shouldContain first
+            Watermark.lastTo("P", listOf("day")) shouldBe Watermark.EPOCH
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4711'") shouldBe
+                listOf(listOf("1"))
+
+            fake.writes.clear()
+            val again =
+                prepare(
+                    { run -> planned(listOf(verdict(run, "4711", "release"), release("4712"))) },
+                    program = "P",
+                    port = Watermark.port(Watermark.EPOCH, clock.instant(), listOf("day"), watermark = true),
+                )
+            RunCloser(ledger, Apply(door(), clock), pinned = { id, _ -> reread(id) }).close(again, identity.caller)
+            val batch = ledger.readRunBatch(again, subject)
+            val outcome = batch.statuses.associate { it.seq to (it.status to it.error) }
+            batch.rows
+                .filter { (it.key!!["order_number"] as JsonPrimitive).content == "4711" }
+                .map { outcome.getValue(it.seq) }
+                .toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4711'") shouldBe
+                listOf(listOf("1"))
+            // Only 4712's rows (and its state_history row) left.
+            sentRows() shouldBe batch.statuses.count { it.status == "applied" } + 1
+            Watermark.lastTo("P", listOf("day")) shouldBe clock.instant()
+        }
+
+        "review-293 F8: a re-read's held row an earlier run applied commits as settled, with no door request" {
+            val t0 = clock.instant()
+            // Run 1 of P applies 4711's verdict as an auto row; 4712's release meets a transient fault and holds.
+            fake.refuse = { if (it.world == "w-erp") "worker_engine_unavailable" else null }
+            val first =
+                prepare(
+                    { run -> planned(listOf(verdict(run, "4711", "release"), release("4712"))) },
+                    deployment = "release_native_event",
+                    program = "P",
+                    port = Watermark.port(Watermark.EPOCH, t0, listOf("day"), watermark = true),
+                )
+            applyOnce(first)
+            ledger.closeCommitted(first, subject)
+            Watermark.lastTo("P", listOf("day")) shouldBe Watermark.EPOCH
+            fake.refuse = { null }
+
+            // The re-read holds 4711's verdict in an approval group; its auto rows close, and the run waits.
+            clock.now = t0.plus(Duration.ofHours(1))
+            val again =
+                prepare(
+                    { run ->
+                        planned(
+                            listOf(verdict(run, "4711", "release").copy(group = key("4711")), release("4712")),
+                        )
+                    },
+                    deployment = "release_native_event",
+                    program = "P",
+                    port = Watermark.port(Watermark.EPOCH, clock.instant(), listOf("day"), watermark = true),
+                )
+            RunCloser(ledger, Apply(door(), clock), pinned = { id, _ -> reread(id) }).close(again, identity.caller)
+            ledger.findRun(again)?.status shouldBe RunStatus.WAITING
+            // The run was opened under the served fingerprints (D-99); `prepare` claims without them.
+            val fps =
+                bundle.recipes
+                    .getValue("release_order")
+                    .recipe.fingerprints
+            transaction {
+                Runs.update({ Runs.id eq again }) {
+                    it[fpText] = fps.text
+                    it[fpValues] = fps.values
+                    it[fpDeployment] = bundle.deploymentFps["release_native_event"]
+                }
+            }
+            val grouped = ledger.readRunBatch(again, subject).rows.filter { it.group == key("4711") }
+            grouped.shouldNotBeEmpty()
+
+            fake.writes.clear()
+            Held(ledger, Apply(door(), clock), contexts, { bundle }, clock).commitHeld(again, key("4711"), ops)
+            fake.writes.size shouldBe 0
+            val outcome = ledger.readRunBatch(again, subject).statuses.associate { it.seq to (it.status to it.error) }
+            grouped.map { outcome.getValue(it.seq) }.toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4711'") shouldBe
+                listOf(listOf("1"))
         }
     })
 

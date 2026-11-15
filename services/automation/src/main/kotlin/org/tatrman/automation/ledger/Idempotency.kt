@@ -77,13 +77,17 @@ data class KeyHolder(
 sealed interface ClaimDecision {
     data object Open : ClaimDecision
 
+    /** [dryRun]: the holder row's stored `dry_run`, answered on the `200` (D-195 (D)). */
     data class Replay(
         val runId: UUID,
+        val dryRun: Boolean,
     ) : ClaimDecision
 
+    /** [dryRun]: the holder row's stored `dry_run`, answered on the `202` (D-195 (D)). */
     data class Wait(
         val runId: UUID,
         val status: RunStatus,
+        val dryRun: Boolean,
     ) : ClaimDecision
 
     data class AbandonThenOpen(
@@ -105,13 +109,13 @@ object IdempotencyPolicy {
     ): ClaimDecision {
         if (holder == null || holder.status.freesKey) return ClaimDecision.Open
         return when (holder.status) {
-            RunStatus.CLOSED -> ClaimDecision.Replay(holder.runId)
-            RunStatus.WAITING -> ClaimDecision.Wait(holder.runId, holder.status)
+            RunStatus.CLOSED -> ClaimDecision.Replay(holder.runId, holder.dryRun)
+            RunStatus.WAITING -> ClaimDecision.Wait(holder.runId, holder.status, holder.dryRun)
             else ->
                 if (now.isAfter(holder.startedAt + holder.budget + GRACE)) {
                     ClaimDecision.AbandonThenOpen(holder.runId)
                 } else {
-                    ClaimDecision.Wait(holder.runId, holder.status)
+                    ClaimDecision.Wait(holder.runId, holder.status, holder.dryRun)
                 }
         }
     }

@@ -163,21 +163,57 @@ class EngineSeamOpenSpec :
             ledger.closeCommitted(id, maya.sub)
         }
 
-        /** A wet close whose rows the door answered [outcomes] (status to error; `staged` + error = an unknown row). */
+        /** One batch row of [op] on order 47(10 + [i]): the verdict's `insert`, the order's `update` or `transition`. */
+        fun row(
+            i: Int,
+            op: String,
+            group: JsonObject? = null,
+        ): ApplyRow {
+            val key = buildJsonObject { put("order_number", "47${10 + i}") }
+            return when (op) {
+                "insert" -> ApplyRow(i + 1, "er.entity.release_order_verdict", op, key, row = key, group = group)
+                "update" ->
+                    ApplyRow(
+                        i + 1,
+                        "er.entity.order",
+                        op,
+                        key,
+                        set = buildJsonObject { put("held_for", "Sales") },
+                        group = group,
+                    )
+                "transition" ->
+                    ApplyRow(
+                        i + 1,
+                        "er.entity.order",
+                        op,
+                        key,
+                        attribute = "status",
+                        from = listOf("placed"),
+                        to = JsonPrimitive("released"),
+                        history = true,
+                        group = group,
+                    )
+                else -> error("no fixture row for $op")
+            }
+        }
+
+        /**
+         * A wet close whose rows the door answered [outcomes] (status to error; `staged` + error = an unknown row), every
+         * row of [op] — the writer answers `stale-state` only for a transition's compare-and-set (review-285 N2). An
+         * applied row carries [history] as its `state_history` sub-outcome; [held] more rows wait undecided in one
+         * `approval: required` group, so the close leaves the run WAITING.
+         */
         fun closeWith(
             id: UUID,
             vararg outcomes: Pair<String, String?>,
+            op: String = "insert",
+            history: String? = null,
+            held: Int = 0,
         ) {
+            val group = buildJsonObject { put("action", "release") }
             val rows =
-                outcomes.indices.map { i ->
-                    ApplyRow(
-                        i + 1,
-                        "er.entity.release_order_verdict",
-                        "insert",
-                        buildJsonObject { put("order_number", "47${10 + i}") },
-                        row = buildJsonObject { put("order_number", "47${10 + i}") },
-                    )
-                }
+                outcomes.indices.map { row(it, op) } +
+                    (outcomes.size until outcomes.size + held).map { row(it, op, group) }
             ledger.completeEvaluation(
                 id,
                 EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()),
@@ -186,7 +222,9 @@ class EngineSeamOpenSpec :
             val batch = ledger.applyState(id, maya.sub).batch
             ledger.recordApply(
                 batch,
-                outcomes.mapIndexed { i, (status, error) -> RowOutcome(i + 1, status, error) },
+                outcomes.mapIndexed { i, (status, error) ->
+                    RowOutcome(i + 1, status, error, history = history.takeIf { status == "applied" })
+                },
             )
             ledger.closeCommitted(id, maya.sub)
         }
@@ -749,11 +787,11 @@ class EngineSeamOpenSpec :
             }
         }
 
-        "D-195 (C): a close with any failed or unknown row seals but holds the watermark; the next window re-reads" {
+        "D-195 (C): a transient failed or an unknown row seals but holds the watermark; the next window re-reads" {
             closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
             lastTo() shouldBe t0
             for ((case, outcomes) in listOf(
-                "failed" to arrayOf("applied" to null, "failed" to "write_under_row_policy"),
+                "failed" to arrayOf("applied" to null, "failed" to "worker_execution_failed"),
                 "unknown" to arrayOf("applied" to null, "staged" to RowOutcome.UNKNOWN),
             )) {
                 clock.now += Duration.ofHours(1)
@@ -773,28 +811,174 @@ class EngineSeamOpenSpec :
             transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldBe clean
         }
 
-        "D-201: a close whose only failure is stale-state advances; any other failed or unknown row still holds" {
+        "D-201: a close whose only failure is stale-state advances; a transient failed or an unknown row still holds" {
             closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
             lastTo() shouldBe t0
             for ((case, outcomes) in listOf(
-                "stale-state + failed" to arrayOf("failed" to "stale-state", "failed" to "write_under_row_policy"),
-                "stale-state + unknown" to arrayOf("failed" to "stale-state", "staged" to RowOutcome.UNKNOWN),
+                "stale-state + failed" to
+                    arrayOf("failed" to RowOutcome.STALE_STATE, "failed" to "worker_execution_failed"),
+                "stale-state + unknown" to arrayOf("failed" to RowOutcome.STALE_STATE, "staged" to RowOutcome.UNKNOWN),
             )) {
                 clock.now += Duration.ofHours(1)
                 val held = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
                 window(held)["from"] shouldBe JsonPrimitive(t0.toString())
-                closeWith(held, *outcomes)
+                closeWith(held, *outcomes, op = "transition")
                 ledger.findRun(held)!!.status shouldBe RunStatus.CLOSED
                 withClue(case) { lastTo() shouldBe t0 }
+                transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldNotBe held
             }
             // The re-read window: its already-applied transitions come back stale-state — settled, so it advances.
             clock.now += Duration.ofHours(1)
             val reread = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
             window(reread)["from"] shouldBe JsonPrimitive(t0.toString())
-            closeWith(reread, "failed" to "stale-state", "applied" to null, "failed" to "stale-state")
+            closeWith(
+                reread,
+                "failed" to RowOutcome.STALE_STATE,
+                "applied" to null,
+                "failed" to RowOutcome.STALE_STATE,
+                op = "transition",
+            )
             ledger.findRun(reread)!!.status shouldBe RunStatus.CLOSED
             lastTo() shouldBe clock.now
             transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldBe reread
+        }
+
+        "D-202 (F5): a close whose failures are all settled advances; one transient outcome holds" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            lastTo() shouldBe t0
+            // Each settled code on the op its producer answers it for (the fixture matches its producer).
+            for ((op, code) in listOf(
+                "transition" to RowOutcome.STALE_STATE,
+                "transition" to "bad-transition",
+                "update" to "no-row",
+                "insert" to "rows-affected-0",
+                "insert" to "write_under_row_policy",
+                "insert" to "not-writable",
+                "insert" to "bad-value",
+            )) {
+                clock.now += Duration.ofHours(1)
+                val id = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+                closeWith(id, "applied" to null, "failed" to code, op = op)
+                withClue("settled $code") { lastTo() shouldBe clock.now }
+            }
+            val settledTo = clock.now
+            for ((op, outcome) in listOf(
+                "insert" to ("staged" to RowOutcome.UNKNOWN),
+                "insert" to ("failed" to "worker_execution_failed"),
+                "transition" to ("failed" to "connection_closed"),
+                "insert" to ("failed" to "deadline-exceeded"),
+                "insert" to ("failed" to "identity"),
+            )) {
+                clock.now += Duration.ofHours(1)
+                val id = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+                window(id)["from"] shouldBe JsonPrimitive(settledTo.toString())
+                closeWith(id, "applied" to null, outcome, op = op)
+                withClue("transient ${outcome.second}") { lastTo() shouldBe settledTo }
+                transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldNotBe id
+            }
+        }
+
+        "review-293 F1: a close whose only failure is a door outage (translator_unavailable) holds the watermark" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            lastTo() shouldBe t0
+            clock.now += Duration.ofHours(1)
+            val id = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            closeWith(id, "failed" to "translator_unavailable", "failed" to "translator_unavailable")
+            lastTo() shouldBe t0
+            transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldNotBe id
+        }
+
+        "D-202 (F3): a WAITING run whose seal did not advance blocks the next window; one that advanced does not" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            lastTo() shouldBe t0
+            // Clean auto rows + an undecided group: WAITING, and the seal advanced — the next window opens.
+            clock.now += Duration.ofHours(1)
+            val advanced = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            closeWith(advanced, "applied" to null, held = 1)
+            ledger.findRun(advanced)!!.status shouldBe RunStatus.WAITING
+            lastTo() shouldBe clock.now
+            val advancedTo = clock.now
+            clock.now += Duration.ofHours(1)
+            val held = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            window(held)["from"] shouldBe JsonPrimitive(advancedTo.toString())
+            // A transient row + an undecided group: WAITING, and the seal did not advance.
+            closeWith(held, "failed" to "worker_execution_failed", held = 1)
+            ledger.findRun(held)!!.status shouldBe RunStatus.WAITING
+            lastTo() shouldBe advancedTo
+            clock.now += Duration.ofHours(1)
+            val refused =
+                shouldThrow<AutomationException> {
+                    open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)
+                }
+            refused.code shouldBe ErrorCode.WINDOW_OPEN
+            refused.detail!!.jsonObject.let {
+                it["run"] shouldBe JsonPrimitive(held.toString())
+                it["reason"] shouldBe JsonPrimitive("waiting")
+                it["watermark"] shouldBe JsonPrimitive(advancedTo.toString())
+            }
+            val before = runs()
+            // A dry open and an explicit window are never blocked.
+            open(windowed).open(recipe, OpenRequest(deployment, windowPort(), dryRun = true), maya).httpStatus shouldBe
+                201
+            open(windowed)
+                .open(recipe, OpenRequest(deployment, windowPort(from = advancedTo.toString())), maya)
+                .httpStatus shouldBe 201
+            runs() shouldBe before + 2
+        }
+
+        "D-202 (F4, accepted): a held group's failure after the seal advanced is inspected, not re-read" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            clock.now += Duration.ofHours(1)
+            val id = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            closeWith(id, "applied" to null, held = 1)
+            ledger.findRun(id)!!.status shouldBe RunStatus.WAITING
+            val advancedTo = clock.now
+            lastTo() shouldBe advancedTo
+            // The operator commits the group later; its row fails at the door (a transient code, even).
+            clock.now += Duration.ofMinutes(10)
+            ledger.recordApply(
+                ledger.applyState(id, maya.sub).batch,
+                listOf(RowOutcome(2, "failed", "worker_execution_failed")),
+            )
+            ledger.decideHeld(id, buildJsonObject { put("action", "release") }, "commit", "ops-person")
+            ledger.findRun(id)!!.status shouldBe RunStatus.CLOSED
+            lastTo() shouldBe advancedTo
+            transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldBe id
+            ledger
+                .readProtocol(id, maya.sub)
+                .sections
+                .getValue("writes")
+                .last()
+                .payload.jsonObject
+                .let {
+                    it["event"] shouldBe JsonPrimitive("held-commit")
+                    it["failed"] shouldBe JsonPrimitive(1)
+                }
+            // The next window starts after the advanced range: the failed row is not re-read.
+            clock.now += Duration.ofHours(1)
+            val next = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            window(next)["from"] shouldBe JsonPrimitive(advancedTo.toString())
+        }
+
+        "review-285 N3: a history sub-outcome and an undecided held group do not hold the watermark" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            lastTo() shouldBe t0
+            // (i) a transition applied, its state_history request failed: the row status is `applied`.
+            for (history in listOf("failed", "unknown")) {
+                clock.now += Duration.ofHours(1)
+                val id = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+                closeWith(id, "applied" to null, op = "transition", history = history)
+                ledger.findRun(id)!!.status shouldBe RunStatus.CLOSED
+                withClue("history: $history") { lastTo() shouldBe clock.now }
+                transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldBe id
+            }
+            // (ii) clean auto rows and one undecided held group: WAITING, and the seal advanced.
+            clock.now += Duration.ofHours(1)
+            val waiting = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            closeWith(waiting, "applied" to null, held = 2)
+            ledger.findRun(waiting)!!.status shouldBe RunStatus.WAITING
+            lastTo() shouldBe clock.now
+            transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldBe waiting
         }
 
         "D-195 (D): a same-key 202 and 200 carry the stored dryRun — true for a forced dry run, false for a wet one" {

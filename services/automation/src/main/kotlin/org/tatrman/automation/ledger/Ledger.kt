@@ -8,6 +8,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.IntegerColumnType
 import org.jetbrains.exposed.v1.core.LongColumnType
@@ -38,6 +40,8 @@ import org.tatrman.automation.apply.*
 import org.tatrman.automation.apply.ApplyRow.Companion.DECIDED
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_AT
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_OUTCOME
+import org.tatrman.automation.writer.RowIdentity
+import org.tatrman.automation.writer.RowOutcome
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
 import org.tatrman.automation.protocol.ProtocolEntry
@@ -115,9 +119,6 @@ const val RUN_KIND_RECIPE = "recipe"
 const val RUN_KIND_QUERY = "query"
 const val RUN_KIND_PERFORM = "perform"
 
-/** The writer's error on a compare-and-set whose state already moved (`failed · stale-state`). */
-private const val STALE_STATE = "stale-state"
-
 /** One row of `GET /automation/runs` (S3.1 T4). [subject] is the recipe, the query's subject or the action. */
 data class RunListing(
     val id: UUID,
@@ -194,6 +195,8 @@ data class HeldGroup(
     val statuses: List<BatchRowStatus>,
     val actions: List<DryRunAction>,
     val budget: Duration,
+    /** D-202 (F2), review-293 F8: what an earlier wet run of the program applied over this run's window. */
+    val settled: Set<RowIdentity> = emptySet(),
 )
 
 /** S2.3: what a revert reads (see [Ledger.revertState]). */
@@ -295,13 +298,8 @@ class Ledger(
                         Claim.Claimed(insertRun(open, now), startedAt = now)
                     }
                     // D-195 (D): a replay and a live handle answer the dryRun the holder's row stored, like a new claim.
-                    is ClaimDecision.Replay -> Claim.Replay(decision.runId, dryRun = checkNotNull(holder).dryRun)
-                    is ClaimDecision.Wait ->
-                        Claim.Running(
-                            decision.runId,
-                            decision.status,
-                            dryRun = checkNotNull(holder).dryRun,
-                        )
+                    is ClaimDecision.Replay -> Claim.Replay(decision.runId, dryRun = decision.dryRun)
+                    is ClaimDecision.Wait -> Claim.Running(decision.runId, decision.status, dryRun = decision.dryRun)
                     is ClaimDecision.AbandonThenOpen -> {
                         Runs.update({ Runs.id eq decision.runId }) {
                             it[status] = RunStatus.ABANDONED.wire
@@ -650,7 +648,7 @@ class Ledger(
                     .filter { it.status != "staged" || it.error != null }
                     .associate {
                         it.seq to
-                            org.tatrman.automation.writer.RowOutcome(
+                            RowOutcome(
                                 it.seq,
                                 it.status,
                                 it.error,
@@ -661,6 +659,8 @@ class Ledger(
                             )
                     },
                 runDeadline(runId, defaultBudget),
+                // Only a run that still applies reads it (the close and perform apply an `evaluated` run only).
+                if (status == RunStatus.EVALUATED) settled(row) else emptySet(),
             )
         }
     }
@@ -676,12 +676,12 @@ class Ledger(
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             val staged = (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged")
             if (request == null) {
-                BatchRows.update({ staged }) { it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT }
+                BatchRows.update({ staged }) { it[error] = RowOutcome.IN_FLIGHT }
                 return@transaction
             }
             for (r in BatchRows.selectAll().where { staged }.toList()) {
                 BatchRows.update({ (BatchRows.batch eq batch) and (BatchRows.seq eq r[BatchRows.seq]) }) {
-                    it[error] = org.tatrman.automation.writer.RowOutcome.IN_FLIGHT
+                    it[error] = RowOutcome.IN_FLIGHT
                     it[row] =
                         JsonObject(
                             (r[BatchRows.row] as? JsonObject).orEmpty() +
@@ -701,7 +701,7 @@ class Ledger(
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             BatchRows.update({
                 (BatchRows.batch eq batch) and (BatchRows.seq inList seqs) and (BatchRows.status eq "staged") and
-                    (BatchRows.error eq org.tatrman.automation.writer.RowOutcome.IN_FLIGHT)
+                    (BatchRows.error eq RowOutcome.IN_FLIGHT)
             }) { it[error] = null }
         }
     }
@@ -712,7 +712,7 @@ class Ledger(
      */
     fun recordApply(
         batch: UUID,
-        outcomes: List<org.tatrman.automation.writer.RowOutcome>,
+        outcomes: List<RowOutcome>,
     ) {
         outermost("recordApply")
         transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
@@ -921,7 +921,7 @@ class Ledger(
             check(
                 rows.none {
                     (it[BatchRows.row] as? JsonObject)?.get(HISTORY_OUTCOME) ==
-                        JsonPrimitive(org.tatrman.automation.writer.RowOutcome.HISTORY_PENDING)
+                        JsonPrimitive(RowOutcome.HISTORY_PENDING)
                 },
             ) { "the apply did not finish: a transition's history request is unanswered" }
             val now = clock.instant().utc()
@@ -968,7 +968,16 @@ class Ledger(
                             ),
                         )
                     }
-                    put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == STALE_STATE }))
+                    put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == RowOutcome.STALE_STATE }))
+                    // D-202 (F2): rows a re-read did not resend (counted in `skipped` too).
+                    put(
+                        "settled",
+                        JsonPrimitive(
+                            rows.count {
+                                it[BatchRows.status] == "skipped" && it[BatchRows.error] == RowOutcome.SETTLED
+                            },
+                        ),
+                    )
                     put("history", historyCounts(rows))
                     if (waiting) {
                         // S2.3: held rows are counted apart, with their groups; each decision appends after the seal.
@@ -998,17 +1007,10 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            // D-195 (C) + D-201: an `unknown` row, or a `failed` row other than `stale-state`, holds the watermark — the run
-            // seals and the next window starts from the old last_to. A `failed · stale-state` row (the state already moved,
-            // D-67), a held row (a decision is pending) and history sub-outcomes do not hold.
-            val holdsWatermark =
-                rows.any {
-                    when (bucket(it)) {
-                        "unknown" -> true
-                        "failed" -> it[BatchRows.error] != STALE_STATE
-                        else -> false
-                    }
-                }
+            // D-195 (C) + D-202 (F5): a transient row ([RowOutcome.holds]: unknown, a door/transport failure) holds the
+            // watermark — the run seals and the next window starts from the old last_to. A settled failure (stale-state,
+            // D-201; a policy or validation refusal), a held row (a decision is pending, F4) and history sub-outcomes do not.
+            val holdsWatermark = rows.any { RowOutcome.holds(it[BatchRows.status], it[BatchRows.error]) }
             seal(runId, batchId, dryRun = false, now, row[Runs.program], row[Runs.port], advance = !holdsWatermark)
             ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             val status = if (waiting) RunStatus.WAITING else RunStatus.CLOSED
@@ -1056,7 +1058,7 @@ class Ledger(
         if (advance) {
             // D-143 (S3.2 T2): a wet windowed run's seal advances the program's watermark, in this transaction
             // (review-280 F7: [program] and [port] come from the row the close already holds FOR UPDATE);
-            // D-195 (C): not when the close had a failed (other than stale-state, D-201) or unknown row ([advance] false).
+            // D-195 (C) + D-202 (F5): not when the close had a transient row ([RowOutcome.holds]; [advance] false).
             Watermark.advanceAtSeal(runId, program, port, now)
         }
         if (onRouteSilent(runId)) {
@@ -1143,8 +1145,62 @@ class Ledger(
                 previewActions(runId),
                 run[Runs.budgetBatch]?.let(Duration::ofMillis) ?: run[Runs.budgetSync]?.let(Duration::ofMillis)
                     ?: defaultBudget,
+                // review-293 F8 (✅R293-B): a held group's commit settles like the close.
+                settled(run),
             )
         }
+    }
+
+    /**
+     * D-202 (F2): the identities (entity, key, op) of the rows an earlier wet run of [run]'s program `applied` over a
+     * window that overlaps [run]'s `[from, to)` — the re-read of a held range sends only the rest. Empty unless [run] is
+     * a wet watermark run. Per program: another program's applied rows never settle this one's. Any status (planner
+     * ~15:45, Found 4; review-293 F6): an applied row's effect is done whatever happened to its run afterwards — a run
+     * that applied rows and then failed (`close-deadline-exceeded`) settles them too. A row without a key has no
+     * identity and is never settled. Read in the caller's transaction.
+     */
+    private fun settled(run: org.jetbrains.exposed.v1.core.ResultRow): Set<RowIdentity> {
+        val program = run[Runs.program] ?: return emptySet()
+        if (run[Runs.dryRun]) return emptySet()
+        val window = Watermark.keeping(run[Runs.port]) ?: return emptySet()
+        val from = Instant.parse(window.getValue("from").jsonPrimitive.content).atOffset(ZoneOffset.UTC)
+        val to = Instant.parse(window.getValue("to").jsonPrimitive.content).atOffset(ZoneOffset.UTC)
+        val tx = TransactionManager.current()
+        return tx
+            .exec(
+                """
+                SELECT br.entity, br.key::text, br.op
+                FROM automation.runs r
+                JOIN automation.batches b ON b.run = r.id
+                JOIN automation.batch_rows br ON br.batch = b.id
+                WHERE r.program = ? AND r.id <> ? AND NOT r.dry_run
+                  AND (r.port -> '${Watermark.PORT_KEY}' ->> 'from')::timestamptz < ?
+                  AND (r.port -> '${Watermark.PORT_KEY}' ->> 'to')::timestamptz > ?
+                  AND br.status = 'applied' AND br.key IS NOT NULL AND br.key <> '{}'::jsonb
+                """.trimIndent(),
+                listOf<Pair<org.jetbrains.exposed.v1.core.IColumnType<*>, Any>>(
+                    org.jetbrains.exposed.v1.core
+                        .TextColumnType() to program,
+                    org.jetbrains.exposed.v1.core.java
+                        .UUIDColumnType() to run[Runs.id],
+                    org.jetbrains.exposed.v1.javatime
+                        .JavaOffsetDateTimeColumnType() to to,
+                    org.jetbrains.exposed.v1.javatime
+                        .JavaOffsetDateTimeColumnType() to from,
+                ),
+            ) { rs ->
+                buildSet {
+                    while (rs.next()) {
+                        add(
+                            RowIdentity(
+                                rs.getString(1),
+                                Json.parseToJsonElement(rs.getString(2)).jsonObject,
+                                rs.getString(3),
+                            ),
+                        )
+                    }
+                }
+            }.orEmpty()
     }
 
     /**
