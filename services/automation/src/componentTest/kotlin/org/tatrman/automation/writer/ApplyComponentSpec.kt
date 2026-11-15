@@ -1902,7 +1902,7 @@ class ApplyComponentSpec :
                 listOf(listOf("1"))
             rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4713'") shouldBe
                 listOf(listOf("2"))
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4712'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4712'") shouldBe
                 listOf(listOf("released"))
             // The door saw exactly the applied rows and 4712's state_history row — no settled row was sent.
             val sent =
