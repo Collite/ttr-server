@@ -276,12 +276,16 @@ class ApplyComponentSpec :
             build: (UUID) -> Planned,
             deployment: String? = null,
             dryRun: Boolean = false,
+            program: String? = null,
+            port: JsonElement = JsonObject(emptyMap()),
         ): UUID {
             val id =
                 ledger
                     .claimRun(
                         RunOpen(
                             "release_order",
+                            program = program,
+                            port = port,
                             deployment = deployment,
                             runAs = principal,
                             dryRun = dryRun,
@@ -343,6 +347,7 @@ class ApplyComponentSpec :
                     bundle.entities,
                     routes,
                     state.recorded,
+                    settled = state.settled,
                 ),
                 object : ApplyJournal {
                     override fun begin(
@@ -1817,6 +1822,104 @@ class ApplyComponentSpec :
             shouldThrow<AutomationException> { ledger.closeCommitted(id, subject) }.code shouldBe
                 ErrorCode.CLOSE_DEADLINE_EXCEEDED
             ledger.readRunBatch(id, subject).mode shouldBe "preview"
+        }
+
+        // ---- S3.2c (D-202 F2): a watermark re-read settles per row ----
+
+        "D-202 (F2): a re-read skips what an earlier run of the program applied, resends the rest; per program" {
+            val t0 = clock.instant()
+            val held = Watermark.port(Watermark.EPOCH, t0, listOf("day"), watermark = true)
+
+            fun context(id: UUID) =
+                RunContext(
+                    id,
+                    bundle.recipes.getValue("release_order"),
+                    "demo",
+                    "model-fp",
+                    identity,
+                    emptyMap(),
+                    startedAt = clock.instant(),
+                    previewMetadata = PreviewMetadata(emptyMap(), bundle.entities, planSource = source),
+                    dryRun = false,
+                )
+            // Run 1 of P over [epoch, t0): the verdict for 4711 applies; the release of 4712 meets a transient door fault.
+            fake.refuse = { if (it.world == "w-erp") "worker_engine_unavailable" else null }
+            val first =
+                prepare(
+                    { run -> planned(listOf(verdict(run, "4711", "release"), release("4712"))) },
+                    program = "P",
+                    port = held,
+                )
+            applyOnce(first)
+            ledger.closeCommitted(first, subject)
+            Watermark.lastTo("P", listOf("day")) shouldBe Watermark.EPOCH
+            // Q, another program, applied the verdict for 4713 over the same range.
+            fake.refuse = { null }
+            val other = prepare({ run -> planned(listOf(verdict(run, "4713", "release"))) }, program = "Q", port = held)
+            applyOnce(other)
+            ledger.closeCommitted(other, subject)
+
+            // Run 2 of P re-reads [epoch, t1), through the close.
+            clock.now = t0.plus(Duration.ofHours(1))
+            fake.writes.clear()
+            val reread =
+                prepare(
+                    { run ->
+                        planned(
+                            listOf(verdict(run, "4711", "release"), release("4712"), verdict(run, "4713", "release")),
+                        )
+                    },
+                    program = "P",
+                    port = Watermark.port(Watermark.EPOCH, clock.instant(), listOf("day"), watermark = true),
+                )
+            RunCloser(ledger, Apply(door(), clock), pinned = { id, _ -> context(id) }).close(reread, identity.caller)
+
+            val batch = ledger.readRunBatch(reread, subject)
+            val outcome = batch.statuses.associate { it.seq to (it.status to it.error) }
+            val byOrder =
+                batch.rows.groupBy(
+                    { (it.key!!["order_number"] as JsonPrimitive).content },
+                    { outcome.getValue(it.seq) },
+                )
+            // Every row of 4711 (its verdict and the planner's rows beside it) is settled; 4713's are all sent (Q's run
+            // does not settle P's). 4712's transition, which failed in run 1, is sent; its rows run 1 applied are settled.
+            byOrder.getValue("4711").toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
+            byOrder.getValue("4713").toSet() shouldBe setOf("applied" to null)
+            batch.rows.filter { it.entity == "er.entity.order" }.map { outcome.getValue(it.seq) } shouldBe
+                listOf("applied" to null)
+            batch.rows
+                .filter {
+                    it.entity != "er.entity.order" &&
+                        (it.key!!["order_number"] as JsonPrimitive).content == "4712"
+                }.map { outcome.getValue(it.seq) }
+                .toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
+            // 4711's verdict was not sent again; 4713's was (Q's run does not settle P's); 4712 moved.
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4711'") shouldBe
+                listOf(listOf("1"))
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4713'") shouldBe
+                listOf(listOf("2"))
+            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4712'") shouldBe
+                listOf(listOf("released"))
+            // The door saw exactly the applied rows and 4712's state_history row — no settled row was sent.
+            val sent =
+                fake.writes.sumOf {
+                    org.tatrman.plan.v1.PlanNode
+                        .parseFrom(it.source.toByteArray(Charsets.ISO_8859_1))
+                        .rowWrites.rowsCount
+                }
+            sent shouldBe batch.statuses.count { it.status == "applied" } + 1
+            val settled = batch.statuses.count { it.error == RowOutcome.SETTLED }
+            ledger
+                .readProtocol(reread, subject)
+                .sections
+                .getValue("writes")
+                .last()
+                .payload.jsonObject
+                .let {
+                    it["skipped"] shouldBe JsonPrimitive(settled)
+                    it["settled"] shouldBe JsonPrimitive(settled)
+                }
+            Watermark.lastTo("P", listOf("day")) shouldBe clock.instant()
         }
     })
 

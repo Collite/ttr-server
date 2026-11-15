@@ -916,6 +916,40 @@ class EngineSeamOpenSpec :
             runs() shouldBe before + 2
         }
 
+        "D-202 (F4, accepted): a held group's failure after the seal advanced is inspected, not re-read" {
+            closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
+            clock.now += Duration.ofHours(1)
+            val id = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            closeWith(id, "applied" to null, held = 1)
+            ledger.findRun(id)!!.status shouldBe RunStatus.WAITING
+            val advancedTo = clock.now
+            lastTo() shouldBe advancedTo
+            // The operator commits the group later; its row fails at the door (a transient code, even).
+            clock.now += Duration.ofMinutes(10)
+            ledger.recordApply(
+                ledger.applyState(id, maya.sub).batch,
+                listOf(RowOutcome(2, "failed", "worker_execution_failed")),
+            )
+            ledger.decideHeld(id, buildJsonObject { put("action", "release") }, "commit", "ops-person")
+            ledger.findRun(id)!!.status shouldBe RunStatus.CLOSED
+            lastTo() shouldBe advancedTo
+            transaction { ProgramWindows.selectAll().single()[ProgramWindows.run] } shouldBe id
+            ledger
+                .readProtocol(id, maya.sub)
+                .sections
+                .getValue("writes")
+                .last()
+                .payload.jsonObject
+                .let {
+                    it["event"] shouldBe JsonPrimitive("held-commit")
+                    it["failed"] shouldBe JsonPrimitive(1)
+                }
+            // The next window starts after the advanced range: the failed row is not re-read.
+            clock.now += Duration.ofHours(1)
+            val next = runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya))
+            window(next)["from"] shouldBe JsonPrimitive(advancedTo.toString())
+        }
+
         "review-285 N3: a history sub-outcome and an undecided held group do not hold the watermark" {
             closeWet(runId(open(windowed).open(recipe, OpenRequest(deployment, windowPort()), maya)))
             lastTo() shouldBe t0

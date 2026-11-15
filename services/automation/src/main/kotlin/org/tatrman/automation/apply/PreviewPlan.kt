@@ -206,6 +206,8 @@ data class ApplyState(
     val recorded: Map<Int, org.tatrman.automation.writer.RowOutcome>,
     /** The run's original absolute deadline (`started_at` + budget): the apply and the close never pass it. */
     val deadline: java.time.Instant,
+    /** D-202 (F2): what earlier sealed runs of this windowed program applied over an overlapping window. */
+    val settled: Set<org.tatrman.automation.writer.RowIdentity> = emptySet(),
 )
 
 /** Pinned planning inputs; never part of the public apply JSON. */

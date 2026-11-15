@@ -71,6 +71,12 @@ data class RowOutcome(
         /** review-258 B3: an unknown outcome a re-read found applied ([Apply.reconcile]). */
         const val RECONCILED = "reconciled"
 
+        /**
+         * D-202 (F2): `skipped · settled` — an earlier sealed run of this windowed program applied the row's (entity, key,
+         * op) over an overlapping window ([ApplyInput.settled]); the re-read does not send it again.
+         */
+        const val SETTLED = "settled"
+
         /** The `state_history` sub-outcomes: `pending` → `applied` | `failed` | `unknown` (a lost commit; not resent). */
         val HISTORY_STATES = setOf(HISTORY_PENDING, "applied", "failed", "unknown")
 
@@ -119,6 +125,19 @@ interface ApplyJournal {
     fun record(outcomes: List<RowOutcome>)
 }
 
+/** D-202 (F2): a batch row's identity across runs of one program — `batch_rows` (entity, key, op); the key is non-empty. */
+data class RowIdentity(
+    val entity: String,
+    val key: JsonObject,
+    val op: String,
+) {
+    companion object {
+        /** A row's identity; null for a row without a key (an insert the plan did not key): never settled. */
+        fun of(row: ApplyRow): RowIdentity? =
+            row.key?.takeIf { it.isNotEmpty() }?.let { RowIdentity(row.entity, it, row.op) }
+    }
+}
+
 /** What a committed run applies: the journaled plan and the context pinned at Open. */
 data class ApplyInput(
     val run: UUID,
@@ -147,6 +166,11 @@ data class ApplyInput(
      * compare-and-set). A revert batch has no actions; its inverse units keep the original pairing ([Revert.inverse]).
      */
     val units: List<List<Int>> = emptyList(),
+    /**
+     * D-202 (F2): the identities an earlier sealed run of this windowed program applied over a window that overlaps this
+     * run's (the ledger's `ApplyState.settled`). A row not yet sent with one of them is `skipped · settled`, never sent.
+     */
+    val settled: Set<RowIdentity> = emptySet(),
 )
 
 /**
@@ -187,6 +211,17 @@ class Apply(
         if (lost.isNotEmpty()) {
             journal.record(lost)
             lost.forEach { outcomes[it.seq] = it }
+        }
+        // D-202 (F2): a re-read settles per row — what an earlier run of the program applied over this range is not resent.
+        if (input.settled.isNotEmpty()) {
+            val settled =
+                input.rows
+                    .filter { outcomes[it.seq] == null && RowIdentity.of(it) in input.settled }
+                    .map { RowOutcome(it.seq, "skipped", RowOutcome.SETTLED) }
+            if (settled.isNotEmpty()) {
+                journal.record(settled)
+                settled.forEach { outcomes[it.seq] = it }
+            }
         }
         val partners = partners(input.rows, input.actions, input.units)
         for (group in ApplyPlanner.groups(input.rows, input.source)) {

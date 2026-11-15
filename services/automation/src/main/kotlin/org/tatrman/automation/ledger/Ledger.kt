@@ -8,6 +8,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.IntegerColumnType
 import org.jetbrains.exposed.v1.core.LongColumnType
@@ -38,6 +40,7 @@ import org.tatrman.automation.apply.*
 import org.tatrman.automation.apply.ApplyRow.Companion.DECIDED
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_AT
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_OUTCOME
+import org.tatrman.automation.writer.RowIdentity
 import org.tatrman.automation.writer.RowOutcome
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
@@ -654,6 +657,7 @@ class Ledger(
                             )
                     },
                 runDeadline(runId, defaultBudget),
+                settled(row),
             )
         }
     }
@@ -962,6 +966,15 @@ class Ledger(
                         )
                     }
                     put("staleState", JsonPrimitive(rows.count { it[BatchRows.error] == RowOutcome.STALE_STATE }))
+                    // D-202 (F2): rows a re-read did not resend (counted in `skipped` too).
+                    put(
+                        "settled",
+                        JsonPrimitive(
+                            rows.count {
+                                it[BatchRows.status] == "skipped" && it[BatchRows.error] == RowOutcome.SETTLED
+                            },
+                        ),
+                    )
                     put("history", historyCounts(rows))
                     if (waiting) {
                         // S2.3: held rows are counted apart, with their groups; each decision appends after the seal.
@@ -1131,6 +1144,58 @@ class Ledger(
                     ?: defaultBudget,
             )
         }
+    }
+
+    /**
+     * D-202 (F2): the identities (entity, key, op) of the rows an earlier sealed wet run of [run]'s program `applied`
+     * over a window that overlaps [run]'s `[from, to)` — the re-read of a held range sends only the rest. Empty unless
+     * [run] is a wet watermark run. Per program: another program's applied rows never settle this one's. Sealed = a wet
+     * run `closed` or `waiting` (a `waiting` run's held rows count once decided and applied). A row without a key has no
+     * identity and is never settled. Read in the caller's transaction.
+     */
+    private fun settled(run: org.jetbrains.exposed.v1.core.ResultRow): Set<RowIdentity> {
+        val program = run[Runs.program] ?: return emptySet()
+        if (run[Runs.dryRun]) return emptySet()
+        val window = Watermark.keeping(run[Runs.port]) ?: return emptySet()
+        val from = Instant.parse(window.getValue("from").jsonPrimitive.content).atOffset(ZoneOffset.UTC)
+        val to = Instant.parse(window.getValue("to").jsonPrimitive.content).atOffset(ZoneOffset.UTC)
+        val tx = TransactionManager.current()
+        return tx
+            .exec(
+                """
+                SELECT br.entity, br.key::text, br.op
+                FROM automation.runs r
+                JOIN automation.batches b ON b.run = r.id
+                JOIN automation.batch_rows br ON br.batch = b.id
+                WHERE r.program = ? AND r.id <> ? AND NOT r.dry_run
+                  AND r.status IN ('${RunStatus.CLOSED.wire}', '${RunStatus.WAITING.wire}')
+                  AND (r.port -> '${Watermark.PORT_KEY}' ->> 'from')::timestamptz < ?
+                  AND (r.port -> '${Watermark.PORT_KEY}' ->> 'to')::timestamptz > ?
+                  AND br.status = 'applied' AND br.key IS NOT NULL AND br.key <> '{}'::jsonb
+                """.trimIndent(),
+                listOf<Pair<org.jetbrains.exposed.v1.core.IColumnType<*>, Any>>(
+                    org.jetbrains.exposed.v1.core
+                        .TextColumnType() to program,
+                    org.jetbrains.exposed.v1.core.java
+                        .UUIDColumnType() to run[Runs.id],
+                    org.jetbrains.exposed.v1.javatime
+                        .JavaOffsetDateTimeColumnType() to to,
+                    org.jetbrains.exposed.v1.javatime
+                        .JavaOffsetDateTimeColumnType() to from,
+                ),
+            ) { rs ->
+                buildSet {
+                    while (rs.next()) {
+                        add(
+                            RowIdentity(
+                                rs.getString(1),
+                                Json.parseToJsonElement(rs.getString(2)).jsonObject,
+                                rs.getString(3),
+                            ),
+                        )
+                    }
+                }
+            }.orEmpty()
     }
 
     /**

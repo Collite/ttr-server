@@ -120,6 +120,8 @@ class RunCloser(
                         .orEmpty()
                         .map { it.name },
                     state.recorded,
+                    // D-202 (F2): a watermark re-read sends only what no earlier run of the program applied.
+                    settled = state.settled,
                 ),
                 object : ApplyJournal {
                     override fun begin(
