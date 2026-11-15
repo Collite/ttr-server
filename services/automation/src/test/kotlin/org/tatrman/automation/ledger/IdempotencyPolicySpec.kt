@@ -16,7 +16,7 @@ class IdempotencyPolicySpec :
         val budget = Duration.ofMinutes(30)
         val id = UUID.randomUUID()
 
-        fun holder(status: RunStatus) = KeyHolder(id, status, started, budget)
+        fun holder(status: RunStatus) = KeyHolder(id, status, started, budget, dryRun = false)
 
         val withinBudget = started + budget
         val pastBudgetAndGrace = started + budget + IdempotencyPolicy.GRACE + Duration.ofSeconds(1)

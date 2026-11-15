@@ -286,6 +286,7 @@ class Ledger(
                             status = RunStatus.of(it[Runs.status]),
                             startedAt = it[Runs.startedAt].toInstant(),
                             budget = runBudget(it[Runs.mode], it[Runs.budgetSync], it[Runs.budgetBatch], defaultBudget),
+                            dryRun = it[Runs.dryRun],
                         )
                     }
                 when (val decision = IdempotencyPolicy.decide(holder, now)) {
@@ -294,9 +295,13 @@ class Ledger(
                         Claim.Claimed(insertRun(open, now), startedAt = now)
                     }
                     // D-195 (D): a replay and a live handle answer the dryRun the holder's row stored, like a new claim.
-                    is ClaimDecision.Replay -> Claim.Replay(decision.runId, dryRun = checkNotNull(row)[Runs.dryRun])
+                    is ClaimDecision.Replay -> Claim.Replay(decision.runId, dryRun = checkNotNull(holder).dryRun)
                     is ClaimDecision.Wait ->
-                        Claim.Running(decision.runId, decision.status, dryRun = checkNotNull(row)[Runs.dryRun])
+                        Claim.Running(
+                            decision.runId,
+                            decision.status,
+                            dryRun = checkNotNull(holder).dryRun,
+                        )
                     is ClaimDecision.AbandonThenOpen -> {
                         Runs.update({ Runs.id eq decision.runId }) {
                             it[status] = RunStatus.ABANDONED.wire
@@ -843,7 +848,7 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            seal(runId, batchId, dryRun = true, now, row[Runs.program], row[Runs.port])
+            seal(runId, batchId, dryRun = true, now, row[Runs.program], row[Runs.port], advance = false)
             ensureRunBudget(runId, defaultBudget, clock)
             Runs.update({ Runs.id eq runId }) {
                 it[status] = RunStatus.CLOSED.wire
@@ -993,10 +998,9 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            // D-195 (C): a failed or unknown row holds the watermark — the run seals, the next window re-reads from the
-            // old last_to (the writer's compare-and-set keeps the re-apply idempotent per key). Held rows are not counted.
-            // D-201: a `failed · stale-state` row is settled (the state already moved; D-67) and does not hold — else a
-            // re-read window fails its already-applied transitions stale-state forever. History sub-outcomes do not count.
+            // D-195 (C) + D-201: an `unknown` row, or a `failed` row other than `stale-state`, holds the watermark — the run
+            // seals and the next window starts from the old last_to. A `failed · stale-state` row (the state already moved,
+            // D-67), a held row (a decision is pending) and history sub-outcomes do not hold.
             val holdsWatermark =
                 rows.any {
                     when (bucket(it)) {
@@ -1029,8 +1033,9 @@ class Ledger(
         now: OffsetDateTime,
         program: String?,
         port: JsonElement,
-        advance: Boolean = !dryRun,
+        advance: Boolean,
     ) {
+        require(!(dryRun && advance)) { "a dry run never advances the watermark" }
         val closure =
             kotlinx.serialization.json.buildJsonObject {
                 put("event", JsonPrimitive("closed"))
@@ -1048,7 +1053,7 @@ class Ledger(
                 it[at] = now
             }
         }
-        if (!dryRun && advance) {
+        if (advance) {
             // D-143 (S3.2 T2): a wet windowed run's seal advances the program's watermark, in this transaction
             // (review-280 F7: [program] and [port] come from the row the close already holds FOR UPDATE);
             // D-195 (C): not when the close had a failed (other than stale-state, D-201) or unknown row ([advance] false).

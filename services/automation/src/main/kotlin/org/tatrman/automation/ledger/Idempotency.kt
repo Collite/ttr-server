@@ -69,6 +69,8 @@ data class KeyHolder(
     val status: RunStatus,
     val startedAt: Instant,
     val budget: Duration,
+    /** The holder row's stored `dry_run`, answered on a replay or a live handle (D-195 (D)). */
+    val dryRun: Boolean,
 )
 
 /** The decision the claim acts on; [Claim] is what the caller then sees. */

@@ -546,7 +546,7 @@ private class RuntimeFixture(
             val input = firstArg<RunOpen>()
             val existing = records.entries.firstOrNull { it.value.idempotencyKey == input.idempotencyKey }
             if (existing != null) {
-                Claim.Running(existing.key, states.getValue(existing.key), dryRun = false)
+                Claim.Running(existing.key, states.getValue(existing.key), dryRun = existing.value.dryRun)
             } else {
                 val id = UUID.randomUUID()
                 records[id] = input
