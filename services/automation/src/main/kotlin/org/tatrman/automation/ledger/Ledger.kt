@@ -195,6 +195,8 @@ data class HeldGroup(
     val statuses: List<BatchRowStatus>,
     val actions: List<DryRunAction>,
     val budget: Duration,
+    /** D-202 (F2), review-293 F8: what an earlier wet run of the program applied over this run's window. */
+    val settled: Set<RowIdentity> = emptySet(),
 )
 
 /** S2.3: what a revert reads (see [Ledger.revertState]). */
@@ -657,7 +659,8 @@ class Ledger(
                             )
                     },
                 runDeadline(runId, defaultBudget),
-                settled(row),
+                // Only a run that still applies reads it (the close and perform apply an `evaluated` run only).
+                if (status == RunStatus.EVALUATED) settled(row) else emptySet(),
             )
         }
     }
@@ -1142,15 +1145,18 @@ class Ledger(
                 previewActions(runId),
                 run[Runs.budgetBatch]?.let(Duration::ofMillis) ?: run[Runs.budgetSync]?.let(Duration::ofMillis)
                     ?: defaultBudget,
+                // review-293 F8 (✅R293-B): a held group's commit settles like the close.
+                settled(run),
             )
         }
     }
 
     /**
-     * D-202 (F2): the identities (entity, key, op) of the rows an earlier sealed wet run of [run]'s program `applied`
-     * over a window that overlaps [run]'s `[from, to)` — the re-read of a held range sends only the rest. Empty unless
-     * [run] is a wet watermark run. Per program: another program's applied rows never settle this one's. Sealed = a wet
-     * run `closed` or `waiting` (a `waiting` run's held rows count once decided and applied). A row without a key has no
+     * D-202 (F2): the identities (entity, key, op) of the rows an earlier wet run of [run]'s program `applied` over a
+     * window that overlaps [run]'s `[from, to)` — the re-read of a held range sends only the rest. Empty unless [run] is
+     * a wet watermark run. Per program: another program's applied rows never settle this one's. Any status (planner
+     * ~15:45, Found 4; review-293 F6): an applied row's effect is done whatever happened to its run afterwards — a run
+     * that applied rows and then failed (`close-deadline-exceeded`) settles them too. A row without a key has no
      * identity and is never settled. Read in the caller's transaction.
      */
     private fun settled(run: org.jetbrains.exposed.v1.core.ResultRow): Set<RowIdentity> {
@@ -1168,7 +1174,6 @@ class Ledger(
                 JOIN automation.batches b ON b.run = r.id
                 JOIN automation.batch_rows br ON br.batch = b.id
                 WHERE r.program = ? AND r.id <> ? AND NOT r.dry_run
-                  AND r.status IN ('${RunStatus.CLOSED.wire}', '${RunStatus.WAITING.wire}')
                   AND (r.port -> '${Watermark.PORT_KEY}' ->> 'from')::timestamptz < ?
                   AND (r.port -> '${Watermark.PORT_KEY}' ->> 'to')::timestamptz > ?
                   AND br.status = 'applied' AND br.key IS NOT NULL AND br.key <> '{}'::jsonb
