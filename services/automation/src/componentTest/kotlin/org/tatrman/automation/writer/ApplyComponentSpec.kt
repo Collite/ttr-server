@@ -88,8 +88,8 @@ class ApplyComponentSpec :
         val fake =
             RowWritesQueryFake(
                 ds,
-                mapOf("w-erp" to "erp_fixture", "w-auto" to "wet_fixture"),
-                tables = mapOf("order" to "sales_order"),
+                mapOf("w-erp" to "public", "w-auto" to "wet_fixture"),
+                bundle = { bundle },
             )
         val writeRoutes = mapOf("demo/erp_db" to "w-erp", "demo/automation_db" to "w-auto")
 
@@ -146,13 +146,13 @@ class ApplyComponentSpec :
                 ),
             )
             sql(
-                "CREATE SCHEMA erp_fixture; " +
-                    "CREATE TABLE erp_fixture.sales_order " +
+                "DROP TABLE IF EXISTS public.sales_order, public.return_request_line; " +
+                    "CREATE TABLE public.sales_order " +
                     "(order_number text PRIMARY KEY, state text NOT NULL, held_for text); " +
-                    "CREATE TABLE erp_fixture.return_request_line (line_id integer PRIMARY KEY, state text NOT NULL, way text)",
+                    "CREATE TABLE public.return_request_line (line_id integer PRIMARY KEY, state text NOT NULL, way text)",
             )
         }
-        afterSpec { sql("DROP SCHEMA erp_fixture CASCADE; DROP SCHEMA wet_fixture CASCADE") }
+        afterSpec { sql("DROP TABLE public.sales_order, public.return_request_line; DROP SCHEMA wet_fixture CASCADE") }
         beforeEach {
             LedgerTestDb.reset()
             clock.now = Instant.parse("2026-11-11T10:00:00Z")
@@ -162,10 +162,10 @@ class ApplyComponentSpec :
             sql(
                 "TRUNCATE wet_fixture.release_order_verdict, wet_fixture.release_order_verdict_detail, " +
                     "wet_fixture.release_order_verdict_current, wet_fixture.obligation, wet_fixture.state_history; " +
-                    "TRUNCATE erp_fixture.sales_order, erp_fixture.return_request_line; " +
-                    "INSERT INTO erp_fixture.sales_order VALUES ('4711', 'placed', NULL), ('4712', 'placed', NULL), " +
+                    "TRUNCATE public.sales_order, public.return_request_line; " +
+                    "INSERT INTO public.sales_order VALUES ('4711', 'placed', NULL), ('4712', 'placed', NULL), " +
                     "('4713', 'held', 'AR'), ('4714', 'cancelled', NULL); " +
-                    "INSERT INTO erp_fixture.return_request_line VALUES (1, 'received', NULL)",
+                    "INSERT INTO public.return_request_line VALUES (1, 'received', NULL)",
             )
         }
 
@@ -422,7 +422,7 @@ class ApplyComponentSpec :
             ) shouldBe
                 listOf(listOf("${c.id}", "4711", "hold_sales"), listOf("${c.id}", "4712", "release"))
             rows(
-                "SELECT order_number, state, held_for FROM erp_fixture.sales_order WHERE order_number IN ('4711','4712') ORDER BY 1",
+                "SELECT order_number, state, held_for FROM public.sales_order WHERE order_number IN ('4711','4712') ORDER BY 1",
             ) shouldBe
                 listOf(listOf("4711", "held", "Sales"), listOf("4712", "released", null))
             transactionCount(
@@ -477,7 +477,7 @@ class ApplyComponentSpec :
             rows("SELECT run, route FROM wet_fixture.release_order_verdict_current") shouldBe
                 listOf(listOf("${second.id}", "hold_ar"))
             // held → held: `set:` applies, no second history row (D-85).
-            rows("SELECT held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("AR"))
             rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("1"))
         }
@@ -564,7 +564,7 @@ class ApplyComponentSpec :
             val c = commit({ _ -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) })
             fake.writes.size shouldBe 2
             fake.writes[0].world shouldBe "w-erp"
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("held", "Sales"))
             rows(
                 "SELECT entity, key, attribute, from_state, to_state, run, at, by FROM wet_fixture.state_history",
@@ -633,7 +633,7 @@ class ApplyComponentSpec :
             answer.outcome shouldBe "applied"
             answer.rows.map { it.op to it.status } shouldBe listOf("update" to "applied", "transition" to "applied")
             fake.writes.size shouldBe 2 // the guarded write, then its history row
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("held", "Sales"))
             rows("SELECT entity, key, from_state, to_state, run, by FROM wet_fixture.state_history") shouldBe
                 listOf(
@@ -759,7 +759,7 @@ class ApplyComponentSpec :
             }.code shouldBe ErrorCode.BAD_REQUEST
             runs() shouldBe 0L
             fake.writes.size shouldBe 0
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4712'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4712'") shouldBe
                 listOf(listOf("placed"))
             // F3 (✅R273-A): paused refuses 503 before the claim; unpaused, the same request applies.
             val request =
@@ -799,7 +799,7 @@ class ApplyComponentSpec :
                 .of("er.entity.release_order_verdict")
                 .single()
                 .status shouldBe "applied"
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4714'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4714'") shouldBe
                 listOf(listOf("cancelled", null))
             rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("0"))
             (writesEntry(c.id)["staleState"] as JsonPrimitive).int shouldBe 2
@@ -808,7 +808,7 @@ class ApplyComponentSpec :
         "held → held applies set without history; an undeclared transition fails bad-transition with no door call" {
             val c = commit({ _ -> planned(hold("4713", "Sales"), listOf(listOf(0, 1)), keys = emptyList()) })
             c.batch.statuses.map { it.status } shouldBe listOf("applied", "applied")
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4713'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4713'") shouldBe
                 listOf(listOf("held", "Sales"))
             rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("0"))
             fake.writes.size shouldBe 1
@@ -953,7 +953,7 @@ class ApplyComponentSpec :
                 )
             val first = commit(::r2a)
             first.batch.statuses.map { it.status } shouldBe listOf("applied", "applied", "applied")
-            rows("SELECT state, way FROM erp_fixture.return_request_line") shouldBe
+            rows("SELECT state, way FROM public.return_request_line") shouldBe
                 listOf(listOf("awaiting_goods", "replacement"))
             rows("SELECT entity, key, from_state, to_state FROM wet_fixture.state_history") shouldBe
                 listOf(listOf("er.entity.return_request_line", """{"line_id":1}""", "received", "awaiting_goods"))
@@ -988,7 +988,7 @@ class ApplyComponentSpec :
                 listOf("staged" to RowOutcome.UNKNOWN, "staged" to RowOutcome.UNKNOWN)
             (writesEntry(c.id)["unknown"] as JsonPrimitive).int shouldBe 2
             // It did commit; no history row is guessed for it.
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("held"))
             rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("0"))
             fake.writes.size shouldBe 1
@@ -1086,7 +1086,7 @@ class ApplyComponentSpec :
             shouldThrow<IllegalStateException> { ledger.closeCommitted(id, subject) }
             applyOnce(id)
             fake.writes.map { it.world } shouldBe listOf("w-erp", "w-auto")
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("held", "Sales"))
             rows("SELECT from_state, to_state FROM wet_fixture.state_history") shouldBe
                 listOf(listOf("placed", "held"))
@@ -1158,7 +1158,7 @@ class ApplyComponentSpec :
                 )
             applyOnce(id)
             ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("held", "Sales"))
             val held = Held(ledger, Apply(door(), clock), contexts, { bundle }, clock)
             val revert = Revert(ledger, Apply(door(), clock), contexts, held, clock)
@@ -1171,7 +1171,7 @@ class ApplyComponentSpec :
             result.rows shouldBe 3
             result.applied shouldBe 3
             // The prior values are back; the obligation is reopened by an inverse transition with history.
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("placed", null))
             rows("SELECT state FROM wet_fixture.obligation WHERE id = 'ob-1'") shouldBe listOf(listOf("open"))
             rows("SELECT entity, from_state, to_state FROM wet_fixture.state_history ORDER BY at, entity") shouldBe
@@ -1260,13 +1260,13 @@ class ApplyComponentSpec :
             applyOnce(id)
             ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
             // Another transaction moves the order on after the commit.
-            sql("UPDATE erp_fixture.sales_order SET state = 'cancelled', held_for = 'AR' WHERE order_number = '4711'")
+            sql("UPDATE public.sales_order SET state = 'cancelled', held_for = 'AR' WHERE order_number = '4711'")
             clock.now = clock.now.plusSeconds(3600)
             val result = reverter().revert(id, ops)
             result.rows shouldBe 2
             result.failed shouldBe 2
             result.applied shouldBe 0
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("cancelled", "AR"))
             rows("SELECT count(*) FROM wet_fixture.state_history WHERE to_state = 'placed'") shouldBe
                 listOf(listOf("0"))
@@ -1296,14 +1296,14 @@ class ApplyComponentSpec :
                 )
             applyOnce(id)
             ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("released", "AR"))
             clock.now = clock.now.plusSeconds(3600)
             val result = reverter().revert(id, ops)
             result.rows shouldBe 4
             result.applied shouldBe 4
             result.failed shouldBe 0
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("placed", null))
             rows("SELECT from_state, to_state FROM wet_fixture.state_history ORDER BY at, from_state") shouldBe
                 listOf(
@@ -1324,7 +1324,7 @@ class ApplyComponentSpec :
             applyOnce(id)
             fake.loseCommit = { false }
             ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("held", "Sales"))
             val sent = fake.writes.size
             clock.now = clock.now.plusSeconds(3600)
@@ -1337,7 +1337,7 @@ class ApplyComponentSpec :
             fake.writes
                 .last()
                 .context.correlationId shouldBe "$id/reconcile/erp_db/1"
-            rows("SELECT state, held_for FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("held", "Sales"))
             // The re-read settled the rows as applied, but the set's prior was never read: it cannot be restored.
             ledger.readRunBatch(id, subject).statuses.map { it.status to it.error } shouldBe
@@ -1359,7 +1359,7 @@ class ApplyComponentSpec :
             before: String,
             seqs: List<Int>,
         ) {
-            sql("UPDATE erp_fixture.sales_order SET state = '$before' WHERE order_number = '4711'")
+            sql("UPDATE public.sales_order SET state = '$before' WHERE order_number = '4711'")
             val id =
                 prepare(
                     { planned(plan, keys = emptyList()) },
@@ -1369,7 +1369,7 @@ class ApplyComponentSpec :
             applyOnce(id)
             fake.loseCommit = { false }
             ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
-            val after = rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'")
+            val after = rows("SELECT state FROM public.sales_order WHERE order_number = '4711'")
             val sent = fake.writes.size
             clock.now = clock.now.plusSeconds(3600)
             val refused = shouldThrow<AutomationException> { reverter().revert(id, ops) }
@@ -1378,7 +1378,7 @@ class ApplyComponentSpec :
             refused.detail!!.jsonObject["rows"] shouldBe JsonArray(seqs.map { JsonPrimitive(it) })
             // One re-read, nothing resent, no inverse applied, the state untouched.
             fake.writes.size shouldBe sent + 1
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe after
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe after
             ledger.readRunBatch(id, subject).statuses.map { Triple(it.status, it.error, it.prior) } shouldBe
                 seqs.map { Triple("applied", RowOutcome.RECONCILED, null) }
             rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("0"))
@@ -1390,19 +1390,19 @@ class ApplyComponentSpec :
 
         "review-258 B3 (⚑AU-P2-12): a lost chain placed → held → released has no known first prior: refused" {
             lostThenRefused(listOf(holdOnly("4711"), release("4711")), before = "placed", seqs = listOf(1, 2))
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("released"))
         }
 
         "review-258 B3 (⚑AU-P2-12): a lost silent self-transition from held is never reverted to placed" {
             lostThenRefused(listOf(holdOnly("4711")), before = "held", seqs = listOf(1))
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("held"))
         }
 
         "review-258 B3 (⚑AU-P2-12): a lost chain on a key already released (CAS counts 0, 1) stays released" {
             lostThenRefused(listOf(holdOnly("4711"), release("4711")), before = "released", seqs = listOf(1, 2))
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("released"))
         }
 
@@ -1414,7 +1414,7 @@ class ApplyComponentSpec :
             fake.loseCommit = { false }
             ledger.closeCommitted(id, subject).batch.state shouldBe "committed"
             // The lost hold landed; another writer moved the order on since.
-            sql("UPDATE erp_fixture.sales_order SET state = 'cancelled' WHERE order_number = '4711'")
+            sql("UPDATE public.sales_order SET state = 'cancelled' WHERE order_number = '4711'")
             val sent = fake.writes.size
             clock.now = clock.now.plusSeconds(3600)
             val refused = shouldThrow<AutomationException> { reverter().revert(id, ops) }
@@ -1422,7 +1422,7 @@ class ApplyComponentSpec :
             refused.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
             refused.detail!!.jsonObject["rows"] shouldBe JsonArray(listOf(JsonPrimitive(1)))
             fake.writes.size shouldBe sent + 1
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("cancelled"))
             ledger.readRunBatch(id, subject).statuses.map { it.status to it.error } shouldBe
                 listOf("staged" to RowOutcome.UNKNOWN)
@@ -1481,7 +1481,7 @@ class ApplyComponentSpec :
             first.performed.map { it.key } shouldBe listOf(key("4711"))
             first.skipped shouldBe emptyList()
             rows(
-                "SELECT order_number, state FROM erp_fixture.sales_order WHERE order_number IN ('4711','4712') ORDER BY 1",
+                "SELECT order_number, state FROM public.sales_order WHERE order_number IN ('4711','4712') ORDER BY 1",
             ) shouldBe
                 listOf(listOf("4711", "held"), listOf("4712", "placed"))
             val sent = fake.writes.size
@@ -1491,7 +1491,7 @@ class ApplyComponentSpec :
             applyOnce(id)
             ledger.closeCommitted(id, subject).status shouldBe "closed"
             fake.writes.count { it.world == "w-erp" } shouldBe 2
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4712'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4712'") shouldBe
                 listOf(listOf("held"))
             // outcome appends to the actions section of an open protocol only; the sealed one refuses.
             shouldThrow<AutomationException> {
@@ -1564,7 +1564,7 @@ class ApplyComponentSpec :
             applyOnce(id)
             fake.writes.map { it.world } shouldBe listOf("w-erp", "w-auto", "w-auto")
             rows("SELECT count(*) FROM wet_fixture.state_history") shouldBe listOf(listOf("1"))
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("held"))
             ledger.closeCommitted(id, subject)
             ledger
@@ -1633,7 +1633,7 @@ class ApplyComponentSpec :
             shouldThrow<AutomationException> { ledger.closeCommitted(id, subject) }.code shouldBe
                 ErrorCode.CLOSE_DEADLINE_EXCEEDED
             ledger.findRun(id)?.status shouldBe RunStatus.EVALUATED
-            rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+            rows("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                 listOf(listOf("placed"))
         }
 
@@ -1702,7 +1702,7 @@ class ApplyComponentSpec :
                 clock.now = deadline
                 shouldThrow<AutomationException> { applyOnce(id) }.code shouldBe ErrorCode.CLOSE_DEADLINE_EXCEEDED
                 ledger.readRunBatch(id, subject).statuses.map { it.error } shouldBe listOf(null, null)
-                rows("SELECT state FROM erp_fixture.sales_order WHERE order_number = '4711'") shouldBe
+                rows("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                     listOf(listOf("placed"))
             }
         }

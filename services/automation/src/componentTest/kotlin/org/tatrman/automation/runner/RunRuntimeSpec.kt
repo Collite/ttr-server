@@ -1217,7 +1217,7 @@ class RunRuntimeComponentSpec :
         /**
          * The default H-1 fixture (route `release` → `release`, a transition placed/held → released, with history) plus
          * the generated verdict catalog entities of the approval fixture's `release_order`, which the writer lowers
-         * against. ERP = erp_runtime (sales_order), automation_pg = wet_runtime.
+         * against. ERP = public (sales_order), automation_pg = wet_runtime.
          */
         fun wetFixture(
             protocol: String? = null,
@@ -1240,16 +1240,16 @@ class RunRuntimeComponentSpec :
                     it.qname.name.startsWith("release_order_verdict")
                 }
             sqlAuto(
-                "CREATE SCHEMA IF NOT EXISTS erp_runtime; DROP TABLE IF EXISTS erp_runtime.sales_order; " +
-                    "CREATE TABLE erp_runtime.sales_order " +
+                "CREATE SCHEMA IF NOT EXISTS public; DROP TABLE IF EXISTS public.sales_order; " +
+                    "CREATE TABLE public.sales_order " +
                     "(order_number text PRIMARY KEY, state text NOT NULL, held_for text); " +
-                    "INSERT INTO erp_runtime.sales_order VALUES ('4711', '$initial', 'AR')",
+                    "INSERT INTO public.sales_order VALUES ('4711', '$initial', 'AR')",
             )
             val fake =
                 org.tatrman.automation.writer.RowWritesQueryFake(
                     LedgerTestDb.db.getDataSource(),
-                    mapOf("w-erp" to "erp_runtime", "w-auto" to "wet_runtime"),
-                    tables = mapOf("order" to "sales_order"),
+                    mapOf("w-erp" to "public", "w-auto" to "wet_runtime"),
+                    bundle = { catalog },
                 )
             val program = "release_on_placement"
             val f =
@@ -1344,7 +1344,7 @@ class RunRuntimeComponentSpec :
             return Triple(f, fake, Unit)
         }
 
-        fun dropWet() = sqlAuto("DROP SCHEMA IF EXISTS wet_runtime CASCADE; DROP SCHEMA IF EXISTS erp_runtime CASCADE")
+        fun dropWet() = sqlAuto("DROP SCHEMA IF EXISTS wet_runtime CASCADE; DROP TABLE IF EXISTS public.sales_order")
 
         "a committed H-1 run applies through the door; a second run is idempotent; a dry run sends no row_writes" {
             val (f, fake, _) = wetFixture()
@@ -1377,7 +1377,7 @@ class RunRuntimeComponentSpec :
                     listOf(listOf("$first", "4711", "release"))
                 query("SELECT run FROM wet_runtime.release_order_verdict_current") shouldBe listOf(listOf("$first"))
                 // The held order is transitioned, with its history row.
-                query("SELECT state FROM erp_runtime.sales_order") shouldBe listOf(listOf("released"))
+                query("SELECT state FROM public.sales_order") shouldBe listOf(listOf("released"))
                 query("SELECT from_state, to_state, run, by FROM wet_runtime.state_history") shouldBe
                     listOf(listOf("held", "released", "$first", "maya"))
                 val transition = batch.rows.single { it.op == "transition" }
@@ -1423,7 +1423,7 @@ class RunRuntimeComponentSpec :
 
         "S2.3 T2: approval-required rows are held per key; a decision applies its group; the last one closes" {
             val (f, fake, _) = wetFixture(keys = listOf("4711", "4712"), wire = "release_confirmed", initial = "placed")
-            sqlAuto("INSERT INTO erp_runtime.sales_order VALUES ('4712', 'placed', NULL)")
+            sqlAuto("INSERT INTO public.sales_order VALUES ('4712', 'placed', NULL)")
             val runtime = f.start()
             try {
                 val id =
@@ -1449,7 +1449,7 @@ class RunRuntimeComponentSpec :
                 // The verdict rows committed `auto`; the ERP transitions wait.
                 query("SELECT order_number FROM wet_runtime.release_order_verdict ORDER BY 1") shouldBe
                     listOf(listOf("4711"), listOf("4712"))
-                query("SELECT order_number, state FROM erp_runtime.sales_order ORDER BY 1") shouldBe
+                query("SELECT order_number, state FROM public.sales_order ORDER BY 1") shouldBe
                     listOf(listOf("4711", "placed"), listOf("4712", "placed"))
                 val batch = runtime.status.batch(id, f.caller)
                 batch.mode shouldBe "hold"
@@ -1516,13 +1516,13 @@ class RunRuntimeComponentSpec :
                 superseded.code shouldBe ErrorCode.SUPERSEDED
                 superseded.detail!!.jsonObject["differs"] shouldBe JsonArray(listOf(JsonPrimitive("text")))
                 fake.writes.size shouldBe writesBefore
-                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                query("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                     listOf(listOf("placed"))
                 // commitHeld applies that group only.
                 val committed = decider().commitHeld(id, k4711, ops)
                 committed.applied shouldBe 1
                 committed.runStatus shouldBe "waiting"
-                query("SELECT order_number, state FROM erp_runtime.sales_order ORDER BY 1") shouldBe
+                query("SELECT order_number, state FROM public.sales_order ORDER BY 1") shouldBe
                     listOf(listOf("4711", "released"), listOf("4712", "placed"))
                 query("SELECT from_state, to_state, run FROM wet_runtime.state_history") shouldBe
                     listOf(listOf("placed", "released", "$id"))
@@ -1534,7 +1534,7 @@ class RunRuntimeComponentSpec :
                 val rejected = decider().rejectHeld(id, k4712, ops)
                 rejected.discarded shouldBe 1
                 rejected.runStatus shouldBe "closed"
-                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4712'") shouldBe
+                query("SELECT state FROM public.sales_order WHERE order_number = '4712'") shouldBe
                     listOf(listOf("placed"))
                 val after = f.ledger.readRunBatch(id, f.caller.sub)
                 after.mode shouldBe "auto"
@@ -1571,7 +1571,7 @@ class RunRuntimeComponentSpec :
 
         "review-258 B3/B4: an interrupted held commit keeps the run waiting; its retry re-reads, never resends" {
             val (f, fake, _) = wetFixture(keys = listOf("4711", "4712"), wire = "release_confirmed", initial = "placed")
-            sqlAuto("INSERT INTO erp_runtime.sales_order VALUES ('4712', 'placed', NULL)")
+            sqlAuto("INSERT INTO public.sales_order VALUES ('4712', 'placed', NULL)")
             val runtime = f.start()
             try {
                 val id =
@@ -1622,7 +1622,7 @@ class RunRuntimeComponentSpec :
                 fake.loseCommit = { false }
                 lost.code shouldBe ErrorCode.CLOSE_NOT_READY
                 lost.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
-                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                query("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                     listOf(listOf("released"))
                 f.ledger.findRun(id)!!.status shouldBe RunStatus.WAITING
                 // A commit that already sent rows cannot be rejected.
@@ -1651,7 +1651,7 @@ class RunRuntimeComponentSpec :
                     listOf("reconcile")
                 committed.applied shouldBe 1
                 committed.runStatus shouldBe "closed"
-                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                query("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                     listOf(listOf("released"))
                 f.ledger.findRun(id)!!.status shouldBe RunStatus.CLOSED
                 f.ledger
@@ -1669,7 +1669,7 @@ class RunRuntimeComponentSpec :
 
         "review-258 B3 (D-188): a held retry resends only a transition its CAS still guards; a moved row stays held" {
             val (f, fake, _) = wetFixture(keys = listOf("4711", "4712"), wire = "release_confirmed", initial = "placed")
-            sqlAuto("INSERT INTO erp_runtime.sales_order VALUES ('4712', 'placed', NULL)")
+            sqlAuto("INSERT INTO public.sales_order VALUES ('4712', 'placed', NULL)")
             val runtime = f.start()
             try {
                 val id =
@@ -1737,27 +1737,27 @@ class RunRuntimeComponentSpec :
                 // 4711: lost before it landed; the order is still placed, a state its compare-and-set accepts → resent.
                 shouldThrow<AutomationException> { decider(dropping).commitHeld(id, k4711, ops) }.code shouldBe
                     ErrorCode.CLOSE_NOT_READY
-                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                query("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                     listOf(listOf("placed"))
                 val before = erpLabels().size
                 val committed = decider(door).commitHeld(id, k4711, ops)
                 erpLabels().drop(before) shouldBe listOf("reconcile", "apply")
                 committed.applied shouldBe 1
                 committed.runStatus shouldBe "waiting"
-                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4711'") shouldBe
+                query("SELECT state FROM public.sales_order WHERE order_number = '4711'") shouldBe
                     listOf(listOf("released"))
                 query("SELECT from_state, to_state FROM wet_runtime.state_history") shouldBe
                     listOf(listOf("placed", "released"))
 
                 // 4712: lost, and another writer has moved the order on: no proof either way, nothing resent, undecided.
                 shouldThrow<AutomationException> { decider(dropping).commitHeld(id, k4712, ops) }
-                sqlAuto("UPDATE erp_runtime.sales_order SET state = 'cancelled' WHERE order_number = '4712'")
+                sqlAuto("UPDATE public.sales_order SET state = 'cancelled' WHERE order_number = '4712'")
                 val sent = erpLabels().size
                 val stuck = shouldThrow<AutomationException> { decider(door).commitHeld(id, k4712, ops) }
                 stuck.code shouldBe ErrorCode.CLOSE_NOT_READY
                 stuck.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("unresolved-outcome")
                 erpLabels().drop(sent) shouldBe listOf("reconcile")
-                query("SELECT state FROM erp_runtime.sales_order WHERE order_number = '4712'") shouldBe
+                query("SELECT state FROM public.sales_order WHERE order_number = '4712'") shouldBe
                     listOf(listOf("cancelled"))
                 f.ledger.findRun(id)!!.status shouldBe RunStatus.WAITING
             } finally {
