@@ -179,6 +179,15 @@ fun Application.module(config: Config) {
                 snapshotDeadlineSeconds,
                 initialRetrySeconds,
             )
+
+            fun csvSet(key: String): Set<String> =
+                config
+                    .getString(key)
+                    .split(',')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .toSet()
+
             MetadataServiceModelHandleProvider(
                 getSnapshot = { req: GetSnapshotRequest ->
                     stub.withDeadlineAfter(snapshotDeadlineSeconds.toLong(), TimeUnit.SECONDS).getSnapshot(req)
@@ -186,22 +195,8 @@ fun Application.module(config: Config) {
                 refreshIntervalMs = pollSeconds * 1_000L,
                 initialRetryIntervalMs = initialRetrySeconds * 1_000L,
                 endpoint = "$host:$port",
-                placedPackages =
-                    config
-                        .getString("translate.placed-packages")
-                        .split(',')
-                        .map {
-                            it.trim()
-                        }.filter { it.isNotEmpty() }
-                        .toSet(),
-                placedEntities =
-                    config
-                        .getString("translate.placed-entities")
-                        .split(',')
-                        .map {
-                            it.trim()
-                        }.filter { it.isNotEmpty() }
-                        .toSet(),
+                placedPackages = csvSet("translate.placed-packages"),
+                placedEntities = csvSet("translate.placed-entities"),
             ).also { it.start(this) }
         }
 

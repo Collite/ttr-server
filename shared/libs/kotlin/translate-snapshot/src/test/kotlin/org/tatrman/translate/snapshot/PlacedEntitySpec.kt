@@ -5,6 +5,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.matchers.string.shouldContain
+import org.tatrman.meta.v1.DbTableDetail
+import org.tatrman.meta.v1.DbColumnSummary
 import org.tatrman.meta.v1.AttributeDetail
 import org.tatrman.meta.v1.EntityDetail
 import org.tatrman.meta.v1.Er2DbEntityMappingDetail
@@ -25,6 +27,8 @@ import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.Literal
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.SqlDialect
+import org.tatrman.translator.detect.SchemaDetector
+import org.tatrman.translator.detect.SchemaDecision
 import org.tatrman.translator.framework.EntityMapping
 import org.tatrman.translator.framework.ModelColumn
 import org.tatrman.translator.framework.SurfaceType
@@ -65,6 +69,131 @@ class PlacedEntitySpec :
                 handle.attributeColumnRenames(placedQname(SchemaCode.ER, "entity", name)) shouldBe emptyMap()
                 handle.tables(SchemaCode.ER, "cz") shouldBe emptyMap()
                 handle.columns(placedQname(SchemaCode.ER, "cz", name)) shouldBe emptyList()
+            }
+        }
+
+        for (namespace in listOf("cz", "CZ")) {
+            for (primaryKey in listOf(listOf("real_id"), emptyList())) {
+                "real table in $namespace with key $primaryKey wins over same-name placement" {
+                    val realName = if (namespace == "cz") "obligation" else "Obligation"
+                    val real = placedQname(SchemaCode.DB, namespace, realName)
+                    val snapshot =
+                        placedSnapshot()
+                            .toBuilder()
+                            .addObjects(
+                                ObjectEntry
+                                    .newBuilder()
+                                    .setObjectDescriptor(ObjectDescriptor.newBuilder().setQualifiedName(real))
+                                    .setTable(
+                                        DbTableDetail
+                                            .newBuilder()
+                                            .addColumns(
+                                                DbColumnSummary.newBuilder().setName("real_id").setDataType("int"),
+                                            ).addColumns(
+                                                DbColumnSummary.newBuilder().setName("real_x").setDataType("text"),
+                                            ).addAllPrimaryKey(primaryKey),
+                                    ),
+                            ).build()
+                    val handle = SnapshotModelHandle.from(snapshot, placedEntities = setOf("obligation"))
+                    val tables = handle.tables(SchemaCode.DB, "cz")
+                    tables.keys shouldBe setOf(real)
+                    tables.getValue(real).columns.map { it.name } shouldBe listOf("real_id", "real_x")
+                    tables.getValue(real).columns shouldBe handle.columns(real)
+                    tables.getValue(real).primaryKey shouldBe primaryKey
+                    val placed = placedQname(SchemaCode.DB, "public", "obligation")
+                    handle.tables(SchemaCode.DB, "public").getValue(placed).primaryKey shouldBe listOf("run", "key")
+                }
+            }
+        }
+
+        "duplicate placed names fail closed for every owner while unique names still map" {
+            val base = placedSnapshot()
+            val duplicateEntries =
+                base.objectsList
+                    .filter {
+                        it.objectDescriptor.qualifiedName.name == "obligation" ||
+                            it.objectDescriptor.qualifiedName.name
+                                .startsWith("obligation.")
+                    }.map { entry ->
+                        entry
+                            .toBuilder()
+                            .apply {
+                                objectDescriptor =
+                                    entry.objectDescriptor
+                                        .toBuilder()
+                                        .setQualifiedName(
+                                            entry.objectDescriptor.qualifiedName
+                                                .toBuilder()
+                                                .setNamespace("automation"),
+                                        ).build()
+                                if (entry.hasAttribute()) {
+                                    attribute =
+                                        entry.attribute
+                                            .toBuilder()
+                                            .setEntity(
+                                                entry.attribute.entity
+                                                    .toBuilder()
+                                                    .setNamespace("automation"),
+                                            ).build()
+                                }
+                            }.build()
+                    }
+            val handle =
+                SnapshotModelHandle.from(
+                    base.toBuilder().addAllObjects(duplicateEntries).build(),
+                    placedPackages = setOf(GENERATED),
+                    placedEntities = setOf("obligation"),
+                )
+            for (namespace in listOf("entity", "automation")) {
+                val entity = placedQname(SchemaCode.ER, namespace, "obligation")
+                handle.entityMapping(entity) shouldBe null
+                val original = rowPlan("obligation")
+                val plan =
+                    original
+                        .toBuilder()
+                        .setRowWrites(
+                            original.rowWrites.toBuilder().setRows(
+                                0,
+                                original.rowWrites
+                                    .getRows(0)
+                                    .toBuilder()
+                                    .setTarget(entity),
+                            ),
+                        ).build()
+                MapToPhysical
+                    .apply(plan, handle)
+                    .shouldBeInstanceOf<MapToPhysicalResult.Failure>()
+                    .code shouldBe "entity_unmapped"
+            }
+            handle.tables(SchemaCode.DB, "cz").keys.map { it.name } shouldBe listOf("release_order_verdict")
+            MapToPhysical
+                .apply(rowPlan("release_order_verdict"), handle)
+                .shouldBeInstanceOf<MapToPhysicalResult.Success>()
+        }
+
+        "placed SQL names require the explicit ER lane while unplaced names autodetect ER" {
+            for (placed in listOf(false, true)) {
+                val handle =
+                    SnapshotModelHandle.from(
+                        placedSnapshot(),
+                        placedEntities = if (placed) setOf("obligation") else emptySet(),
+                    )
+                for (stated in listOf(SchemaCode.SCHEMA_CODE_UNSPECIFIED, SchemaCode.ER)) {
+                    val result =
+                        SchemaDetector.detect(
+                            "SELECT run, amount FROM obligation",
+                            Language.SQL,
+                            stated,
+                            handle,
+                        )
+                    result.decision shouldBe
+                        when {
+                            stated == SchemaCode.ER -> SchemaDecision.CONFIRMED
+                            placed -> SchemaDecision.AMBIGUOUS
+                            else -> SchemaDecision.AUTODETECTED
+                        }
+                    if (!placed || stated == SchemaCode.ER) result.effectiveSchema shouldBe SchemaCode.ER
+                }
             }
         }
 

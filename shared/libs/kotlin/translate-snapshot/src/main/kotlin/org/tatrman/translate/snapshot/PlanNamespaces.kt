@@ -22,16 +22,15 @@ fun withPlanNamespaces(
         if (name.schemaCode == SchemaCode.DB && name.namespace.isNotBlank()) namespaces += name.namespace
     }
 
-    fun walk(node: PlanNode): PlanNode {
+    JoinerPlanWalker.forEachNode(plan) { node ->
         when (node.nodeCase) {
             PlanNode.NodeCase.TABLE_SCAN -> collect(node.tableScan.table)
+            PlanNode.NodeCase.SCAN -> collect(node.scan.`object`)
+            PlanNode.NodeCase.STORE -> collect(node.store.target)
             PlanNode.NodeCase.ROW_WRITES -> node.rowWrites.rowsList.forEach { collect(it.target) }
             else -> Unit
         }
-        JoinerPlanWalker.rewriteChildren(node, ::walk)
-        return node
     }
-    walk(plan)
     val all = handle.namespaces(SchemaCode.DB) + namespaces
     return object : ModelHandle by handle {
         override fun namespaces(schemaCode: SchemaCode): Set<String> =

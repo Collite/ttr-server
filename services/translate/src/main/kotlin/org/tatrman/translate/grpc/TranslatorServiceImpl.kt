@@ -212,7 +212,6 @@ class TranslatorServiceImpl(
         }
 
     override suspend fun explain(request: ExplainRequest): ExplainResponse {
-        val translator = Translator(modelProvider.current())
         val (sourceLanguage, sourceText, finalKind) =
             when (request.reqCase) {
                 ExplainRequest.ReqCase.PARSE ->
@@ -233,6 +232,8 @@ class TranslatorServiceImpl(
                             ),
                         ).build()
             }
+
+        val translator = Translator(sourceHandle(modelProvider.current(), sourceText, sourceLanguage))
 
         // The option the parse that runs takes, so Explain shows that parse's refusal rather than a plan it refuses.
         val r =

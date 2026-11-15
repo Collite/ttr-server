@@ -16,6 +16,7 @@ import org.tatrman.plan.v1.SchemaCode
 import org.tatrman.plan.v1.TableScanNode
 import org.tatrman.translate.model.StaticModelHandleProvider
 import org.tatrman.translate.snapshot.SnapshotModelHandle
+import org.tatrman.translate.v1.ExplainRequest
 import org.tatrman.translate.v1.Language
 import org.tatrman.translate.v1.ParseRequest
 import org.tatrman.translate.v1.SqlDialect
@@ -111,6 +112,23 @@ class PlacedReadSpec :
                 translated.output shouldContain "\"obligation\""
             }
             handle.namespaces(SchemaCode.DB) shouldBe setOf("")
+        }
+
+        "Explain parse resolves the same concrete placed read as parse" {
+            val result =
+                service.explain(
+                    ExplainRequest
+                        .newBuilder()
+                        .setParse(
+                            ParseRequest
+                                .newBuilder()
+                                .setSource(String(plan("cz").toByteArray(), Charsets.ISO_8859_1))
+                                .setSourceLanguage(Language.REL_NODE)
+                                .setTargetSchema(SchemaCode.DB),
+                        ).build(),
+                )
+            result.messagesCount shouldBe 0
+            (result.stagesCount > 0) shouldBe true
         }
 
         "a placed read without a concrete namespace is refused instead of guessing the default" {

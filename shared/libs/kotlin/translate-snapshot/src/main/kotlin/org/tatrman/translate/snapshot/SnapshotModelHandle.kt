@@ -31,6 +31,8 @@ import org.tatrman.translator.framework.SurfaceType
  * with bare attribute columns and its key attributes as the primary key. Package and named-entity
  * allowlists are opt-in; explicit bindings always win. These tables have no physical namespace:
  * the connection's search_path selects it, so lookup accepts any DB namespace.
+ * Real tables, including those without a primary key, take precedence over placed tables.
+ * A placed name exists in both lanes, so SQL over it must state `source_schema` (the Door sends ER).
  */
 class SnapshotModelHandle(
     private val tablesByQname: Map<QualifiedName, ModelTable>,
@@ -47,22 +49,28 @@ class SnapshotModelHandle(
     override fun tables(
         schemaCode: SchemaCode,
         namespace: String,
-    ): Map<QualifiedName, ModelTable> =
-        tablesByQname.filterKeys {
-            it.schemaCode == schemaCode && it.namespace.equals(namespace, ignoreCase = true)
-        } +
+    ): Map<QualifiedName, ModelTable> {
+        val real =
+            tablesByQname.filterKeys {
+                it.schemaCode == schemaCode && it.namespace.equals(namespace, ignoreCase = true)
+            }
+        val placed =
             if (schemaCode == SchemaCode.DB) {
-                placedTables.values.associate { table ->
-                    val qn =
-                        table.qname
-                            .toBuilder()
-                            .setNamespace(namespace)
-                            .build()
-                    qn to table.copy(qname = qn)
-                }
+                placedTables.values
+                    .filterNot { table -> real.keys.any { it.name.equals(table.qname.name, ignoreCase = true) } }
+                    .associate { table ->
+                        val qn =
+                            table.qname
+                                .toBuilder()
+                                .setNamespace(namespace)
+                                .build()
+                        qn to table.copy(qname = qn)
+                    }
             } else {
                 emptyMap()
             }
+        return placed + real
+    }
 
     override fun columns(tableQname: QualifiedName): List<ModelColumn> =
         tablesByQname[tableQname]?.columns
@@ -288,16 +296,24 @@ class SnapshotModelHandle(
                     .filter { it.contentCase == ObjectEntry.ContentCase.ER2DB_ENTITY_MAPPING }
                     .mapTo(mutableSetOf()) { it.er2DbEntityMapping.entity }
             val placedTables = LinkedHashMap<String, ModelTable>()
-            for (entry in snapshot.objectsList) {
-                val descriptor = entry.objectDescriptor
-                val qn = descriptor.qualifiedName
-                if (entry.contentCase != ObjectEntry.ContentCase.ENTITY ||
-                    qn.schemaCode != SchemaCode.ER ||
-                    qn in boundEntities ||
-                    !(descriptor.packageName in placedPackages || qn.name in placedEntities)
-                ) {
-                    continue
+            val placedCandidates =
+                snapshot.objectsList.filter { entry ->
+                    val descriptor = entry.objectDescriptor
+                    val qn = descriptor.qualifiedName
+                    entry.contentCase == ObjectEntry.ContentCase.ENTITY &&
+                        qn.schemaCode == SchemaCode.ER &&
+                        qn !in boundEntities &&
+                        (descriptor.packageName in placedPackages || qn.name in placedEntities)
                 }
+            // Placement fixes the table name to the entity name: never guess between two owners.
+            val ambiguousNames =
+                placedCandidates
+                    .groupBy { it.objectDescriptor.qualifiedName.name }
+                    .filterValues { entries -> entries.map { it.objectDescriptor.qualifiedName }.distinct().size > 1 }
+                    .keys
+            for (entry in placedCandidates) {
+                val qn = entry.objectDescriptor.qualifiedName
+                if (qn.name in ambiguousNames) continue
                 val attrs = finalEntities.getValue(qn).attributes
                 val tableQn =
                     qn
