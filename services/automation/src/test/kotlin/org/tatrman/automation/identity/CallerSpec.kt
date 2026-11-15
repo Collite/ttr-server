@@ -26,7 +26,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.tatrman.automation.api.HealthSources
-import org.tatrman.automation.api.SchedulerHealth
 import org.tatrman.automation.api.ServedBundle
 import org.tatrman.automation.api.descriptorRoutes
 import org.tatrman.automation.api.healthRoutes
@@ -54,13 +53,9 @@ class CallerSpec :
             object : HealthSources {
                 override fun dbReachable() = true
 
-                override fun queueDepths() = emptyMap<String, Long>()
-
                 override fun abandoned() = 0L
 
                 override fun served(): ServedBundle? = null
-
-                override fun scheduler(): SchedulerHealth? = null
 
                 override fun refreshFailed() = false
 

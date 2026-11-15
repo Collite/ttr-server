@@ -44,6 +44,7 @@ class DecideWayOpenSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    engineClient = "process-engine",
                 ).open(
                     "decide_return",
                     OpenRequest("decide_native_batch", buildJsonObject { put("none", true) }),

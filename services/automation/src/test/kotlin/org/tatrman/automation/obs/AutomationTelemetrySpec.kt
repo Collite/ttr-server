@@ -19,14 +19,9 @@ class AutomationTelemetrySpec :
                     SdkMeterProvider.builder().registerMetricReader(reader).build(),
                 ).build()
 
-        "the six metrics of §10 are emitted under their contract names, with their labels" {
+        "the four metrics of §10 are emitted under their contract names, with their labels" {
             val reader = InMemoryMetricReader.create()
-            val telemetry =
-                AutomationTelemetry(
-                    sdk(reader),
-                    queueDepths = { mapOf("runs" to 4L, "tasks" to 1L) },
-                    openTasks = { 7L },
-                )
+            val telemetry = AutomationTelemetry(sdk(reader))
             telemetry.runEnded("release_order", "closed", java.time.Duration.ofMillis(1500))
             telemetry.refreshed("ok")
             telemetry.abandoned("release_order")
@@ -36,8 +31,6 @@ class AutomationTelemetrySpec :
                 listOf(
                     AutomationTelemetry.RUNS_TOTAL,
                     AutomationTelemetry.RUN_DURATION,
-                    AutomationTelemetry.TASKS_OPEN,
-                    AutomationTelemetry.QUEUE_DEPTH,
                     AutomationTelemetry.REFRESH_TOTAL,
                     AutomationTelemetry.ABANDONED_TOTAL,
                 )
@@ -54,26 +47,13 @@ class AutomationTelemetrySpec :
                 .histogramData.points
                 .single()
                 .sum shouldBe 1.5
-            metrics
-                .getValue(AutomationTelemetry.TASKS_OPEN)
-                .longGaugeData.points
-                .single()
-                .value shouldBe 7L
-            metrics
-                .getValue(AutomationTelemetry.QUEUE_DEPTH)
-                .longGaugeData.points
-                .associate { it.attributes.get(AutomationTelemetry.QUEUE) to it.value } shouldBe
-                mapOf("runs" to 4L, "tasks" to 1L)
         }
 
-        "a gauge whose ledger read fails drops that scrape's points instead of throwing" {
+        "D-142: the task and queue gauges are gone" {
             val reader = InMemoryMetricReader.create()
-            AutomationTelemetry(
-                sdk(reader),
-                queueDepths = { error("ledger down") },
-                openTasks = { error("ledger down") },
-            )
-            reader.collectAllMetrics().map { it.name } shouldNotContain AutomationTelemetry.QUEUE_DEPTH
+            AutomationTelemetry(sdk(reader)).refreshed("ok")
+            reader.collectAllMetrics().map { it.name } shouldNotContain "automation_queue_depth"
+            reader.collectAllMetrics().map { it.name } shouldNotContain "automation_tasks_open"
         }
 
         "the span names are the contract's" {

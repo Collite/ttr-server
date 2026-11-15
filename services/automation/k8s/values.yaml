@@ -90,11 +90,14 @@ bundle:
 # and reads `.Values.connections.configMapName` in every chart of an umbrella render.
 credentials: []
 
-scheduler:
-  tz: UTC
-  enabled: true
+# S3.2 (D-159, D-150): the process engine's REST base (`…/engine-rest`) for the answer-run check, a PEM CA path
+# for its TLS (mount it yourself), and the Keycloak client the engine calls as. Unset url = answer opens refuse.
+engine:
+  url: ""
+  ca: ""
+  clientId: process-engine
 
-# `true` holds the scheduler and answers new runs `503 paused` (S3.3).
+# `true` answers new runs, queries and performs `503 paused` (D-142: there is no scheduler to hold).
 paused: false
 
 # The `automation.ops` policies fragment (D-95, S4.2): rendered as the ConfigMap `<fullname>-policies`

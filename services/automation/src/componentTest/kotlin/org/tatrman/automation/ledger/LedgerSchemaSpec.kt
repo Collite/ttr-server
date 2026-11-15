@@ -14,14 +14,12 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.migrateLedger
-import org.tatrman.automation.queue.LedgerQueue
-import org.tatrman.automation.queue.Pgmq
 import java.time.Duration
 
 /**
- * AU contracts §2 against a real Postgres: Flyway migrates a clean database (ledger · pgmq · queues · V4's D-98
- * index · V5 dispatch · V6 verified subject), every table carries its columns, the Exposed objects map them, the D-46/D-98 indexes exist
- * (D-98's with NULLs equal), the four queues exist, and `run_protocol` refuses every change but an INSERT (D-110).
+ * AU contracts §2 against a real Postgres: Flyway migrates a clean database (V1–V12; V12 is D-142's removals), every
+ * table carries its columns, the Exposed objects map them, the D-46 index and the dispatch claim's index exist, the
+ * removed tables and the queue schema are gone, and `run_protocol` refuses every change but an INSERT (D-110).
  */
 class LedgerSchemaSpec :
     StringSpec({
@@ -35,13 +33,13 @@ class LedgerSchemaSpec :
                 exec(sql) { rs -> buildList { while (rs.next()) add(read(rs)) } } ?: emptyList()
             }
 
-        "Flyway applies V1–V10 on a clean database; a second migrate applies nothing" {
-            LedgerTestDb.firstMigration shouldBe 10
+        "Flyway applies V1–V12 on a clean database; a second migrate applies nothing" {
+            LedgerTestDb.firstMigration shouldBe 12
             rows(
                 "SELECT version, success FROM automation.flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank",
             ) {
                 it.getString(1) to it.getBoolean(2)
-            } shouldContainExactly (1..10).map { it.toString() to true }
+            } shouldContainExactly (1..12).map { it.toString() to true }
             migrateLedger(db) shouldBe 0
         }
 
@@ -72,7 +70,7 @@ class LedgerSchemaSpec :
             }
         }
 
-        "the exactly-one and one-open-task indexes are partial uniques; the task reads are indexed" {
+        "the exactly-one index is a partial unique; the abandonment sweep and the dispatch claim are indexed" {
             val indexes =
                 rows("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'automation'") {
                     it.getString(1) to it.getString(2)
@@ -81,42 +79,19 @@ class LedgerSchemaSpec :
                 it shouldContain "UNIQUE"
                 it shouldContain "WHERE"
             }
-            indexes.getValue("tasks_one_open").let {
-                it shouldContain "UNIQUE"
-                it shouldContain "(recipe, key, action)"
-                it shouldContain "NULLS NOT DISTINCT"
-            }
-            indexes.keys shouldContainAll listOf("tasks_for_person", "tasks_open_due", "runs_abandoned")
+            indexes.getValue("run_evaluations_ready") shouldContain "(owner, enqueued_at)"
+            indexes.keys shouldContainAll listOf("runs_abandoned", "program_windows_pkey")
         }
 
-        "D-98 holds with a NULL in the triple: a second open set-level ask is refused; recipe-less tasks may pile up" {
-            LedgerTestDb.reset()
-
-            fun sql(value: String?) = value?.let { "'$it'" } ?: "NULL"
-
-            fun open(
-                recipe: String?,
-                key: String?,
-                action: String?,
-            ) = transaction {
-                exec(
-                    "INSERT INTO automation.tasks (id, recipe, key, kind, action, status) VALUES (gen_random_uuid(), " +
-                        "${sql(recipe)}, ${sql(key)}::jsonb, 'ask', ${sql(action)}, 'open')",
-                )
-            }
-            open("release_order", null, "ask_sales")
-            shouldThrow<ExposedSQLException> { open("release_order", null, "ask_sales") }.message shouldContain
-                "tasks_one_open"
-            open("release_order", "{\"order\": 1}", null)
-            shouldThrow<ExposedSQLException> { open("release_order", "{\"order\": 1}", null) }
-            open(null, null, null)
-            open(null, null, null)
-            rows("SELECT count(*) FROM automation.tasks WHERE status = 'open'") { it.getLong(1) } shouldBe listOf(4L)
-        }
-
-        "the four queues exist, and the startup check finds nothing to create" {
-            Pgmq().listQueues() shouldContainAll LedgerQueue.entries.map { it.queueName }
-            Pgmq().ensure().shouldBeEmpty()
+        "D-142 (V12): tasks, windows, window_events, deliveries, callbacks and the queue schema are gone" {
+            rows(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'automation' " +
+                    "AND table_name IN ('tasks', 'windows', 'window_events', 'deliveries', 'callbacks')",
+            ) { it.getString(1) }.shouldBeEmpty()
+            rows("SELECT nspname FROM pg_namespace WHERE nspname = 'pgmq'") { it.getString(1) }.shouldBeEmpty()
+            rows(
+                "SELECT conname FROM pg_constraint WHERE conrelid = 'automation.approvals'::regclass AND contype = 'f'",
+            ) { it.getString(1) }.shouldBeEmpty()
         }
 
         "run_protocol: INSERT only — UPDATE, DELETE and TRUNCATE are refused; retention may delete when it opts in" {
@@ -140,7 +115,7 @@ class LedgerSchemaSpec :
         }
     }) {
     companion object {
-        /** AU contracts §2, column for column (+ `tasks.recipe`, which D-98's unique needs). */
+        /** AU contracts §2, column for column (S3.2: the engine-run columns and `program_windows`). */
         val CONTRACT_COLUMNS =
             mapOf(
                 "runs" to
@@ -174,54 +149,17 @@ class LedgerSchemaSpec :
                         "budget_sync",
                         "budget_batch",
                         "error",
+                        "engine_instance_id",
+                        "business_key",
+                        "engine_task_id",
+                        "asserted_person",
+                        "person_verified",
+                        "engine_deployment_id",
                     ),
-                "run_evaluations" to listOf("run", "owner", "message_id", "claimed_at", "archived_at"),
+                "run_evaluations" to
+                    listOf("run", "owner", "enqueued_at", "visible_at", "claimed_at", "archived_at"),
+                "program_windows" to listOf("program", "window", "last_to", "run", "advanced_at"),
                 "run_outputs" to listOf("run", "island", "port", "rows", "bytes", "path", "sha256", "released_at"),
-                "tasks" to
-                    listOf(
-                        "id",
-                        "run",
-                        "recipe",
-                        "key",
-                        "kind",
-                        "action",
-                        "connector",
-                        "target_role",
-                        "target_person",
-                        "about",
-                        "options",
-                        "detail",
-                        "group_key",
-                        "correlation",
-                        "status",
-                        "due",
-                        "answer",
-                        "answered_by",
-                        "answered_at",
-                        "dry_run",
-                        "origin",
-                        "approval",
-                        "created_at",
-                    ),
-                "windows" to
-                    listOf("id", "recipe", "program", "by", "opened_at", "closes_at", "event_count", "run", "status"),
-                "window_events" to listOf("window", "seq", "key", "payload_ref", "received_at"),
-                "deliveries" to
-                    listOf(
-                        "id",
-                        "run",
-                        "program",
-                        "action",
-                        "group_key",
-                        "period",
-                        "rows_ref",
-                        "status",
-                        "digest_id",
-                        "connector",
-                        "delivered_at",
-                        "dry_run",
-                    ),
-                "callbacks" to listOf("id", "deployment", "url", "secret_ref", "kinds", "created_at"),
                 "approvals" to
                     listOf(
                         "id",

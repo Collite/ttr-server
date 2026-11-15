@@ -5,25 +5,31 @@ import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.IntegerColumnType
+import org.jetbrains.exposed.v1.core.IColumnType
+import org.jetbrains.exposed.v1.core.java.UUIDColumnType
 import org.jetbrains.exposed.v1.core.statements.StatementType
+import org.jetbrains.exposed.v1.javatime.JavaOffsetDateTimeColumnType
 import org.jetbrains.exposed.v1.jdbc.*
 import org.jetbrains.exposed.v1.jdbc.transactions.TransactionManager
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
-import org.tatrman.automation.queue.*
+import org.tatrman.automation.queue.RunDelivery
+import org.tatrman.automation.queue.RunWorkQueue
 import java.sql.Connection
 import java.time.Clock
 import java.time.ZoneOffset
 import java.util.UUID
 
 /**
- * A durable trigger and a separate permanent execution claim, both serialized by the run row. pgmq visibility
- * alone cannot promise at-most-once execution. A fresh process owner never adopts another process's context.
- * All mutations need their own transaction; enqueue + dispatch journal either both commit or neither does.
+ * A durable trigger and a separate permanent execution claim, both serialized by the run row. Since D-142 the
+ * trigger is the `run_evaluations` row itself (no queue): [read] takes the owner's oldest visible unclaimed ticket
+ * `FOR UPDATE SKIP LOCKED`, so concurrent readers get distinct rows, and hides it for a visibility window; a ticket
+ * whose claim never committed shows again after it. Visibility alone cannot promise at-most-once execution — the
+ * claim does. A fresh process owner never adopts another process's context. All mutations need their own
+ * transaction.
  */
 class RunQueue(
-    private val pgmq: Pgmq = Pgmq(),
     private val clock: Clock = Clock.systemUTC(),
     private val defaultBudget: java.time.Duration,
 ) : RunWorkQueue {
@@ -41,16 +47,12 @@ class RunQueue(
                 ensureRunBudget(run, defaultBudget, clock)
             } else {
                 ensureRunBudget(run, defaultBudget, clock)
-                val message =
-                    buildJsonObject {
-                        put("run", run.toString())
-                        put("owner", owner.toString())
-                    }
-                val id = pgmq.send(LedgerQueue.RUNS, message)
+                val now = clock.instant().atOffset(ZoneOffset.UTC)
                 RunEvaluations.insert {
                     it[RunEvaluations.run] = run
                     it[RunEvaluations.owner] = owner
-                    it[messageId] = id
+                    it[enqueuedAt] = now
+                    it[visibleAt] = now
                 }
             }
         }
@@ -62,21 +64,28 @@ class RunQueue(
     ): RunDelivery? {
         outermost()
         require(visibilitySeconds > 0)
-        val message =
-            pgmq
-                .read(
-                    LedgerQueue.RUNS,
-                    visibilitySeconds,
-                    conditional = buildJsonObject { put("owner", owner.toString()) },
-                ).singleOrNull() ?: return null
-        return try {
-            val body = message.message.jsonObject
-            val run = requireNotNull(body["run"]) { "missing run handle" }.jsonPrimitive.content
-            RunDelivery(message.msgId, UUID.fromString(run).also { require(it.toString() == run) }, owner)
-        } catch (e: IllegalArgumentException) {
-            pgmq.archive(LedgerQueue.RUNS, message.msgId) // Poison delivery cannot execute or block the owner's queue.
-            throw e
-        }
+        val now = clock.instant().atOffset(ZoneOffset.UTC)
+        val run =
+            transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+                exec(
+                    """
+                    UPDATE automation.run_evaluations SET visible_at = ?
+                    WHERE run = (
+                        SELECT run FROM automation.run_evaluations
+                        WHERE owner = ? AND claimed_at IS NULL AND archived_at IS NULL AND visible_at <= ?
+                        ORDER BY enqueued_at, run LIMIT 1 FOR UPDATE SKIP LOCKED
+                    )
+                    RETURNING run
+                    """.trimIndent(),
+                    listOf<Pair<IColumnType<*>, Any>>(
+                        JavaOffsetDateTimeColumnType() to now.plusSeconds(visibilitySeconds.toLong()),
+                        UUIDColumnType() to owner,
+                        JavaOffsetDateTimeColumnType() to now,
+                    ),
+                    StatementType.SELECT,
+                ) { rs -> if (rs.next()) rs.getObject("run", UUID::class.java) else null }
+            } ?: return null
+        return RunDelivery(run, owner)
     }
 
     override fun claim(delivery: RunDelivery): Boolean {
@@ -94,7 +103,6 @@ class RunQueue(
                 RunEvaluations.selectAll().where { RunEvaluations.run eq run }.firstOrNull()
                     ?: return@transaction false
             if (ticket[RunEvaluations.owner] != delivery.owner ||
-                ticket[RunEvaluations.messageId] != delivery.messageId ||
                 ticket[RunEvaluations.claimedAt] != null ||
                 ticket[RunEvaluations.archivedAt] != null ||
                 RunStatus.of(row[Runs.status]) !in setOf(RunStatus.OPEN, RunStatus.RUNNING) ||
@@ -122,10 +130,7 @@ class RunQueue(
                     .forUpdate()
                     .firstOrNull()
                     ?: return@transaction
-            if (ticket[RunEvaluations.owner] == delivery.owner &&
-                ticket[RunEvaluations.messageId] == delivery.messageId
-            ) {
-                pgmq.archive(LedgerQueue.RUNS, delivery.messageId)
+            if (ticket[RunEvaluations.owner] == delivery.owner && ticket[RunEvaluations.archivedAt] == null) {
                 RunEvaluations.update({ RunEvaluations.run eq delivery.run }) {
                     it[archivedAt] = clock.instant().atOffset(ZoneOffset.UTC)
                 }
@@ -141,7 +146,7 @@ class RunQueue(
             val tickets =
                 exec(
                     """
-                    SELECT e.run, e.message_id FROM automation.run_evaluations e
+                    SELECT e.run FROM automation.run_evaluations e
                     JOIN automation.runs r ON r.id = e.run
                     WHERE e.archived_at IS NULL AND r.status NOT IN ('open', 'running')
                     ORDER BY e.run LIMIT ? FOR UPDATE OF r SKIP LOCKED
@@ -149,12 +154,12 @@ class RunQueue(
                     listOf(IntegerColumnType() to limit),
                     StatementType.SELECT,
                 ) { rs ->
-                    buildList<Pair<UUID, Long>> {
-                        while (rs.next()) add(rs.getObject("run", UUID::class.java) to rs.getLong("message_id"))
+                    buildList<UUID> {
+                        while (rs.next()) add(rs.getObject("run", UUID::class.java))
                     }
                 } ?: error("evaluation cleanup answered no result")
             var archived = 0
-            tickets.forEach { (run, id) ->
+            tickets.forEach { run ->
                 // Lock run before dispatch row, consistently with claim, and recheck a racing worker's ack.
                 val ticket =
                     RunEvaluations
@@ -163,7 +168,6 @@ class RunQueue(
                         .forUpdate()
                         .single()
                 if (ticket[RunEvaluations.archivedAt] == null) {
-                    pgmq.archive(LedgerQueue.RUNS, id)
                     RunEvaluations.update({ RunEvaluations.run eq run }) {
                         it[archivedAt] = clock.instant().atOffset(ZoneOffset.UTC)
                     }

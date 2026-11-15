@@ -169,7 +169,7 @@ class ErrorEnvelopeSpec :
                 ErrorCode.OUT_OF_SCOPE_READ,
                 ErrorCode.DUPLICATE_KEY,
                 ErrorCode.BUDGET,
-                // S3.1 lands in pieces; CONNECTOR_UNAVAILABLE/CONNECTOR_FACE (D-142's connector faces) stay unraised.
+                // CONNECTOR_UNAVAILABLE (the legacy A-AG-10 set) stays unraised; D-142 removed CONNECTOR_FACE (S3.2).
                 ErrorCode.CONFIG_INVALID,
                 ErrorCode.VARIABLE_NAME,
                 ErrorCode.ROW_NOT_SINGLE,
@@ -181,6 +181,10 @@ class ErrorEnvelopeSpec :
                 ErrorCode.TEMPLATES,
                 ErrorCode.ACTION,
                 ErrorCode.APPROVAL_REQUIRED,
+                ErrorCode.WINDOW_KIND_GATED,
+                ErrorCode.WINDOW_OPEN,
+                ErrorCode.ENGINE,
+                ErrorCode.ENGINE_UNREACHABLE,
             )
         val DELIVERED = setOf("S0.1", "S0.2", "S0.3", "S2.3")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")

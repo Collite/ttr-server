@@ -14,7 +14,6 @@ import io.ktor.server.routing.routing
 import org.flywaydb.core.Flyway
 import org.slf4j.LoggerFactory
 import org.tatrman.automation.api.HealthSources
-import org.tatrman.automation.api.SchedulerHealth
 import org.tatrman.automation.api.ServedBundle
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.DescriptorSources
@@ -41,8 +40,6 @@ import org.tatrman.automation.runner.RunRuntime
 import org.tatrman.automation.staging.StagingStores
 import org.tatrman.automation.ledger.LedgerBundles
 import org.tatrman.automation.obs.AutomationTelemetry
-import org.tatrman.automation.queue.LedgerQueue
-import org.tatrman.automation.queue.Pgmq
 import org.tatrman.mcp.identity.HttpJwksKeySource
 import org.tatrman.mcp.identity.JwksBearerVerifier
 import shared.ktor.KtorConfigFactory
@@ -73,11 +70,12 @@ fun main() {
 
 /**
  * The bootstrap (AU-server S0.1): config (fails at load on a missing required key) → OTel → the ledger's
- * database + Flyway (V1–V7 ledger, queues, dispatch, subjects and release fences) → queues → bearer
+ * database + Flyway (V1–V12: the ledger, its dispatch journal, subjects, release fences; V12 removes D-142's
+ * queues, tasks and windows) → bearer
  * check (S0.3: every route under `/automation` but `/automation/health` answers 401 without a verified token) →
  * Ktor with the preview runtime and durable readers → the served bundle loaded in the background (S0.2), then
  * polled. One process owns execution contexts; the deployment uses one replica and Recreate updates.
- * The scheduler remains a later phase.
+ * There is no scheduler (D-142): the process engine's timers open runs.
  */
 fun Application.module(config: Config) {
     val automation = AutomationConfig.load(config)
@@ -103,13 +101,9 @@ fun Application.module(config: Config) {
     val migrated = migrateLedger(db)
     log.info("automation: ledger migrated ({} migration(s) applied)", migrated)
 
-    val pgmq = Pgmq()
-    val created = pgmq.ensure()
-    if (created.isNotEmpty()) log.warn("automation: created missing queue(s) {} — V3 should have", created)
-
     val clock = Clock.offset(Clock.systemUTC(), automation.clockSkew)
     // The telemetry first: the ledger and the registry count into it (§10).
-    val telemetry = AutomationTelemetry(openTelemetry, queueDepths = pgmq::depths)
+    val telemetry = AutomationTelemetry(openTelemetry)
     val ledger =
         Ledger(defaultBudget = automation.budgets.batchDefault, clock = clock, abandoned = telemetry::abandoned)
     val ledgerBundles = LedgerBundles()
@@ -130,7 +124,7 @@ fun Application.module(config: Config) {
             refreshed = telemetry::refreshed,
             prepare = writerDdl::refresh,
         )
-    val sources = LedgerHealthSources(ledger, pgmq, automation, bundles)
+    val sources = LedgerHealthSources(ledger, automation, bundles)
 
     if (automation.auth.audience == null) {
         log.warn(
@@ -180,6 +174,12 @@ fun Application.module(config: Config) {
                         .IrisGolem(it)
                 }
                     ?: org.tatrman.automation.query.NoGolem,
+            engineHistory =
+                automation.engine.url?.let {
+                    org.tatrman.automation.engine
+                        .HttpEngineHistory(it, automation.engine.ca, automation.engine.timeout)
+                }
+                    ?: org.tatrman.automation.engine.NoEngine,
         ).also { execution = it }
     // Fence new execution and join its workers/sessions before HTTP drain and dependency cleanup.
     // Use a worker dispatcher: shutdown must not depend on a blocked engine/event-loop thread.
@@ -246,19 +246,13 @@ private suspend fun refreshQuietly(bundles: Bundles) {
     }
 }
 
-/** Each ledger queue's depth, keyed as health and the `queue` label name it. */
-private fun Pgmq.depths(): Map<String, Long> = LedgerQueue.entries.associate { it.key to metrics(it).queueLength }
-
-/** The health report's reads, over the ledger and the bundle registry. The scheduler arrives with S3.2. */
+/** The health report's reads, over the ledger and the bundle registry. */
 private class LedgerHealthSources(
     private val ledger: Ledger,
-    private val pgmq: Pgmq,
     private val automation: AutomationConfig,
     private val bundles: Bundles,
 ) : HealthSources {
     override fun dbReachable(): Boolean = ledger.ping()
-
-    override fun queueDepths(): Map<String, Long> = pgmq.depths()
 
     override fun abandoned(): Long = ledger.countAbandoned()
 
@@ -266,8 +260,6 @@ private class LedgerHealthSources(
         bundles.served?.let {
             ServedBundle(it.id, it.commit, it.modelFp, it.loadedAt.toString())
         }
-
-    override fun scheduler(): SchedulerHealth? = null
 
     override fun refreshFailed(): Boolean = bundles.refreshFailed
 

@@ -722,10 +722,8 @@ spec:
                 secretKeyRef:
                   name: automation-bundle
                   key: token
-            - name: AUTOMATION_SCHEDULER_TZ
-              value: "UTC"
-            - name: AUTOMATION_SCHEDULER_ENABLED
-              value: "true"
+            - name: AUTOMATION_ENGINE_CLIENT_ID
+              value: "process-engine"
             - name: AUTOMATION_PAUSED
               value: "false"
             - name: TTR_CONN_AUTOMATION

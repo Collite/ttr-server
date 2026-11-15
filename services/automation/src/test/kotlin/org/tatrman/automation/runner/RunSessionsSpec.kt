@@ -398,6 +398,7 @@ internal class RunSessionFixture(
             batchDefault,
             clock,
             detailLimit = detailLimit,
+            engineClient = "process-engine",
         )
     val runs =
         RunSessions(
@@ -456,6 +457,7 @@ internal class RunSessionFixture(
                 }
             },
             clock = clock,
+            engineRuns = EngineRuns(org.tatrman.automation.engine.NoEngine, "process-engine"),
         )
 
     suspend fun open(

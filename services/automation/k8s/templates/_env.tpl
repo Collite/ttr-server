@@ -65,10 +65,18 @@ incomplete values file is a diff in olymp, not a crash loop on the cluster.
       name: {{ .Values.bundle.git.tokenSecret.name }}
       key: {{ .Values.bundle.git.tokenSecret.key }}
 {{- end }}
-- name: AUTOMATION_SCHEDULER_TZ
-  value: {{ .Values.scheduler.tz | quote }}
-- name: AUTOMATION_SCHEDULER_ENABLED
-  value: {{ .Values.scheduler.enabled | quote }}
+{{- with .Values.engine }}
+{{- if .url }}
+- name: AUTOMATION_ENGINE_URL
+  value: {{ .url | quote }}
+{{- end }}
+{{- if .ca }}
+- name: AUTOMATION_ENGINE_CA
+  value: {{ .ca | quote }}
+{{- end }}
+- name: AUTOMATION_ENGINE_CLIENT_ID
+  value: {{ .clientId | default "process-engine" | quote }}
+{{- end }}
 - name: AUTOMATION_PAUSED
   value: {{ .Values.paused | quote }}
 {{- range .Values.credentials }}

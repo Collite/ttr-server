@@ -77,6 +77,7 @@ class OpenSpec :
             Duration.ofMinutes(30),
             BundleFixture.clock,
             detailLimit,
+            engineClient = "process-engine",
         )
 
         "opens refuse missing writer-default evidence; S2.3 removed the development bypass" {

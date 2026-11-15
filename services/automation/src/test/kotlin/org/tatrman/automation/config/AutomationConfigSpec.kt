@@ -8,7 +8,6 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import java.time.Duration
-import java.time.ZoneId
 
 /** AU contracts §8: the typed config, fail-at-load naming every missing required key, secrets kept out of logs. */
 class AutomationConfigSpec :
@@ -45,7 +44,7 @@ class AutomationConfigSpec :
             c.db.getString("database") shouldBe "automation"
             c.budgets shouldBe BudgetsConfig(Duration.ofSeconds(60), Duration.ofMinutes(30), 200, 200)
             c.retention shouldBe RetentionConfig(stagingHours = 24, graceHours = 1, protocolDays = 400)
-            c.scheduler shouldBe SchedulerConfig(ZoneId.of("UTC"), enabled = true)
+            c.engine shouldBe EngineConfig(url = null, ca = null, clientId = "process-engine", Duration.ofSeconds(5))
             c.previews shouldBe PreviewsConfig(emptyList(), 24)
             c.bundleGit.branch shouldBe "master"
             c.staging.kind shouldBe "local"
@@ -53,6 +52,22 @@ class AutomationConfigSpec :
             c.runner shouldBe RunnerConfig(4)
             c.clockSkew shouldBe Duration.ZERO
             c.connections shouldBe emptyMap()
+        }
+
+        "S3.2: automation.engine.* from env — an empty value is unset, the client id defaults to process-engine" {
+            load(required, mapOf("AUTOMATION_ENGINE_URL" to "")).engine.url shouldBe null
+            val e =
+                load(
+                    required,
+                    mapOf(
+                        "AUTOMATION_ENGINE_URL" to "http://engine:8080/engine-rest",
+                        "AUTOMATION_ENGINE_CA" to "/etc/engine/ca.pem",
+                        "AUTOMATION_ENGINE_CLIENT_ID" to "",
+                    ),
+                ).engine
+            e.url shouldBe "http://engine:8080/engine-rest"
+            e.ca shouldBe "/etc/engine/ca.pem"
+            e.clientId shouldBe "process-engine"
         }
 
         "review-273 F8: an empty AUTOMATION_DOOR_IRIS_URL / _WRITE_ROUTES is unset; a value is read" {

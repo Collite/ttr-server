@@ -3,9 +3,8 @@ package org.tatrman.automation.queue
 
 import java.util.UUID
 
-/** Queue payloads carry handles only, never bearer tokens, bindings or reconstructed execution contexts. */
+/** A delivery carries handles only, never bearer tokens, bindings or reconstructed execution contexts. */
 data class RunDelivery(
-    val messageId: Long,
     val run: UUID,
     val owner: UUID,
 )
@@ -16,6 +15,7 @@ interface RunWorkQueue {
         owner: UUID,
     )
 
+    /** The owner's oldest visible ticket, hidden for [visibilitySeconds]; null when there is none. */
     fun read(
         owner: UUID,
         visibilitySeconds: Int,

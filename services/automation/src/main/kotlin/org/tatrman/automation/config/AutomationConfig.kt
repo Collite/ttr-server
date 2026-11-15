@@ -3,7 +3,6 @@ package org.tatrman.automation.config
 
 import com.typesafe.config.Config
 import java.time.Duration
-import java.time.ZoneId
 
 data class DoorConfig(
     val queryUrl: String,
@@ -129,9 +128,17 @@ data class StagingConfig(
             "bucket=$bucket, prefix=$prefix, region=$region, anonymous=$anonymous)"
 }
 
-data class SchedulerConfig(
-    val tz: ZoneId,
-    val enabled: Boolean,
+/**
+ * S3.2 (contracts §8, `automation.engine.*`): the process engine's REST base (`…/engine-rest`) for the answer-run
+ * check (D-159, `GET /history/task`), an optional PEM CA bundle that signs its TLS certificate, and the Keycloak
+ * client the engine calls as (D-150) — the principal whose `run_as: caller` opens are `403 identity · token-exchange`.
+ * No [url] = an answer open cannot be verified and answers `503 engine-unreachable`.
+ */
+data class EngineConfig(
+    val url: String? = null,
+    val ca: String? = null,
+    val clientId: String = "process-engine",
+    val timeout: Duration = Duration.ofSeconds(5),
 )
 
 data class RetentionConfig(
@@ -172,7 +179,6 @@ data class AutomationConfig(
     val bundleGit: BundleGitConfig,
     val previews: PreviewsConfig,
     val staging: StagingConfig,
-    val scheduler: SchedulerConfig,
     val retention: RetentionConfig,
     val budgets: BudgetsConfig,
     val paused: Boolean,
@@ -189,6 +195,7 @@ data class AutomationConfig(
      */
     val devRoutes: Boolean = false,
     val query: QueryConfig = QueryConfig(),
+    val engine: EngineConfig = EngineConfig(),
 ) {
     companion object {
         const val ROOT = "automation"
@@ -262,11 +269,6 @@ data class AutomationConfig(
                         region = c.optString("staging.region") ?: "us-east-1",
                         anonymous = c.hasPath("staging.anonymous") && c.getBoolean("staging.anonymous"),
                     ),
-                scheduler =
-                    SchedulerConfig(
-                        tz = ZoneId.of(c.getString("scheduler.tz")),
-                        enabled = c.getBoolean("scheduler.enabled"),
-                    ),
                 retention =
                     RetentionConfig(
                         stagingHours = c.getLong("retention.stagingHours"),
@@ -297,6 +299,27 @@ data class AutomationConfig(
                         require(
                             it.defaultLimit in 1..it.maxLimit && it.maxTableRows > 0,
                         ) { "automation config: invalid query limits" }
+                    },
+                engine =
+                    EngineConfig(
+                        url = env["AUTOMATION_ENGINE_URL"]?.ifBlank { null } ?: c.optString("engine.url"),
+                        ca = env["AUTOMATION_ENGINE_CA"]?.ifBlank { null } ?: c.optString("engine.ca"),
+                        clientId =
+                            env["AUTOMATION_ENGINE_CLIENT_ID"]?.ifBlank { null } ?: c.optString("engine.clientId")
+                                ?: "process-engine",
+                        timeout =
+                            if (c.hasPath(
+                                    "engine.timeout",
+                                )
+                            ) {
+                                c.getDuration("engine.timeout")
+                            } else {
+                                Duration.ofSeconds(5)
+                            },
+                    ).also {
+                        require(
+                            !it.timeout.isNegative && !it.timeout.isZero,
+                        ) { "automation config: invalid engine.timeout" }
                     },
             )
         }
@@ -403,6 +426,6 @@ data class AutomationConfig(
         "AutomationConfig(door=$door, auth=$auth, bundleGit=${bundleGit.copy(
             token = bundleGit.token?.let { "***" },
         )}, " +
-            "previews=$previews, staging=$staging, scheduler=$scheduler, retention=$retention, budgets=$budgets, " +
+            "previews=$previews, staging=$staging, engine=$engine, retention=$retention, budgets=$budgets, " +
             "paused=$paused, runner=$runner, policiesFragment=$policiesFragment, clockSkew=$clockSkew, devRoutes=$devRoutes, connections=${connections.keys})"
 }

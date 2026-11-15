@@ -900,7 +900,6 @@ class ApplyComponentSpec :
             rows("SELECT state FROM wet_fixture.obligation WHERE id = 'ob-1'") shouldBe listOf(listOf("fulfilled"))
             rows("SELECT entity, from_state, to_state FROM wet_fixture.state_history") shouldBe
                 listOf(listOf("er.entity.obligation", "open", "fulfilled"))
-            transactionCount("SELECT count(*) FROM pgmq.q_automation_signals") shouldBe 0L
             ledger
                 .readProtocol(c.id, subject)
                 .sections["signals"]

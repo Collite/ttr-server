@@ -37,6 +37,9 @@ enum class IdentityRefusal(
     NO_GRANT("no-grant"),
     UNMAPPED("unmapped"),
     TOKEN_EXCHANGE("token-exchange"),
+
+    /** D-159 (S3.2): an answer run whose engine task history does not name the asserted person. */
+    UNVERIFIED_ANSWER("unverified-answer"),
 }
 
 /**

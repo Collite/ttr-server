@@ -30,6 +30,8 @@ data class OpenRequest(
     val recipeValuesFingerprint: String? = null,
     val programFingerprint: String? = null,
     val deploymentFingerprint: String? = null,
+    /** S3.2 (D-150/D-159): the engine run this open belongs to; an answer run is verified before Open. */
+    val engine: EngineRef? = null,
 )
 
 @Serializable
@@ -39,6 +41,8 @@ data class OpenResponse(
     val status: String? = null,
     val location: String? = null,
     val protocolRef: String? = null,
+    /** ⚑AU-EXP-5 (S3.2 T0): a new claim answers the dryRun the ledger stored (a deployment can force it true). */
+    val dryRun: Boolean? = null,
 )
 
 data class OpenResult(
@@ -53,6 +57,9 @@ data class OpenResult(
  * §1.2 `dryRun` is only true-ward: a request or a `dry_run: true` deployment makes the run dry; otherwise it is an
  * `auto` run whose batch applies at close (S2.2). A replay `asOf` needs `debug` or a dry run.
  * Approvals are always required (S2.3 removed the development bypass): a fingerprint without an `approved` row refuses.
+ * S3.2: a windowed program's open resolves its window from [watermark] (D-143); an engine-run open carries the
+ * [EngineRun] that [EngineRuns] verified before Open (D-159); the engine client ([engineClient], D-150) cannot run
+ * a deployment as its caller (`403 identity · token-exchange`: the instance's initiator is not the engine).
  */
 class Open(
     private val served: () -> Bundle?,
@@ -66,13 +73,18 @@ class Open(
     private val clock: Clock = Clock.systemUTC(),
     private val detailLimit: Int = 200,
     private val doorRoutes: Set<String> = emptySet(),
+    private val watermark: (String, List<String>) -> Instant = { _, _ -> Watermark.EPOCH },
+    /** `automation.engine.clientId` — required, so no construction site can silently enforce a literal (N6). */
+    private val engineClient: String,
 ) {
     fun open(
         recipeName: String,
         request: OpenRequest,
         caller: Caller,
+        verified: EngineRun? = null,
     ): OpenResult {
-        if (paused()) throw AutomationException(ErrorCode.PAUSED, "automation is paused")
+        val engine = engineRun(request.engine, verified)
+        refuseIfPaused()
         // Preview opens arrive with P4; silently running a preview request on served would mislabel the evidence.
         if (request.bundle != null) throw AutomationException(ErrorCode.BUNDLE, "preview opens are not supported yet")
         val bundle = served()
@@ -94,6 +106,15 @@ class Open(
                 DeploymentIdentity(request.deployment, programName, BundleLoader.runAs(d.runAs), bundle.author),
                 if (d.debug) DebugAs.CALLER else null,
             )
+        if (identity.runAs == RunAsRef.Caller && caller.isEngine(engineClient)) {
+            // D-158: the engine's own bearer is no person's — running "as the caller" would mean as the instance's
+            // initiator, which needs token exchange (TTR Security, v1 refuses).
+            throw AutomationException(
+                ErrorCode.IDENTITY,
+                "the process engine cannot run a deployment as its caller",
+                buildJsonObject { put("reason", IdentityRefusal.TOKEN_EXCHANGE.wire) },
+            )
+        }
         val coverage = recipe.coverage
         coverage.refusal?.let { reason ->
             throw AutomationException(
@@ -165,13 +186,44 @@ class Open(
                 if (rebuild) listOf("text") else emptyList(),
             )
         }
-        val port = OpenPort.resolve(bundle, recipe, program, request.port)
+        val requested = OpenPort.resolve(bundle, recipe, program, request.port)
         val dry = request.dryRun == true || d.dryRun
         if (!dry && !d.debug && request.asOf != null && request.asOf != "now") {
             throw AutomationException(ErrorCode.AS_OF, "a replay asOf needs a debug deployment or a dry run")
         }
-        val asOf = resolveAsOf(program, request.asOf, port.eventAt)
-        val bindings = RecipeBindings.resolve(recipe.recipe, asOf, overrides(recipe, program))
+        val (asOf, asOfFromClock) = resolveAsOf(program, request.asOf, requested.eventAt)
+        val port =
+            requested.window?.let {
+                requested.copy(
+                    bounds =
+                        window(
+                            recipe,
+                            programName,
+                            it,
+                            asOf,
+                            asOfFromClock,
+                            request.asOf ?: program.asOf ?: "run",
+                        ),
+                )
+            } ?: requested
+        val bindings =
+            RecipeBindings.resolve(recipe.recipe, asOf, overrides(recipe, program)).let { resolved ->
+                val bounds = port.bounds ?: return@let resolved
+                // review-280 F5: a recipe parameter of the reserved names is the author's mistake, refused as such.
+                val reserved = listOf(WINDOW_FROM, WINDOW_TO).filter { it in resolved }
+                if (reserved.isNotEmpty()) {
+                    throw AutomationException(
+                        ErrorCode.PORT,
+                        "recipe parameters $WINDOW_FROM/$WINDOW_TO are reserved on a window open",
+                        buildJsonObject { put("reserved", JsonArray(reserved.map(::JsonPrimitive))) },
+                    )
+                }
+                resolved +
+                    mapOf(
+                        WINDOW_FROM to BoundValue("datetime", bounds.from),
+                        WINDOW_TO to BoundValue("datetime", bounds.to),
+                    )
+            }
         require(bindings.keys.none { it.startsWith("_au_port_") }) { "reserved port binding prefix in recipe" }
         val sync = program.budgetSync?.duration() ?: syncDefault
         val batch = program.budgetBatch?.duration() ?: batchDefault
@@ -232,6 +284,7 @@ class Open(
         ) {
             portRefused("port exceeds the deployment read ceiling")
         }
+        val storedPort = port.bounds?.let { Watermark.port(it.from, it.to, it.windows, it.watermark) }
         val run =
             RunOpen(
                 recipe = recipeName,
@@ -243,7 +296,8 @@ class Open(
                 fpProgram = programFp,
                 fpDeployment = deploymentFp,
                 modelFp = bundle.modelFp,
-                port = request.port,
+                // A window run stores its resolved bounds (the seal advances the watermark from them).
+                port = storedPort ?: request.port,
                 asOf = asOf,
                 author = bundle.author,
                 runAs = identity.principal,
@@ -255,6 +309,18 @@ class Open(
                 budgetSync = sync,
                 budgetBatch = batch,
                 mode = program.mode,
+                engine =
+                    engine?.let {
+                        EngineColumns(
+                            it.ref.instanceId,
+                            it.ref.businessKey,
+                            it.ref.deploymentId,
+                            it.ref.taskId,
+                            it.ref.answeredBy,
+                            it.personVerified,
+                        )
+                    },
+                identityProtocol = engine?.identityEntry(),
                 idempotencyKey =
                     idempotency(
                         bundle,
@@ -284,6 +350,9 @@ class Open(
                         )
                         put("author", bundle.author)
                         put("port", request.port)
+                        // review-280 F8: the evidence is the stored port's own window, so the two cannot drift.
+                        storedPort?.let { put(Watermark.PORT_KEY, it.getValue(Watermark.PORT_KEY)) }
+                        engine?.let { put("engine", it.protocol()) }
                         put("origin", request.origin)
                         put("bundle", bundle.id)
                         put("modelFp", bundle.modelFp)
@@ -322,23 +391,91 @@ class Open(
             is Claim.Claimed ->
                 OpenResult(
                     201,
-                    OpenResponse(id.toString(), false, "open", location),
+                    OpenResponse(id.toString(), false, "open", location, dryRun = dry),
                     context.copy(id = id, startedAt = claimed.startedAt),
                 )
         }
     }
 
+    /** `503 paused`; also asked by [RunSessions] before an answer's engine round-trip (review-280 F4). */
+    fun refuseIfPaused() {
+        if (paused()) throw AutomationException(ErrorCode.PAUSED, "automation is paused")
+    }
+
+    /** An engine block's record: the verified one, or an unasserted one; an answer is never recorded unverified. */
+    private fun engineRun(
+        ref: EngineRef?,
+        verified: EngineRun?,
+    ): EngineRun? {
+        ref ?: return null
+        if (verified != null) {
+            check(verified.ref == ref) { "the verified engine block is another request's" }
+            return verified
+        }
+        if (ref.answeredBy != null) EngineRuns.unverified("the answer was not verified against the engine", ref)
+        return EngineRun(ref, personVerified = null)
+    }
+
+    /**
+     * D-143: the window's bounds. Count- and gap-closed windows need an event stream (v2) → `422 window-kind-gated`.
+     * No explicit `from` = `[watermark, as_of)`, which the wet seal advances; an explicit one never advances it.
+     * ✅R280-F (review-280 N2): a watermark window runs as of the clock only. Its `to` is what the seal advances to, so
+     * a debug or fixed `as_of` would either move the watermark to an arbitrary instant or, kept off it, rerun the same
+     * `[last_to, as_of)` on every open → `400 as-of`; a replay names its range with `{ window: { from } }`.
+     */
+    private fun window(
+        recipe: LoadedRecipe,
+        program: String,
+        request: WindowRequest,
+        asOf: Instant,
+        asOfFromClock: Boolean,
+        policy: String,
+    ): WindowBounds {
+        if (request.from == null && !asOfFromClock) {
+            throw AutomationException(
+                ErrorCode.AS_OF,
+                "a watermark window runs as of now; give window.from for a replay",
+                buildJsonObject {
+                    put("asOf", asOf.toString())
+                    put("policy", policy)
+                },
+            )
+        }
+        val declared =
+            recipe.recipe.windows.map { w ->
+                val context =
+                    (w["context"] as? JsonPrimitive)?.contentOrNull ?: error("a manifest window has no context")
+                context to ((w["over"] as? JsonPrimitive)?.contentOrNull ?: "")
+            }
+        if (declared.isEmpty()) portRefused("a windowed program's recipe declares no window")
+        val gated = declared.filter { (_, over) -> over.startsWith("rows") || over.startsWith("gap") }
+        if (gated.isNotEmpty()) {
+            throw AutomationException(
+                ErrorCode.WINDOW_KIND_GATED,
+                "count- and gap-closed windows are not served (D-143)",
+                buildJsonObject {
+                    put("windows", JsonObject(gated.associate { (context, over) -> context to JsonPrimitive(over) }))
+                },
+            )
+        }
+        val names = declared.map { it.first }.distinct()
+        val from = request.from ?: watermark(program, names)
+        if (!from.isBefore(asOf)) portRefused("the window [$from, $asOf) is empty")
+        return WindowBounds(from, asOf, names, watermark = request.from == null)
+    }
+
+    /** The run's `asOf`, and whether it is the clock's (✅R280-F: a watermark window needs the clock's). */
     private fun resolveAsOf(
         program: AutomationProgram,
         requested: String?,
         eventAt: Instant?,
-    ): Instant {
-        if (requested != null && requested != "now") return parseAsOf(requested)
+    ): Pair<Instant, Boolean> {
+        if (requested != null && requested != "now") return parseAsOf(requested) to false
         val policy = requested ?: program.asOf ?: "run"
         return when (policy) {
-            "now", "run" -> clock.instant()
-            "event" -> eventAt ?: clock.instant()
-            else -> parseAsOf(policy)
+            "now", "run" -> clock.instant() to true
+            "event" -> eventAt?.let { it to false } ?: (clock.instant() to true)
+            else -> parseAsOf(policy) to false
         }
     }
 
@@ -445,6 +582,10 @@ class Open(
         throw AutomationException(ErrorCode.DEPLOYMENT_STALE, "deployment fingerprint differs", detail)
     }
 }
+
+/** D-143: the reserved bindings of a window run's `[from, to)`. */
+const val WINDOW_FROM = "window_from"
+const val WINDOW_TO = "window_to"
 
 internal fun AutomationDuration.duration(): Duration {
     val millis =

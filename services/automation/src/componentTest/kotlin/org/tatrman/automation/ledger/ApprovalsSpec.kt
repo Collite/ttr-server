@@ -146,6 +146,7 @@ class ApprovalsSpec :
                 Duration.ofSeconds(60),
                 Duration.ofMinutes(30),
                 java.time.Clock.fixed(now, java.time.ZoneOffset.UTC),
+                engineClient = "process-engine",
             ).open(recipe, OpenRequest(deployment, buildJsonObject { put("key", "4711") }), caller)
 
         "no approved row for the text fp refuses 409 recipe-stale {differs:[text]}; the deployment detail agrees" {

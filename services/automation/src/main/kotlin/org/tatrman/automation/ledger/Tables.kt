@@ -11,7 +11,6 @@ import kotlinx.serialization.json.JsonUnquotedLiteral
 import kotlinx.serialization.json.booleanOrNull
 import org.jetbrains.exposed.v1.core.Column
 import org.jetbrains.exposed.v1.core.Table
-import org.jetbrains.exposed.v1.core.TextColumnType
 import org.jetbrains.exposed.v1.core.java.javaUUID
 import org.jetbrains.exposed.v1.javatime.timestampWithTimeZone
 import org.jetbrains.exposed.v1.json.jsonb
@@ -92,18 +91,43 @@ object Runs : Table("automation.runs") {
     val kind = text("kind")
     val error = json("error").nullable()
 
+    /** D-150/D-159 (V11, S3.2): what an engine-run open carries; null on every other run. */
+    val engineInstanceId = text("engine_instance_id").nullable()
+    val businessKey = text("business_key").nullable()
+    val engineTaskId = text("engine_task_id").nullable()
+    val engineDeploymentId = text("engine_deployment_id").nullable()
+    val assertedPerson = text("asserted_person").nullable()
+
+    /** Whether the engine's task history named [assertedPerson] as the assignee; null when nothing was asserted. */
+    val personVerified = bool("person_verified").nullable()
+
     override val primaryKey = PrimaryKey(id)
 }
 
-/** Internal dispatch journal; the queue is a delivery mechanism, this row fences execution. */
+/**
+ * The evaluation dispatch journal (V5; a row claim since V12, D-142): this row is the trigger and fences execution.
+ * A worker reads its owner's oldest ticket whose [visibleAt] has passed and hides it for a visibility window.
+ */
 object RunEvaluations : Table("automation.run_evaluations") {
     val run = javaUUID("run")
     val owner = javaUUID("owner")
-    val messageId = long("message_id")
+    val enqueuedAt = timestampWithTimeZone("enqueued_at")
+    val visibleAt = timestampWithTimeZone("visible_at")
     val claimedAt = timestampWithTimeZone("claimed_at").nullable()
     val archivedAt = timestampWithTimeZone("archived_at").nullable()
 
     override val primaryKey = PrimaryKey(run)
+}
+
+/** D-143 (V11, S3.2): a windowed program's watermark per window; the run that advanced it last. */
+object ProgramWindows : Table("automation.program_windows") {
+    val program = text("program")
+    val window = text("window")
+    val lastTo = timestampWithTimeZone("last_to")
+    val run = javaUUID("run")
+    val advancedAt = timestampWithTimeZone("advanced_at")
+
+    override val primaryKey = PrimaryKey(program, window)
 }
 
 object RunOutputs : Table("automation.run_outputs") {
@@ -117,86 +141,6 @@ object RunOutputs : Table("automation.run_outputs") {
     val releasedAt = timestampWithTimeZone("released_at").nullable()
 
     override val primaryKey = PrimaryKey(run, island, port)
-}
-
-object Tasks : Table("automation.tasks") {
-    val id = javaUUID("id")
-    val run = javaUUID("run").nullable()
-    val recipe = text("recipe").nullable()
-    val key = json("key").nullable()
-    val kind = text("kind")
-    val action = text("action").nullable()
-    val connector = text("connector").nullable()
-    val targetRole = text("target_role").nullable()
-    val targetPerson = text("target_person").nullable()
-    val about = text("about").nullable()
-    val options = json("options").nullable()
-    val detail = json("detail").nullable()
-    val groupKey = json("group_key").nullable()
-    val correlation = text("correlation").nullable()
-    val status = text("status")
-    val due = timestampWithTimeZone("due").nullable()
-    val answer = json("answer").nullable()
-    val answeredBy = text("answered_by").nullable()
-    val answeredAt = timestampWithTimeZone("answered_at").nullable()
-    val dryRun = bool("dry_run")
-    val origin = text("origin").nullable()
-    val approval = json("approval").nullable()
-    val createdAt = timestampWithTimeZone("created_at")
-
-    override val primaryKey = PrimaryKey(id)
-}
-
-object Windows : Table("automation.windows") {
-    val id = javaUUID("id")
-    val recipe = text("recipe")
-    val program = text("program").nullable()
-    val by = json("by")
-    val openedAt = timestampWithTimeZone("opened_at")
-    val closesAt = timestampWithTimeZone("closes_at").nullable()
-    val eventCount = integer("event_count")
-    val run = javaUUID("run").nullable()
-    val status = text("status")
-
-    override val primaryKey = PrimaryKey(id)
-}
-
-object WindowEvents : Table("automation.window_events") {
-    val window = javaUUID("window")
-    val seq = integer("seq")
-    val key = json("key").nullable()
-    val payloadRef = text("payload_ref").nullable()
-    val receivedAt = timestampWithTimeZone("received_at")
-
-    override val primaryKey = PrimaryKey(window, seq)
-}
-
-object Deliveries : Table("automation.deliveries") {
-    val id = javaUUID("id")
-    val run = javaUUID("run").nullable()
-    val program = text("program").nullable()
-    val action = text("action").nullable()
-    val groupKey = json("group_key").nullable()
-    val period = text("period").nullable()
-    val rowsRef = text("rows_ref").nullable()
-    val status = text("status")
-    val digestId = javaUUID("digest_id").nullable()
-    val connector = text("connector").nullable()
-    val deliveredAt = timestampWithTimeZone("delivered_at").nullable()
-    val dryRun = bool("dry_run")
-
-    override val primaryKey = PrimaryKey(id)
-}
-
-object Callbacks : Table("automation.callbacks") {
-    val id = javaUUID("id")
-    val deployment = text("deployment")
-    val url = text("url")
-    val secretRef = text("secret_ref").nullable()
-    val kinds = array<String>("kinds", TextColumnType())
-    val createdAt = timestampWithTimeZone("created_at")
-
-    override val primaryKey = PrimaryKey(id)
 }
 
 object Approvals : Table("automation.approvals") {
@@ -262,11 +206,7 @@ val LEDGER_TABLES: List<Table> =
         Runs,
         RunOutputs,
         RunEvaluations,
-        Tasks,
-        Windows,
-        WindowEvents,
-        Deliveries,
-        Callbacks,
+        ProgramWindows,
         Approvals,
         Batches,
         BatchRows,

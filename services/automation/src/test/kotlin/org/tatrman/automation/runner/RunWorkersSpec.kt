@@ -17,7 +17,6 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
 class RunWorkersSpec :
     StringSpec({
@@ -342,7 +341,6 @@ private class FakeRunQueue : RunWorkQueue {
     private val tickets = ConcurrentHashMap<UUID, RunDelivery>()
     private val deliveries = ConcurrentHashMap<UUID, ConcurrentLinkedQueue<RunDelivery>>()
     private val claimed = ConcurrentHashMap.newKeySet<UUID>()
-    private val sequence = AtomicLong()
     val enqueues = AtomicInteger()
     val claims = AtomicInteger()
     val archives = AtomicInteger()
@@ -361,7 +359,7 @@ private class FakeRunQueue : RunWorkQueue {
         beforeEnqueue()
         enqueues.incrementAndGet()
         tickets.computeIfAbsent(run) {
-            RunDelivery(sequence.incrementAndGet(), run, owner).also { d ->
+            RunDelivery(run, owner).also { d ->
                 deliveries.computeIfAbsent(owner) { ConcurrentLinkedQueue() }.add(d)
             }
         }

@@ -95,6 +95,20 @@ data class RunOpen(
     val openingProtocol: JsonElement? = null,
     /** Verified JWT subject; never infer this from the caller's display principal. Legacy rows stay null. */
     val callerSubject: String? = null,
+    /** S3.2 (D-150/D-159): the six engine-run columns; null on a run the engine did not open. */
+    val engine: EngineColumns? = null,
+    /** S3.2: the `people` entry of an answer run (asserted vs verified, D-159), written with the claim. */
+    val identityProtocol: JsonElement? = null,
+)
+
+/** The ledger columns of an engine run (V11). [assertedPerson] = `answeredBy`; [personVerified] null = none asserted. */
+data class EngineColumns(
+    val instanceId: String,
+    val businessKey: String,
+    val deploymentId: String,
+    val taskId: String?,
+    val assertedPerson: String?,
+    val personVerified: Boolean?,
 )
 
 const val RUN_KIND_RECIPE = "recipe"
@@ -134,23 +148,6 @@ data class RunOutput(
     val bytes: Long,
     val path: String?,
     val sha256: String?,
-)
-
-/** What an `ask` (or another outbound task) opens (`tasks`; D-97 snapshot, D-98 one open, D-101 run nullable). */
-data class TaskOpen(
-    val run: UUID?,
-    val recipe: String?,
-    val key: JsonElement?,
-    val kind: String,
-    val action: String?,
-    val targetRole: String?,
-    val targetPerson: String?,
-    val about: String?,
-    val options: JsonElement?,
-    val detail: JsonElement?,
-    val due: Instant?,
-    val dryRun: Boolean,
-    val origin: String?,
 )
 
 class NoSuchRun(
@@ -259,11 +256,20 @@ class Ledger(
         outermost("claimRun")
         var abandonedRecipe: String? = null
         val claim =
-            transaction {
+            // ✅R280-A: a wet watermark open reads after its program lock, so it must see what committed before it.
+            transaction(
+                transactionIsolation = Connection.TRANSACTION_READ_COMMITTED.takeIf { Watermark.guards(open) },
+            ) {
                 maxAttempts = CLAIM_ATTEMPTS
                 abandonedRecipe = null
+                // review-280 N1: the program lock before the key's holder read — a same-key retry then sees its winner.
+                Watermark.lockProgram(open)
                 val now = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS)
-                val key = open.idempotencyKey ?: return@transaction Claim.Claimed(insertRun(open, now), startedAt = now)
+                val key =
+                    open.idempotencyKey ?: return@transaction run {
+                        Watermark.guardOpen(open)
+                        Claim.Claimed(insertRun(open, now), startedAt = now)
+                    }
                 val row =
                     Runs
                         .selectAll()
@@ -280,7 +286,10 @@ class Ledger(
                         )
                     }
                 when (val decision = IdempotencyPolicy.decide(holder, now)) {
-                    ClaimDecision.Open -> Claim.Claimed(insertRun(open, now), startedAt = now)
+                    ClaimDecision.Open -> {
+                        Watermark.guardOpen(open)
+                        Claim.Claimed(insertRun(open, now), startedAt = now)
+                    }
                     is ClaimDecision.Replay -> Claim.Replay(decision.runId)
                     is ClaimDecision.Wait -> Claim.Running(decision.runId, decision.status)
                     is ClaimDecision.AbandonThenOpen -> {
@@ -290,6 +299,8 @@ class Ledger(
                             it[error] = JsonObject(mapOf("code" to JsonPrimitive("run-abandoned")))
                         }
                         abandonedRecipe = row?.get(Runs.recipe)
+                        // After the abandon, in this transaction: the key's own stale run no longer holds the window.
+                        Watermark.guardOpen(open)
                         Claim.Claimed(insertRun(open, now), abandoned = decision.runId, startedAt = now)
                     }
                 }
@@ -827,7 +838,7 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            seal(runId, batchId, dryRun = true, now)
+            seal(runId, batchId, dryRun = true, now, row[Runs.program], row[Runs.port])
             ensureRunBudget(runId, defaultBudget, clock)
             Runs.update({ Runs.id eq runId }) {
                 it[status] = RunStatus.CLOSED.wire
@@ -977,7 +988,7 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            seal(runId, batchId, dryRun = false, now)
+            seal(runId, batchId, dryRun = false, now, row[Runs.program], row[Runs.port])
             ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             val status = if (waiting) RunStatus.WAITING else RunStatus.CLOSED
             Runs.update({ Runs.id eq runId }) {
@@ -990,7 +1001,7 @@ class Ledger(
     }
 
     /**
-     * The closure entry and the seal. Then D-80: a program with `protocol: on_route` whose run fired no non-`none`
+     * The closure entry and the seal (and, for a wet run over a resolved window, the watermark's advance). Then D-80: a program with `protocol: on_route` whose run fired no non-`none`
      * route keeps no protocol document — every entry but the seal is removed (the D-73 retention opt-in, in this
      * transaction). The `runs` row and the batch stay: the ledger still knows the run, the 400-day record is omitted.
      */
@@ -999,6 +1010,8 @@ class Ledger(
         batchId: UUID,
         dryRun: Boolean,
         now: OffsetDateTime,
+        program: String?,
+        port: JsonElement,
     ) {
         val closure =
             kotlinx.serialization.json.buildJsonObject {
@@ -1016,6 +1029,11 @@ class Ledger(
                 it[payload] = evidence
                 it[at] = now
             }
+        }
+        if (!dryRun) {
+            // D-143 (S3.2 T2): a wet windowed run's seal advances the program's watermark, in this transaction
+            // (review-280 F7: [program] and [port] come from the row the close already holds FOR UPDATE).
+            Watermark.advanceAtSeal(runId, program, port, now)
         }
         if (onRouteSilent(runId)) {
             val exec = TransactionManager.current()
@@ -1629,6 +1647,17 @@ class Ledger(
                         budgetBatch = row[Runs.budgetBatch]?.let(Duration::ofMillis),
                         mode = row[Runs.mode],
                         kind = row[Runs.kind],
+                        engine =
+                            row[Runs.engineInstanceId]?.let { instance ->
+                                EngineColumns(
+                                    instance,
+                                    row[Runs.businessKey] ?: "",
+                                    row[Runs.engineDeploymentId] ?: "",
+                                    row[Runs.engineTaskId],
+                                    row[Runs.assertedPerson],
+                                    row[Runs.personVerified],
+                                )
+                            },
                     ),
                     RunStatus.of(row[Runs.status]),
                     row[Runs.protocolRef],
@@ -1783,22 +1812,6 @@ class Ledger(
         }
     }
 
-    /** Opens a task; one open per (recipe, key, action) (D-98). */
-    fun openTask(task: TaskOpen): UUID = TODO("S3.3 — ask/start/deliver tasks")
-
-    /** Records a task's answer (D-99's fingerprint check is the caller's). */
-    fun answerTask(
-        taskId: UUID,
-        answer: JsonElement,
-        by: String,
-    ): Unit = TODO("S3.3 — POST /tasks/{t}/answer")
-
-    /** The tasks a person sees (`GET /tasks?for=me`, D-101). */
-    fun listTasksFor(
-        person: String,
-        status: String?,
-    ): List<UUID> = TODO("S3.3 — GET /tasks?for=me")
-
     private fun insertRun(
         open: RunOpen,
         now: Instant,
@@ -1832,11 +1845,28 @@ class Ledger(
             it[budgetBatch] = open.budgetBatch?.toMillis()
             it[mode] = open.mode
             it[kind] = open.kind
+            open.engine?.let { e ->
+                it[engineInstanceId] = e.instanceId
+                it[businessKey] = e.businessKey
+                it[engineDeploymentId] = e.deploymentId
+                it[engineTaskId] = e.taskId
+                it[assertedPerson] = e.assertedPerson
+                it[personVerified] = e.personVerified
+            }
         }
         open.openingProtocol?.let { payload ->
             RunProtocol.insert {
                 it[run] = runId
                 it[section] = ProtocolSection.AUTOMATION.wire
+                it[seq] = 1
+                it[RunProtocol.payload] = payload
+                it[at] = now.utc()
+            }
+        }
+        open.identityProtocol?.let { payload ->
+            RunProtocol.insert {
+                it[run] = runId
+                it[section] = ProtocolSection.PEOPLE.wire
                 it[seq] = 1
                 it[RunProtocol.payload] = payload
                 it[at] = now.utc()

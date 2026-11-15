@@ -16,38 +16,26 @@ data class ServedBundle(
     val refreshedAt: String,
 )
 
-@Serializable
-data class SchedulerHealth(
-    val alive: Boolean,
-    val lastTick: String?,
-)
-
-/** `GET /automation/health` (AU contracts §1.1) — D-72's hardcoded set. */
+/**
+ * `GET /automation/health` (AU contracts §1.1) — D-72's hardcoded set. D-142 (S3.2) removed `scheduler` and `queues`:
+ * the service has neither.
+ */
 @Serializable
 data class HealthReport(
     val status: String,
     val served: ServedBundle?,
-    val scheduler: SchedulerHealth,
-    val queues: Map<String, Long>,
     val abandoned: Long?,
     val refreshFailed: Boolean,
     val paused: Boolean,
 )
 
-/**
- * What the health report reads. [scheduler] answers null while the build has no scheduler (it lands at
- * S3.2): the report then shows it not alive without degrading the status, since nothing is down.
- */
+/** What the health report reads. */
 interface HealthSources {
     fun dbReachable(): Boolean
-
-    fun queueDepths(): Map<String, Long>
 
     fun abandoned(): Long
 
     fun served(): ServedBundle?
-
-    fun scheduler(): SchedulerHealth?
 
     fun refreshFailed(): Boolean
 
@@ -57,37 +45,29 @@ interface HealthSources {
 private val log = LoggerFactory.getLogger("org.tatrman.automation.api.HealthRoutes")
 
 /**
- * The status rule: `DOWN` (503) when the ledger cannot be read; `DEGRADED` when the last /refresh failed or
- * the scheduler stopped; `UP` otherwise. The abandoned count informs and never degrades — the ledger keeps
+ * The status rule: `DOWN` (503) when the ledger cannot be read; `DEGRADED` when the last /refresh failed;
+ * `UP` otherwise. The abandoned count informs and never degrades — the ledger keeps
  * runs forever (D-73), so one old abandonment would hold the status down for good; alert recipes judge it.
  */
 fun healthReport(sources: HealthSources): HealthReport {
-    val scheduler = sources.scheduler()
     if (!sources.dbReachable()) {
         return HealthReport(
             status = "DOWN",
             served = sources.served(),
-            scheduler = scheduler ?: NO_SCHEDULER,
-            queues = emptyMap(),
             abandoned = null,
             refreshFailed = sources.refreshFailed(),
             paused = sources.paused(),
         )
     }
     val refreshFailed = sources.refreshFailed()
-    val degraded = refreshFailed || scheduler?.alive == false
     return HealthReport(
-        status = if (degraded) "DEGRADED" else "UP",
+        status = if (refreshFailed) "DEGRADED" else "UP",
         served = sources.served(),
-        scheduler = scheduler ?: NO_SCHEDULER,
-        queues = sources.queueDepths(),
         abandoned = sources.abandoned(),
         refreshFailed = refreshFailed,
         paused = sources.paused(),
     )
 }
-
-private val NO_SCHEDULER = SchedulerHealth(alive = false, lastTick = null)
 
 @Serializable
 data class ProbeStatus(
@@ -113,7 +93,7 @@ fun Route.healthRoutes(sources: HealthSources) {
                 healthReport(sources)
             } catch (e: Exception) {
                 log.warn("health: a source failed; answering DOWN", e)
-                HealthReport("DOWN", null, NO_SCHEDULER, emptyMap(), null, refreshFailed = false, paused = false)
+                HealthReport("DOWN", null, null, refreshFailed = false, paused = false)
             }
         call.respond(if (report.status == "DOWN") HttpStatusCode.ServiceUnavailable else HttpStatusCode.OK, report)
     }
