@@ -991,17 +991,10 @@ class Ledger(
                 it[payload] = writes
                 it[at] = now
             }
-            // D-195 (C) + D-201: an `unknown` row, or a `failed` row other than `stale-state`, holds the watermark — the run
-            // seals and the next window starts from the old last_to. A `failed · stale-state` row (the state already moved,
-            // D-67), a held row (a decision is pending) and history sub-outcomes do not hold.
-            val holdsWatermark =
-                rows.any {
-                    when (bucket(it)) {
-                        "unknown" -> true
-                        "failed" -> it[BatchRows.error] != RowOutcome.STALE_STATE
-                        else -> false
-                    }
-                }
+            // D-195 (C) + D-202 (F5): a transient row ([RowOutcome.holds]: unknown, a door/transport failure) holds the
+            // watermark — the run seals and the next window starts from the old last_to. A settled failure (stale-state,
+            // D-201; a policy or validation refusal), a held row (a decision is pending, F4) and history sub-outcomes do not.
+            val holdsWatermark = rows.any { RowOutcome.holds(it[BatchRows.status], it[BatchRows.error]) }
             seal(runId, batchId, dryRun = false, now, row[Runs.program], row[Runs.port], advance = !holdsWatermark)
             ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             val status = if (waiting) RunStatus.WAITING else RunStatus.CLOSED
@@ -1049,7 +1042,7 @@ class Ledger(
         if (advance) {
             // D-143 (S3.2 T2): a wet windowed run's seal advances the program's watermark, in this transaction
             // (review-280 F7: [program] and [port] come from the row the close already holds FOR UPDATE);
-            // D-195 (C): not when the close had a failed (other than stale-state, D-201) or unknown row ([advance] false).
+            // D-195 (C) + D-202 (F5): not when the close had a transient row ([RowOutcome.holds]; [advance] false).
             Watermark.advanceAtSeal(runId, program, port, now)
         }
         if (onRouteSilent(runId)) {

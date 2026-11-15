@@ -73,6 +73,35 @@ data class RowOutcome(
 
         /** The `state_history` sub-outcomes: `pending` → `applied` | `failed` | `unknown` (a lost commit; not resent). */
         val HISTORY_STATES = setOf(HISTORY_PENDING, "applied", "failed", "unknown")
+
+        /**
+         * D-202 (F5): the `failed` codes a later attempt may not repeat — a door or transport fault, not a verdict on the
+         * row. With [TRANSIENT_PREFIXES] (`worker_*`, `connection_*`) this is the whole table of transient failures;
+         * every other `failed` code is settled.
+         */
+        val TRANSIENT =
+            setOf("deadline-exceeded", "door-transport", "invalid-result", "identity", "connector-unavailable")
+
+        /** D-202 (F5): door code families that are transient as a whole (the worker's and the connection's faults). */
+        val TRANSIENT_PREFIXES = listOf("worker_", "connection_")
+
+        /**
+         * D-202 (F5) + D-201 — the one hold rule: whether a closed row's outcome holds a windowed program's watermark.
+         * Only a transient outcome holds: a `staged` row (an unknown commit, [UNKNOWN]; never resent) and a `failed`
+         * row whose code is [TRANSIENT] or in a [TRANSIENT_PREFIXES] family. A settled failure does not hold — the
+         * verdict stands (`stale-state`, D-67) or the refusal would repeat on every re-read (`write_under_row_policy`,
+         * `not-writable`, `bad-transition`, `no-row`, `rows-affected-N`, a validation refusal). `applied` and `skipped`
+         * never hold, whatever an applied transition's `state_history` sub-outcome (not a row status, ⚑AU-S32-2).
+         */
+        fun holds(
+            status: String,
+            error: String?,
+        ): Boolean =
+            when (status) {
+                "staged" -> true
+                "failed" -> error == null || error in TRANSIENT || TRANSIENT_PREFIXES.any { error.startsWith(it) }
+                else -> false
+            }
     }
 }
 
