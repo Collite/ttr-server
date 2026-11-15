@@ -186,6 +186,22 @@ fun Application.module(config: Config) {
                 refreshIntervalMs = pollSeconds * 1_000L,
                 initialRetryIntervalMs = initialRetrySeconds * 1_000L,
                 endpoint = "$host:$port",
+                placedPackages =
+                    config
+                        .getString("translate.placed-packages")
+                        .split(',')
+                        .map {
+                            it.trim()
+                        }.filter { it.isNotEmpty() }
+                        .toSet(),
+                placedEntities =
+                    config
+                        .getString("translate.placed-entities")
+                        .split(',')
+                        .map {
+                            it.trim()
+                        }.filter { it.isNotEmpty() }
+                        .toSet(),
             ).also { it.start(this) }
         }
 

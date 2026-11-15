@@ -26,6 +26,11 @@ import org.tatrman.translator.framework.SurfaceType
  * as [ModelTable]s and db foreign keys; ER tables aren't exposed (the v1 translator pipeline
  * targets `target_schema = DB`). Snapshot-stable: constructed per snapshot fetch and held
  * unchanged for the lifetime of any compilation that uses it.
+ *
+ * Core "Placement" (D-199/D-200): an unbound placed entity owns a table named after the entity,
+ * with bare attribute columns and its key attributes as the primary key. Package and named-entity
+ * allowlists are opt-in; explicit bindings always win. These tables have no physical namespace:
+ * the connection's search_path selects it, so lookup accepts any DB namespace.
  */
 class SnapshotModelHandle(
     private val tablesByQname: Map<QualifiedName, ModelTable>,
@@ -37,6 +42,7 @@ class SnapshotModelHandle(
     private val savedQueriesByQname: Map<QualifiedName, ModelSavedQuery> = emptyMap(),
     private val savedQueryBodies: Map<QualifiedName, SavedQueryBody> = emptyMap(),
     private val attributeRenamesByEntity: Map<QualifiedName, Map<String, String>> = emptyMap(),
+    private val placedTables: Map<String, ModelTable> = emptyMap(),
 ) : ModelHandle {
     override fun tables(
         schemaCode: SchemaCode,
@@ -44,10 +50,24 @@ class SnapshotModelHandle(
     ): Map<QualifiedName, ModelTable> =
         tablesByQname.filterKeys {
             it.schemaCode == schemaCode && it.namespace.equals(namespace, ignoreCase = true)
-        }
+        } +
+            if (schemaCode == SchemaCode.DB) {
+                placedTables.values.associate { table ->
+                    val qn =
+                        table.qname
+                            .toBuilder()
+                            .setNamespace(namespace)
+                            .build()
+                    qn to table.copy(qname = qn)
+                }
+            } else {
+                emptyMap()
+            }
 
     override fun columns(tableQname: QualifiedName): List<ModelColumn> =
-        tablesByQname[tableQname]?.columns ?: emptyList()
+        tablesByQname[tableQname]?.columns
+            ?: placedTables[tableQname.name]?.takeIf { tableQname.schemaCode == SchemaCode.DB }?.columns
+            ?: emptyList()
 
     override fun foreignKeys(): List<ModelForeignKey> = foreignKeys
 
@@ -84,7 +104,10 @@ class SnapshotModelHandle(
 
     override fun namespaces(schemaCode: SchemaCode): Set<String> =
         when (schemaCode) {
-            SchemaCode.DB -> tablesByQname.keys.mapTo(mutableSetOf()) { it.namespace }
+            SchemaCode.DB ->
+                tablesByQname.keys.mapTo(mutableSetOf()) { it.namespace }.apply {
+                    if (placedTables.isNotEmpty()) add("")
+                }
             SchemaCode.ER -> entitiesByQname.keys.mapTo(mutableSetOf()) { it.namespace }
             SchemaCode.OBJ -> savedQueriesByQname.keys.mapTo(mutableSetOf()) { it.namespace }
             else -> emptySet()
@@ -103,6 +126,8 @@ class SnapshotModelHandle(
         fun from(
             snapshot: ModelSnapshot,
             savedQueriesAsObj: Boolean = false,
+            placedPackages: Set<String> = emptySet(),
+            placedEntities: Set<String> = emptySet(),
         ): SnapshotModelHandle {
             val tables = LinkedHashMap<QualifiedName, ModelTable>()
             val fks = mutableListOf<ModelForeignKey>()
@@ -258,6 +283,37 @@ class SnapshotModelHandle(
                                 .map { it.second },
                     )
                 }
+            val boundEntities =
+                snapshot.objectsList
+                    .filter { it.contentCase == ObjectEntry.ContentCase.ER2DB_ENTITY_MAPPING }
+                    .mapTo(mutableSetOf()) { it.er2DbEntityMapping.entity }
+            val placedTables = LinkedHashMap<String, ModelTable>()
+            for (entry in snapshot.objectsList) {
+                val descriptor = entry.objectDescriptor
+                val qn = descriptor.qualifiedName
+                if (entry.contentCase != ObjectEntry.ContentCase.ENTITY ||
+                    qn.schemaCode != SchemaCode.ER ||
+                    qn in boundEntities ||
+                    !(descriptor.packageName in placedPackages || qn.name in placedEntities)
+                ) {
+                    continue
+                }
+                val attrs = finalEntities.getValue(qn).attributes
+                val tableQn =
+                    qn
+                        .toBuilder()
+                        .setSchemaCode(SchemaCode.DB)
+                        .setNamespace("")
+                        .build()
+                placedTables[qn.name] =
+                    ModelTable(
+                        tableQn,
+                        attrs.map { ModelColumn(it.name, it.surfaceType, it.nullable) },
+                        attrs.filter { it.isKey }.map { it.name },
+                    )
+                entityMappings[qn] = EntityMapping.ToTable(tableQn)
+                attributeRenames.remove(qn)
+            }
             if (savedQueriesAsObj) addObjAliases(snapshot, savedQueriesMap, savedQueryBodies)
             return SnapshotModelHandle(
                 tables,
@@ -269,6 +325,7 @@ class SnapshotModelHandle(
                 savedQueriesMap,
                 savedQueryBodies,
                 attributeRenames,
+                placedTables,
             )
         }
 

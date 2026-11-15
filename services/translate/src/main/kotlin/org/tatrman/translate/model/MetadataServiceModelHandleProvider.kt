@@ -36,6 +36,8 @@ class MetadataServiceModelHandleProvider(
     private val initialRetryIntervalMs: Long = 5_000,
     private val endpoint: String = "metadata service",
     fallback: ModelHandle = BootFixtureModel.handle(),
+    private val placedPackages: Set<String> = emptySet(),
+    private val placedEntities: Set<String> = emptySet(),
 ) : ModelHandleProvider {
     private val logger = LoggerFactory.getLogger(MetadataServiceModelHandleProvider::class.java)
     private val handleRef = AtomicReference(fallback)
@@ -60,7 +62,14 @@ class MetadataServiceModelHandleProvider(
                 val firstLoad = lastSuccessfulRefreshRef.get() == null
                 // LQ (L-28): serve every parsed saved query under its obj name, so a query that reads another one —
                 // sent as text by a pattern, the lattice or free SQL — parses with the body inlined from its stored plan.
-                handleRef.set(SnapshotModelHandle.from(resp.snapshot, savedQueriesAsObj = true))
+                handleRef.set(
+                    SnapshotModelHandle.from(
+                        resp.snapshot,
+                        savedQueriesAsObj = true,
+                        placedPackages = placedPackages,
+                        placedEntities = placedEntities,
+                    ),
+                )
                 etagRef.set(resp.etag)
                 lastSuccessfulRefreshRef.set(System.currentTimeMillis())
                 logger.info(
