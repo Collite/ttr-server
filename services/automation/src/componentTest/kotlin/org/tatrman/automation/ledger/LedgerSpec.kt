@@ -232,7 +232,7 @@ class LedgerSpec :
                     openingProtocol = evidence,
                 )
             val id = ledger.claimRun(input).runId
-            ledger.claimRun(input) shouldBe Claim.Running(id, RunStatus.OPEN)
+            ledger.claimRun(input) shouldBe Claim.Running(id, RunStatus.OPEN, dryRun = true)
             val record = ledger.findRun(id)!!
             record.open shouldBe input.copy(openingProtocol = null)
             record.status shouldBe RunStatus.OPEN
@@ -274,12 +274,12 @@ class LedgerSpec :
 
         "a live run is waited on; a closed one is replayed" {
             val first = ledger.claimRun(open("k-1")).shouldBeInstanceOf<Claim.Claimed>()
-            ledger.claimRun(open("k-1")) shouldBe Claim.Running(first.runId, RunStatus.OPEN)
+            ledger.claimRun(open("k-1")) shouldBe Claim.Running(first.runId, RunStatus.OPEN, dryRun = false)
             ledger.markStatus(first.runId, RunStatus.RUNNING)
-            ledger.claimRun(open("k-1")) shouldBe Claim.Running(first.runId, RunStatus.RUNNING)
+            ledger.claimRun(open("k-1")) shouldBe Claim.Running(first.runId, RunStatus.RUNNING, dryRun = false)
             ledger.markStatus(first.runId, RunStatus.CLOSED)
             clock.now = t0 + Duration.ofDays(30)
-            ledger.claimRun(open("k-1")) shouldBe Claim.Replay(first.runId)
+            ledger.claimRun(open("k-1")) shouldBe Claim.Replay(first.runId, dryRun = false)
         }
 
         "a failed run frees its key: the next claim opens beside it, and the failed one stays failed" {
@@ -295,7 +295,7 @@ class LedgerSpec :
             val first = ledger.claimRun(open("k-3")).runId
             ledger.markStatus(first, RunStatus.RUNNING)
             clock.now = t0 + budget + IdempotencyPolicy.GRACE
-            ledger.claimRun(open("k-3")) shouldBe Claim.Running(first, RunStatus.RUNNING)
+            ledger.claimRun(open("k-3")) shouldBe Claim.Running(first, RunStatus.RUNNING, dryRun = false)
             clock.now = clock.now + Duration.ofSeconds(1)
             val second = ledger.claimRun(open("k-3")).shouldBeInstanceOf<Claim.Claimed>()
             second.abandoned shouldBe first
@@ -315,7 +315,7 @@ class LedgerSpec :
             val first = ledger.claimRun(open("k-5")).runId
             ledger.markStatus(first, RunStatus.WAITING)
             clock.now = t0 + Duration.ofDays(365)
-            ledger.claimRun(open("k-5")) shouldBe Claim.Running(first, RunStatus.WAITING)
+            ledger.claimRun(open("k-5")) shouldBe Claim.Running(first, RunStatus.WAITING, dryRun = false)
             statusOf(first) shouldBe "waiting"
         }
 

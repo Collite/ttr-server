@@ -229,7 +229,7 @@ class AbandonmentSpec :
                 status(old) shouldBe RunStatus.ABANDONED
                 status(fresh) shouldBe RunStatus.OPEN
                 ledger.claimRun(RunOpen("release_order", idempotencyKey = "engine:1")) shouldBe
-                    Claim.Running(fresh, RunStatus.OPEN)
+                    Claim.Running(fresh, RunStatus.OPEN, dryRun = false)
                 counted.size shouldBe 1
             } finally {
                 pool.shutdownNow()

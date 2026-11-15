@@ -41,7 +41,7 @@ data class OpenResponse(
     val status: String? = null,
     val location: String? = null,
     val protocolRef: String? = null,
-    /** ⚑AU-EXP-5 (S3.2 T0): a new claim answers the dryRun the ledger stored (a deployment can force it true). */
+    /** The dryRun the ledger stored (a deployment can force it true): ⚑AU-EXP-5 on `201`, D-195 (D) on `200`/`202`. */
     val dryRun: Boolean? = null,
 )
 
@@ -382,11 +382,21 @@ class Open(
         val id = claimed.runId
         val location = "/automation/runs/$id"
         return when (claimed) {
-            is Claim.Replay -> OpenResult(200, OpenResponse(id.toString(), true, protocolRef = protocolRef(id)))
+            is Claim.Replay ->
+                OpenResult(
+                    200,
+                    OpenResponse(id.toString(), true, protocolRef = protocolRef(id), dryRun = claimed.dryRun),
+                )
             is Claim.Running ->
                 OpenResult(
                     202,
-                    OpenResponse(id.toString(), false, status = claimed.status.wire, location = location),
+                    OpenResponse(
+                        id.toString(),
+                        false,
+                        status = claimed.status.wire,
+                        location = location,
+                        dryRun = claimed.dryRun,
+                    ),
                 )
             is Claim.Claimed ->
                 OpenResult(

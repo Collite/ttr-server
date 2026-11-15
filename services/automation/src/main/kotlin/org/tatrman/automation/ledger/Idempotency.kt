@@ -49,15 +49,17 @@ sealed interface Claim {
         val startedAt: Instant,
     ) : Claim
 
-    /** The key's run is done: answer it again rather than run twice. */
+    /** The key's run is done: answer it again rather than run twice. [dryRun] is the run row's (D-195 (D)). */
     data class Replay(
         override val runId: UUID,
+        val dryRun: Boolean,
     ) : Claim
 
-    /** The key's run is still live: hand the caller its handle to wait on. */
+    /** The key's run is still live: hand the caller its handle to wait on. [dryRun] is the run row's (D-195 (D)). */
     data class Running(
         override val runId: UUID,
         val status: RunStatus,
+        val dryRun: Boolean,
     ) : Claim
 }
 
@@ -67,6 +69,8 @@ data class KeyHolder(
     val status: RunStatus,
     val startedAt: Instant,
     val budget: Duration,
+    /** The holder row's stored `dry_run`, answered on a replay or a live handle (D-195 (D)). */
+    val dryRun: Boolean,
 )
 
 /** The decision the claim acts on; [Claim] is what the caller then sees. */

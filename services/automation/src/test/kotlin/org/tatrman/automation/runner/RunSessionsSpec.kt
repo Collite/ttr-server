@@ -380,9 +380,9 @@ internal class RunSessionFixture(
                     }
                 if (existing != null) {
                     if (states.getValue(existing.key) == RunStatus.CLOSED) {
-                        Claim.Replay(existing.key)
+                        Claim.Replay(existing.key, dryRun = existing.value.dryRun)
                     } else {
-                        Claim.Running(existing.key, states.getValue(existing.key))
+                        Claim.Running(existing.key, states.getValue(existing.key), dryRun = existing.value.dryRun)
                     }
                 } else {
                     val id = UUID.randomUUID()

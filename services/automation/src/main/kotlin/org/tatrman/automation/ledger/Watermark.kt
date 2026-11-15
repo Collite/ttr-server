@@ -24,7 +24,8 @@ import java.util.UUID
  * D-143 (S3.2 T2): a windowed program's watermark, one `program_windows` row per (program, window). There is no
  * window runtime: the engine's timer opens `port: window`, Open resolves `[from, to)` = `[last_to, as_of)` (the
  * epoch before the first close), and the close that seals a wet run advances `last_to` to its `to` in the seal's
- * transaction. A dry run, a failed run and a run over explicit bounds never advance it.
+ * transaction. A dry run, a failed run, a close with any `failed`/`unknown` row (D-195 (C); a `failed · stale-state`
+ * row does not count, D-201) and a run over explicit bounds never advance it.
  */
 object Watermark {
     /** The `from` of a program's first window. */

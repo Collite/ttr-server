@@ -102,15 +102,19 @@ class OpenRoutesSpec :
                 recorded!!.dryRun shouldBe false // S2.2: `dryRun: false` on a wet deployment is an auto run
                 recorded!!.caller shouldBe "maya"
                 contexts.size shouldBe 1
-                claim = Claim.Running(id, RunStatus.RUNNING)
+                // D-195 (D): the 202 and the 200 carry the run row's dryRun, like the 201 (true here: forced dry).
+                claim = Claim.Running(id, RunStatus.RUNNING, dryRun = true)
                 val running = post(body)
                 running.status shouldBe HttpStatusCode.Accepted
                 running.headers[HttpHeaders.Location] shouldBe "/automation/runs/$id"
-                claim = Claim.Replay(id)
+                Json.parseToJsonElement(running.bodyAsText()).jsonObject["dryRun"] shouldBe JsonPrimitive(true)
+                claim = Claim.Replay(id, dryRun = true)
                 val replay = post(body)
                 replay.status shouldBe HttpStatusCode.OK
-                Json.parseToJsonElement(replay.bodyAsText()).jsonObject["protocolRef"] shouldBe
-                    JsonPrimitive("/automation/runs/$id/protocol")
+                Json.parseToJsonElement(replay.bodyAsText()).jsonObject.let {
+                    it["protocolRef"] shouldBe JsonPrimitive("/automation/runs/$id/protocol")
+                    it["dryRun"] shouldBe JsonPrimitive(true)
+                }
                 contexts.size shouldBe 1
                 post("{broken").status shouldBe HttpStatusCode.BadRequest
                 val badPort = post("""{"deployment":"release_native_event","port":{"key":4711}}""")
