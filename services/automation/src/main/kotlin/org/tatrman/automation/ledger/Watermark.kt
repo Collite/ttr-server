@@ -107,7 +107,10 @@ object Watermark {
         val from = Instant.parse(window.getValue("from").jsonPrimitive.content)
         val to = Instant.parse(window.getValue("to").jsonPrimitive.content)
         val names = window.getValue("windows").jsonArray.map { it.jsonPrimitive.content }
-        val (watermark, advancedBy) = current(program, names)
+        // The order matters (review-293 F3): a close neither takes the program lock nor waits for it, and each read
+        // here sees what was committed before it ran (read committed). So `unsealed` comes first and the watermark
+        // after it — a run that seals and advances between the two is then either still unsealed or already moved —
+        // and `waiting` last, bound to that watermark (a run's WAITING status and its seal commit together).
         val unsealed =
             tx.exec(
                 """
@@ -120,6 +123,7 @@ object Watermark {
                 """.trimIndent(),
                 listOf<Pair<IColumnType<*>, Any>>(TextColumnType() to program),
             ) { rs -> if (rs.next()) rs.getObject(1, UUID::class.java) else null }
+        val (watermark, advancedBy) = current(program, names)
         val waiting =
             tx.exec(
                 """
