@@ -8,7 +8,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.IntegerColumnType
@@ -41,6 +40,7 @@ import org.tatrman.automation.apply.ApplyRow.Companion.DECIDED
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_AT
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_OUTCOME
 import org.tatrman.automation.writer.RowIdentity
+import org.tatrman.automation.writer.Settlement
 import org.tatrman.automation.writer.RowOutcome
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
@@ -195,8 +195,8 @@ data class HeldGroup(
     val statuses: List<BatchRowStatus>,
     val actions: List<DryRunAction>,
     val budget: Duration,
-    /** D-202 (F2), review-293 F8: what an earlier wet run of the program applied over this run's window. */
-    val settled: Set<RowIdentity> = emptySet(),
+    /** D-202 (F2), review-293 F8, D-206: what earlier wet runs of the program settled over this run's window. */
+    val settlement: Settlement = Settlement(),
 )
 
 /** S2.3: what a revert reads (see [Ledger.revertState]). */
@@ -475,7 +475,7 @@ class Ledger(
             this[BatchRows.entity] = item.entity
             this[BatchRows.op] = item.op
             this[BatchRows.key] = item.key
-            this[BatchRows.row] = item.storedRow()
+            this[BatchRows.row] = ApplyRow.journaled(item)
             this[BatchRows.groupKey] = item.group
             this[BatchRows.status] = "staged"
         }
@@ -637,6 +637,8 @@ class Ledger(
                 ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             }
             val plan = batchPlan(runId, batchId)
+            // Only a run that still applies reads it (the close and perform apply an `evaluated` run only).
+            val settlement = if (status == RunStatus.EVALUATED) settled(row) else Settlement()
             ApplyState(
                 batchId,
                 row[Runs.runAs].orEmpty(),
@@ -659,8 +661,8 @@ class Ledger(
                             )
                     },
                 runDeadline(runId, defaultBudget),
-                // Only a run that still applies reads it (the close and perform apply an `evaluated` run only).
-                if (status == RunStatus.EVALUATED) settled(row) else emptySet(),
+                settlement.settled,
+                settlement.unknown,
             )
         }
     }
@@ -978,6 +980,8 @@ class Ledger(
                             },
                         ),
                     )
+                    // D-206 (F10) + review-258 B3: unknown outcomes a read proved applied (counted in `applied` too).
+                    put("reconciled", JsonPrimitive(rows.count { it[BatchRows.error] == RowOutcome.RECONCILED }))
                     put("history", historyCounts(rows))
                     if (waiting) {
                         // S2.3: held rows are counted apart, with their groups; each decision appends after the seal.
@@ -1098,7 +1102,10 @@ class Ledger(
      * undecided, so another group's decision never closes the run without it (D-97).
      */
     private fun undecidedHeld(r: org.jetbrains.exposed.v1.core.ResultRow): Boolean =
-        r[BatchRows.groupKey] != null && (r[BatchRows.row] as? JsonObject)?.get(DECIDED) == null
+        r[BatchRows.groupKey] != null &&
+            (r[BatchRows.row] as? JsonObject)?.get(DECIDED) == null &&
+            // D-206 (F9): a held row the close settled (an earlier run applied or rejected it) awaits no decision.
+            !(r[BatchRows.status] == "skipped" && r[BatchRows.error] == RowOutcome.SETTLED)
 
     /**
      * S2.3: what a decision on one held group reads — the run (its pinned fps and names, for D-99), the batch, every
@@ -1152,55 +1159,77 @@ class Ledger(
     }
 
     /**
-     * D-202 (F2): the identities (entity, key, op) of the rows an earlier wet run of [run]'s program `applied` over a
-     * window that overlaps [run]'s `[from, to)` — the re-read of a held range sends only the rest. Empty unless [run] is
-     * a wet watermark run. Per program: another program's applied rows never settle this one's. Any status (planner
-     * ~15:45, Found 4; review-293 F6): an applied row's effect is done whatever happened to its run afterwards — a run
-     * that applied rows and then failed (`close-deadline-exceeded`) settles them too. A row without a key has no
-     * identity and is never settled. Read in the caller's transaction.
+     * D-202 (F2) + D-206: what earlier wet runs of [run]'s program settled over a window that overlaps [run]'s
+     * `[from, to)` — the re-read of a held range sends only the rest. Empty unless [run] is a wet watermark run. Per
+     * program: another program's rows never settle this one's. Any run status (planner ~15:45, Found 4; review-293
+     * F6): an applied row's effect is done whatever happened to its run afterwards. A row settles when its outcome is:
+     * - `applied` (a reconciled one too);
+     * - `failed` with a settled code ([RowOutcome.holds] false; D-206 F2: the re-read does not resend it beside the
+     *   rows it rolled back);
+     * - `skipped · rejected` (D-206 F9: an operator's decision is not asked again).
+     * Never from a batch in state `reverted` or a revert batch (`rev_of` set; D-206 F7). An insert left `staged ·
+     * unknown-outcome` or `in-flight` is returned apart ([Settlement.unknown], D-206 F10). Identities are
+     * [RowIdentity.of] the journaled rows (the planner's [ApplyRow.settle] evidence where it set one); a row without a
+     * key has none and never settles. Read in the caller's transaction.
      */
-    private fun settled(run: org.jetbrains.exposed.v1.core.ResultRow): Set<RowIdentity> {
-        val program = run[Runs.program] ?: return emptySet()
-        if (run[Runs.dryRun]) return emptySet()
-        val window = Watermark.keeping(run[Runs.port]) ?: return emptySet()
+    private fun settled(run: org.jetbrains.exposed.v1.core.ResultRow): Settlement {
+        val program = run[Runs.program] ?: return Settlement()
+        if (run[Runs.dryRun]) return Settlement()
+        val window = Watermark.keeping(run[Runs.port]) ?: return Settlement()
         val from = Instant.parse(window.getValue("from").jsonPrimitive.content).atOffset(ZoneOffset.UTC)
         val to = Instant.parse(window.getValue("to").jsonPrimitive.content).atOffset(ZoneOffset.UTC)
         val tx = TransactionManager.current()
-        return tx
-            .exec(
-                """
-                SELECT br.entity, br.key::text, br.op
-                FROM automation.runs r
-                JOIN automation.batches b ON b.run = r.id
-                JOIN automation.batch_rows br ON br.batch = b.id
-                WHERE r.program = ? AND r.id <> ? AND NOT r.dry_run
-                  AND (r.port -> '${Watermark.PORT_KEY}' ->> 'from')::timestamptz < ?
-                  AND (r.port -> '${Watermark.PORT_KEY}' ->> 'to')::timestamptz > ?
-                  AND br.status = 'applied' AND br.key IS NOT NULL AND br.key <> '{}'::jsonb
-                """.trimIndent(),
-                listOf<Pair<org.jetbrains.exposed.v1.core.IColumnType<*>, Any>>(
-                    org.jetbrains.exposed.v1.core
-                        .TextColumnType() to program,
-                    org.jetbrains.exposed.v1.core.java
-                        .UUIDColumnType() to run[Runs.id],
-                    org.jetbrains.exposed.v1.javatime
-                        .JavaOffsetDateTimeColumnType() to to,
-                    org.jetbrains.exposed.v1.javatime
-                        .JavaOffsetDateTimeColumnType() to from,
-                ),
-            ) { rs ->
-                buildSet {
-                    while (rs.next()) {
-                        add(
-                            RowIdentity(
-                                rs.getString(1),
-                                Json.parseToJsonElement(rs.getString(2)).jsonObject,
-                                rs.getString(3),
-                            ),
-                        )
-                    }
-                }
-            }.orEmpty()
+        val settled = mutableSetOf<RowIdentity>()
+        val unknown = linkedMapOf<RowIdentity, MutableList<ApplyRow>>()
+        tx.exec(
+            """
+            SELECT br.seq, br.entity, br.op, br.key::text, br.row::text, br.status, br.error
+            FROM automation.runs r
+            JOIN automation.batches b ON b.run = r.id
+            JOIN automation.batch_rows br ON br.batch = b.id
+            WHERE r.program = ? AND r.id <> ? AND NOT r.dry_run
+              AND (r.port -> '${Watermark.PORT_KEY}' ->> 'from')::timestamptz < ?
+              AND (r.port -> '${Watermark.PORT_KEY}' ->> 'to')::timestamptz > ?
+              AND b.state <> 'reverted' AND b.rev_of IS NULL
+              AND br.status IN ('applied', 'failed', 'skipped', 'staged')
+            ORDER BY r.started_at, br.seq
+            """.trimIndent(),
+            listOf<Pair<org.jetbrains.exposed.v1.core.IColumnType<*>, Any>>(
+                org.jetbrains.exposed.v1.core
+                    .TextColumnType() to program,
+                org.jetbrains.exposed.v1.core.java
+                    .UUIDColumnType() to run[Runs.id],
+                org.jetbrains.exposed.v1.javatime
+                    .JavaOffsetDateTimeColumnType() to to,
+                org.jetbrains.exposed.v1.javatime
+                    .JavaOffsetDateTimeColumnType() to from,
+            ),
+        ) { rs ->
+            while (rs.next()) {
+                val status = rs.getString(6)
+                val error = rs.getString(7)
+                val lost = status == "staged" && (error == RowOutcome.UNKNOWN || error == RowOutcome.IN_FLIGHT)
+                val settles =
+                    status == "applied" ||
+                        status == "failed" &&
+                        !RowOutcome.holds(status, error) ||
+                        status == "skipped" &&
+                        error == RowOutcome.REJECTED
+                if (!settles && !(lost && rs.getString(3) == "insert")) continue
+                val row =
+                    ApplyRow.restore(
+                        rs.getInt(1),
+                        rs.getString(2),
+                        rs.getString(3),
+                        rs.getString(4)?.let(Json::parseToJsonElement),
+                        rs.getString(5)?.let(Json::parseToJsonElement),
+                        null,
+                    )
+                val identity = RowIdentity.of(row) ?: continue
+                if (settles) settled += identity else unknown.getOrPut(identity) { mutableListOf() } += row
+            }
+        }
+        return Settlement(settled, unknown - settled)
     }
 
     /**

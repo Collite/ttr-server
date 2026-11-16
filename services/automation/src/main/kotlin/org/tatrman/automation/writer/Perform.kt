@@ -119,6 +119,7 @@ class Perform(
                         state.recorded,
                         // review-293 F8: perform on a watermark re-read settles like the close.
                         settled = state.settled,
+                        unknown = state.unknown,
                     ),
                     object : ApplyJournal {
                         override fun begin(

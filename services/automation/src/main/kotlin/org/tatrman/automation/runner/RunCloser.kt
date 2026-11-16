@@ -12,6 +12,7 @@ import org.tatrman.automation.ledger.*
 import org.tatrman.automation.writer.Apply
 import org.tatrman.automation.writer.ApplyInput
 import org.tatrman.automation.writer.ApplyJournal
+import org.tatrman.automation.writer.RowIdentity
 import org.tatrman.automation.writer.RowOutcome
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -111,7 +112,9 @@ class RunCloser(
                     // One absolute deadline: the run's original one, as pinned at Open and as the ledger holds it.
                     state.deadline,
                     // S2.3: an `approval: required` action's rows wait in their groups; only the rest apply here.
-                    state.plan.rows.filter { it.group == null },
+                    // D-206 (F9): a held row an earlier run of the program settled (applied, or rejected by an
+                    // operator) is recorded `skipped · settled` with them — never held, so never asked again.
+                    state.plan.rows.filter { it.group == null || RowIdentity.of(it) in state.settled },
                     state.actions,
                     requireNotNull(metadata.planSource) { "apply placement was not pinned at open" },
                     metadata.entities,
@@ -122,6 +125,7 @@ class RunCloser(
                     state.recorded,
                     // D-202 (F2): a watermark re-read sends only what no earlier run of the program applied.
                     settled = state.settled,
+                    unknown = state.unknown,
                 ),
                 object : ApplyJournal {
                     override fun begin(

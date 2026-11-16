@@ -27,6 +27,12 @@ data class ApplyRow(
     val to: JsonElement? = null,
     val history: Boolean? = null,
     val group: JsonObject? = null,
+    /**
+     * D-206 (F4/F5): the settle identity's key and values digest, when the planner sets them — a writer-sink or
+     * obligation insert (keyed by its route row, the values less what the run seeds) and a current delete (the digest of
+     * the rows it precedes). Kept in `batch_rows.row` as [SETTLE] evidence; never part of the public apply JSON.
+     */
+    @kotlinx.serialization.Transient val settle: SettleKey? = null,
 ) {
     init {
         require(seq > 0 && entity.isNotBlank())
@@ -69,8 +75,11 @@ data class ApplyRow(
          */
         const val REQUEST = "automation:request"
 
+        /** D-206: the planned [SettleKey], kept beside the payload (not an attribute name, `:`). */
+        const val SETTLE = "automation:settle"
+
         /** The apply evidence kept beside a row's §4 payload in `batch_rows.row`. */
-        val EVIDENCE = setOf("prior", HISTORY_OUTCOME, HISTORY_AT, DECIDED, REQUEST)
+        val EVIDENCE = setOf("prior", HISTORY_OUTCOME, HISTORY_AT, DECIDED, REQUEST, SETTLE)
 
         fun restore(
             seq: Int,
@@ -84,25 +93,42 @@ data class ApplyRow(
             // evidence, not §4.
             val fields =
                 if (op == "insert") {
-                    mapOf<String, JsonElement>("row" to JsonObject(requireNotNull(data).jsonObject - REQUEST))
+                    mapOf<String, JsonElement>("row" to JsonObject(requireNotNull(data).jsonObject - REQUEST - SETTLE))
                 } else {
                     requireNotNull(data).jsonObject - EVIDENCE
                 }
-            return Json.decodeFromJsonElement(
-                JsonObject(
-                    fields +
-                        buildJsonObject {
-                            put("seq", seq)
-                            put("entity", entity)
-                            put("op", op)
-                            key?.let { put("key", it) }
-                            group?.let { put("group", it) }
-                        },
-                ),
-            )
+            val settle = (data as? JsonObject)?.get(SETTLE)?.let { Json.decodeFromJsonElement<SettleKey>(it) }
+            return Json
+                .decodeFromJsonElement<ApplyRow>(
+                    JsonObject(
+                        fields +
+                            buildJsonObject {
+                                put("seq", seq)
+                                put("entity", entity)
+                                put("op", op)
+                                key?.let { put("key", it) }
+                                group?.let { put("group", it) }
+                            },
+                    ),
+                ).copy(settle = settle)
         }
+
+        /** `batch_rows.row` as journaled: [storedRow] and, when the planner set it, the [SETTLE] evidence. */
+        fun journaled(row: ApplyRow): JsonObject =
+            row.settle?.let { JsonObject(row.storedRow() + (SETTLE to Json.encodeToJsonElement(it))) }
+                ?: row.storedRow()
     }
 }
+
+/**
+ * D-206 (F4/F5): a row's planned settle identity parts — [key], the route row's key (never an id the run seeds), and
+ * [values], the digest of what the row writes less the run-seeded values (`RowIdentity.digest`).
+ */
+@Serializable
+data class SettleKey(
+    val key: JsonObject,
+    val values: String,
+)
 
 /** One route row × wiring. Connector actions remain evidence; no fictitious model DML is synthesized for them. */
 @Serializable
@@ -206,8 +232,10 @@ data class ApplyState(
     val recorded: Map<Int, org.tatrman.automation.writer.RowOutcome>,
     /** The run's original absolute deadline (`started_at` + budget): the apply and the close never pass it. */
     val deadline: java.time.Instant,
-    /** D-202 (F2): what earlier sealed runs of this windowed program applied over an overlapping window. */
+    /** D-202 (F2) + D-206: what earlier runs of this windowed program settled over an overlapping window. */
     val settled: Set<org.tatrman.automation.writer.RowIdentity> = emptySet(),
+    /** D-206 (F10): the inserts earlier runs left unknown, by identity ([org.tatrman.automation.writer.ApplyInput.unknown]). */
+    val unknown: Map<org.tatrman.automation.writer.RowIdentity, List<ApplyRow>> = emptyMap(),
 )
 
 /** Pinned planning inputs; never part of the public apply JSON. */
