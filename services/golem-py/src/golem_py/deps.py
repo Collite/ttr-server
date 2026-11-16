@@ -12,7 +12,10 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 from golem_py.compose import StructuredQuestion
+from golem_py.door_client import SqlDoorPort
 from golem_py.ladder import LadderConfig, load_default
+from golem_py.llm_client import LlmPort
+from golem_py.model_slice import ModelSlicePort
 from golem_py.query_client import QueryResult
 from golem_py.settings import GolemSettings
 from golem_py.skills import LayeredSkillLibrary
@@ -118,3 +121,9 @@ class Deps:
     skills: LayeredSkillLibrary = field(default_factory=LayeredSkillLibrary)
     query: QueryPort | None = None
     clock: Callable[[], float] = time.monotonic
+    # OL W1c — the LLM lane's ports (OL-C12…C14). All three default to None, and with
+    # any of the door or the gateway missing the lane is off (OL-C11): `emit` answers
+    # structurally, exactly as it did before W1c.
+    door: SqlDoorPort | None = None
+    llm: LlmPort | None = None
+    model_slice: ModelSlicePort | None = None

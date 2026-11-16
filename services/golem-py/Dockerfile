@@ -27,10 +27,11 @@ WORKDIR /build/services/golem-py
 COPY services/golem-py/pyproject.toml services/golem-py/uv.lock ./
 RUN pip install --upgrade pip && pip install uv && uv sync --frozen
 
-# ===== proto generation layer (org.tatrman.{resolver,nlp,common}.v1 stubs) =====
+# ===== proto generation layer (org.tatrman.*.v1 stubs; plan.v1 from the ttr-plan-proto wheel) =====
 FROM deps AS protogen
 ENV PATH="/build/services/golem-py/.venv/bin:${PATH}"
 COPY shared/proto/src/main/proto /build/shared/proto/src/main/proto
+COPY shared/proto-llm/src/main/proto /build/shared/proto-llm/src/main/proto
 COPY services/golem-py/scripts ./scripts
 RUN python scripts/gen_proto.py   # → /build/services/golem-py/generated/org/...
 

@@ -110,3 +110,29 @@ class PickRefused(GolemError):
 
 class ConfigInvalid(GolemError):
     """A configuration that must fail at startup rather than mid-conversation."""
+
+
+class LaneServiceUnavailable(GolemError):
+    """A service the LLM lane needs (the query door, the LLM gateway, the metadata
+    service) could not be reached or would not answer (OL-C16: ``LANE_UNAVAILABLE``).
+
+    Names the service by its wire package (``query.v1`` · ``llm.v1`` · ``meta.v1``), so the
+    refusal the lane builds from it says WHICH leg failed rather than "something did".
+    """
+
+    def __init__(self, service: str, detail: str = ""):
+        self.service = service
+        self.detail = detail
+        super().__init__(f"{service} unavailable" + (f": {detail}" if detail else ""))
+
+
+class DoorRejected(GolemError):
+    """The query door refused the query (OL-C12, OL-C16): the translator would not read it,
+    or validation would not run it. ``code`` is the door's machine token
+    (``translator_rejected``, ``parameter_unbound``, …) and ``message`` its human text —
+    verbatim, because the one repair call hands that text back to the model."""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(f"the query door refused the query ({code}): {message}")

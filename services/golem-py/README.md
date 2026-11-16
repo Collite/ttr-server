@@ -39,7 +39,10 @@ Written in **Pydantic AI / pydantic-graph** (RV-43), from specification only —
 | `src/golem_py/budgets.py` | the three budgets (LLM invocations · ladder wall clock · HITL rounds) |
 | `src/golem_py/core_client.py` | `resolve.bind:v1` + the honest lattice mapper |
 | `src/golem_py/gate_client.py` | `resolve.gate:v1` — the only route from a hypothesis to a binding |
-| `generated/` | proto stubs, regenerated from `shared/proto` (gitignored) |
+| `src/golem_py/door_client.py` | the SQL door (`query.v1 Run`, SQL over `ER`, the allow-list as `allowed_er_reads`): `LiveSqlDoor` + the `ResultBatch` decoding (OL-C12) |
+| `src/golem_py/llm_client.py` | the `llm.v1` gateway client: a JSON object at temperature 0, model class `capable` (OL-C13) |
+| `src/golem_py/model_slice.py` | the `meta.v1` model slice — bound refs' entities first, capped; its names are the ER allow-list (OL-C14) |
+| `generated/` | proto stubs, regenerated from `shared/proto` + `shared/proto-llm`; `plan.v1` comes from the `ttr-plan-proto` wheel (gitignored) |
 
 ## Running it
 

@@ -44,6 +44,22 @@ class GolemSettings(BaseModel):
     snapshot_dir: str = ""  # empty ⇒ the in-memory store (tests, single-shot CLI)
     profile: str = "CHAT_QUICK"
 
+    # ── OL W1c: the LLM lane's three services (OL-C11…C14). An empty target is "not
+    # configured", and the lane is on only when the switch is on AND a gateway AND a door
+    # are configured (OL-C11) — so a deployment that sets none of these answers exactly as
+    # it did before W1c. The model slice reads `meta.v1`.
+    query_target: str = ""  # GOLEM_QUERY_TARGET — `query.v1` (the door)
+    query_world: str = ""  # GOLEM_QUERY_WORLD — the world every lane query runs in
+    query_timeout_s: float = 30.0  # GOLEM_QUERY_TIMEOUT_S
+    llm_lane_enabled: bool = True  # GOLEM_LLM_LANE_ENABLED (OL-C11: default on)
+    llm_target: str = ""  # GOLEM_LLM_TARGET — `llm.v1` (the open gateway)
+    llm_model: str = ""  # GOLEM_LLM_MODEL — empty: the gateway picks within the class
+    llm_model_class: str = "capable"  # GOLEM_LLM_MODEL_CLASS (OL-C13)
+    llm_model_slice_entities: int = 40  # GOLEM_LLM_MODEL_SLICE_ENTITIES (OL-C14)
+    meta_target: str = ""  # GOLEM_META_TARGET — `meta.v1`
+    meta_packages: list[str] = []  # GOLEM_META_PACKAGES — comma-separated
+    meta_timeout_s: float = 10.0  # GOLEM_META_TIMEOUT_S
+
     @model_validator(mode="after")
     def _ttl_covers_the_token(self) -> GolemSettings:
         if self.snapshot_ttl_s < self.core_token_max_age_s:
@@ -57,6 +73,16 @@ class GolemSettings(BaseModel):
             raise ValueError("TTLs must be positive")
         return self
 
+    @model_validator(mode="after")
+    def _lane_numbers_positive(self) -> GolemSettings:
+        if self.llm_model_slice_entities <= 0:
+            raise ValueError(
+                f"llm_model_slice_entities must be positive, got {self.llm_model_slice_entities}"
+            )
+        if self.query_timeout_s <= 0 or self.meta_timeout_s <= 0:
+            raise ValueError("lane timeouts must be positive")
+        return self
+
     @classmethod
     def from_env(cls) -> GolemSettings:
         """`GOLEM_*` env vars, validated. Raises `ConfigInvalid` at STARTUP."""
@@ -64,6 +90,23 @@ class GolemSettings(BaseModel):
         def _int(name: str, default: int) -> int:
             raw = os.getenv(name)
             return default if raw is None or raw == "" else int(raw)
+
+        def _float(name: str, default: float) -> float:
+            raw = os.getenv(name)
+            return default if raw is None or raw == "" else float(raw)
+
+        def _bool(name: str, default: bool) -> bool:
+            raw = (os.getenv(name) or "").strip().lower()
+            if raw == "":
+                return default
+            if raw in ("1", "true", "yes", "on"):
+                return True
+            if raw in ("0", "false", "no", "off"):
+                return False
+            raise ValueError(f"{name} must be true or false, got {raw!r}")
+
+        def _list(name: str) -> list[str]:
+            return [part.strip() for part in (os.getenv(name) or "").split(",") if part.strip()]
 
         try:
             return cls(
@@ -74,6 +117,17 @@ class GolemSettings(BaseModel):
                 snapshot_ttl_s=_int("GOLEM_SNAPSHOT_TTL_S", DEFAULT_CORE_TOKEN_MAX_AGE_S),
                 snapshot_dir=os.getenv("GOLEM_SNAPSHOT_DIR") or "",
                 profile=os.getenv("GOLEM_PROFILE") or "CHAT_QUICK",
+                query_target=os.getenv("GOLEM_QUERY_TARGET") or "",
+                query_world=os.getenv("GOLEM_QUERY_WORLD") or "",
+                query_timeout_s=_float("GOLEM_QUERY_TIMEOUT_S", 30.0),
+                llm_lane_enabled=_bool("GOLEM_LLM_LANE_ENABLED", True),
+                llm_target=os.getenv("GOLEM_LLM_TARGET") or "",
+                llm_model=os.getenv("GOLEM_LLM_MODEL") or "",
+                llm_model_class=os.getenv("GOLEM_LLM_MODEL_CLASS") or "capable",
+                llm_model_slice_entities=_int("GOLEM_LLM_MODEL_SLICE_ENTITIES", 40),
+                meta_target=os.getenv("GOLEM_META_TARGET") or "",
+                meta_packages=_list("GOLEM_META_PACKAGES"),
+                meta_timeout_s=_float("GOLEM_META_TIMEOUT_S", 10.0),
             )
         except ValueError as exc:
             raise ConfigInvalid(str(exc)) from exc

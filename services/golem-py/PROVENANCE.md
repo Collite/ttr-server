@@ -39,6 +39,7 @@ scoring input, never a source.
 | `tatrman-server` **`.proto` files** | the wire contract. Generating stubs from a shared proto is contract conformance, not code reuse — the proto IS the interface both sides implement |
 | Public **Pydantic AI / pydantic-graph** documentation (via context7) | framework API |
 | `Collite/ttr-demo` `model/` + `model/lexicon/` | the fixture estate (`hartland_cz`) |
+| `project/common/open-paid-line/implementation/contracts.md` **§C** (OL-C11…C19) | the LLM lane's specification: where it runs, the door, the gateway, the model slice, the reply's shape, budget/repair/refusal, the envelope (OL W1c, added by W1c·S1·T1) |
 
 ## Off-limits — the complete list
 
@@ -48,6 +49,7 @@ scoring input, never a source.
 | **`EXAMPLES.md`'s "Python + LangGraph agent" row** and anything it points at | it is a pointer *into* the legacy agent |
 | any legacy **prompt text**, **eval fixture**, or **agent config** | expression, not interface |
 | the legacy Golem's **conversation corpora** | fixtures are `hartland_cz` only |
+| the **Kantheon Golem's code** (OL-C19) | a second agent implementation; the lane is specified by contracts §C, not by another Golem |
 
 ## Compliance record
 
@@ -73,5 +75,14 @@ scoring input, never a source.
   (`ValueFinding.verbatim_text` / `predicate_ref`, `VALUE_KIND_VERBATIM`), the resolver's
   `LatticeAssembler` (the producer of the VERBATIM value, this repo), the LP `contracts.md`
   §2/§5/§8 and `review-103.md` (Tatrman project documents), and this directory's own code.
+- **2026-11-16 · OL W1c·S1, the door, the gateway, the model slice.** Clean-room observed.
+  The legacy predecessor-platform repository was not opened, listed or searched in the session that
+  made this change; `EXAMPLES.md` was not opened; the Kantheon Golem's code was not opened. What WAS
+  read: OL `contracts.md` §C and §H, the stage list and the OL plan / architecture (Tatrman project
+  documents); the shared `.proto` tree (`query.v1`, `worker.v1`, `meta.v1`, `common.v1`) and
+  `shared/proto-llm`'s `llm_gateway.proto`; the published `ttr-plan-proto` wheels' file lists and
+  `plan.v1` descriptors (0.8.4, 0.12.11, 0.14.1), and the field numbers of `PipelineContext`, `SchemaCode`
+  and `QualifiedName` in the `ttr-plan-proto` 0.14.1 artefact — the wire contract at master's JVM pin;
+  `shared/proto/build.gradle.kts` for the Python lane's pin; this directory's own code.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.
