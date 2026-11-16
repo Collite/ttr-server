@@ -84,5 +84,12 @@ scoring input, never a source.
   `plan.v1` descriptors (0.8.4, 0.12.11, 0.14.1), and the field numbers of `PipelineContext`, `SchemaCode`
   and `QualifiedName` in the `ttr-plan-proto` 0.14.1 artefact — the wire contract at master's JVM pin;
   `shared/proto/build.gradle.kts` for the Python lane's pin; this directory's own code.
+- **2026-11-16 · OL W1c·S2, the LLM lane at `emit`.** Clean-room observed. The legacy
+  predecessor-platform repository was not opened, listed or searched in the session that made this
+  change; `EXAMPLES.md` was not opened; the Kantheon Golem's code was not opened, and no prompt text
+  from any other agent was read — `config/llm-lane-prompt.md` was written from OL-C14/C15 alone. What
+  WAS read: OL `contracts.md` §C, the stage list, the OL plan / architecture and W1c·S1's list
+  (Tatrman project documents); the shared `.proto` tree (`resolver.v1`'s `ResolveContext`); this
+  directory's own code and tests.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.
