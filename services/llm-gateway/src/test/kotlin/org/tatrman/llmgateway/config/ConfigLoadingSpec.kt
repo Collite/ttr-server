@@ -48,7 +48,7 @@ class ConfigLoadingSpec :
         // ── happy path: the real migrated files ─────────────────────────────────────────────────────
         "loads the migrated catalog/providers/governance with zero errors" {
             val cfg = ConfigLoader.loadFromResources()
-            cfg.catalog.models.size shouldBe 9 // + gpt-6.1-sol (smart) and text-embedding-3-small, 2026-10-24
+            cfg.catalog.models.size shouldBe 10 // Terra is a concrete model; extract-strong is only an alias.
             cfg.providers.providers.keys shouldContainAll listOf("azure", "openai", "gemini", "anthropic")
             // tier + rules.conf aliases folded onto concrete models (not duplicate rows)
             cfg.catalog.models

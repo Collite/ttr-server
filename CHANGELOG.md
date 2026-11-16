@@ -16,6 +16,12 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **llm-gateway — DX-P4 extraction route and Azure prices.** `extract-strong` now aliases the existing
+  Azure chat row (`gpt-4.1` in the catalog, deployed as `gpt-5-mini` on bp-dsk), preserving strict JSON-schema
+  forwarding. Sol, GPT-5-mini and embedding-3-small use Bora's DX-D22 input/output list prices; Terra joins
+  the roster with its list prices as an Azure reasoning model, without tier aliases or tags. Other rows
+  retain their flagged interim prices. No key or governance changes.
+
 - **resolver — chrono finds time spans.** One `Scan` call adds DATE entities before the existing
   universal path, retaining original NER DATE/numeric/MONEY ownership, quoted literals, request context
   and separate time phrases for interpretation. Any overlap drops the whole Scan candidate; numeric

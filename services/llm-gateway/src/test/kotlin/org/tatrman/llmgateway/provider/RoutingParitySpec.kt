@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import org.tatrman.llmgateway.config.ConfigLoader
+import org.tatrman.llmgateway.config.Pricing
 
 /**
  * LG-P3·S1·T5 — the alias live-contract proof (CQ-1). Runs the CURRENT kantheon caller reality
@@ -35,6 +36,8 @@ class RoutingParitySpec :
                 // target (gpt-4o-mini) to match that remap.
                 "fast" to "gpt-4.1",
                 "mini" to "gpt-4.1",
+                "extract-strong" to "gpt-4.1", // DX-P4: bp-dsk overrides its deployment to gpt-5-mini
+                "gpt-6.1-terra" to "gpt-6.1-terra", // roster only; no tier points at Terra
                 // `deep` is the smart tier's (Bora, 2026-10-24): Golem composes the query on `deep`, while mini/fast
                 // stay on the chat deployment.
                 "deep" to "gpt-6.1-sol",
@@ -59,6 +62,52 @@ class RoutingParitySpec :
             // the tatrman deployment, unless AZURE_OPENAI_SMART_DEPLOYMENT says otherwise
             sol.upstream shouldBe "gpt-6.1-sol"
             sol.reasoning shouldBe true // Azure refuses max_tokens for it
+        }
+
+        "extract-strong uses the existing Azure chat row, without adding a duplicate model" {
+            val model =
+                (
+                    resolver.resolve(
+                        "extract-strong",
+                        emptyList(),
+                        RequestedType.CHAT,
+                    ) as Resolution.Resolved
+                ).model
+            model.id shouldBe "azure-gpt-41"
+            model.provider shouldBe "azure"
+            model shouldBe catalog.single { "fast" in it.aliases }
+            catalog.map { it.id }.distinct().size shouldBe catalog.size
+            catalog.map { it.name }.distinct().size shouldBe catalog.size
+        }
+
+        "DX-D22 deployed Azure models have separate input and output list prices per million tokens" {
+            val prices =
+                mapOf(
+                    "azure-gpt-41" to Pricing(0.25, 2.0), // bp-dsk: gpt-5-mini
+                    "azure-gpt-61-sol" to Pricing(4.0, 15.0),
+                    "azure-gpt-61-terra" to Pricing(2.0, 7.5),
+                    "azure-text-embedding-3-small" to Pricing(0.022),
+                )
+            prices.forEach { (id, expected) -> catalog.single { it.id == id }.pricing shouldBe expected }
+        }
+
+        "Terra is an Azure reasoning model, reachable by name but not by any tier or tag" {
+            val terra =
+                (
+                    resolver.resolve(
+                        "gpt-6.1-terra",
+                        emptyList(),
+                        RequestedType.CHAT,
+                    ) as Resolution.Resolved
+                ).model
+            terra.id shouldBe "azure-gpt-61-terra"
+            terra.provider shouldBe "azure"
+            terra.upstream shouldBe "gpt-6.1-terra"
+            terra.reasoning shouldBe true
+            terra.aliases shouldBe emptyList()
+            terra.tags shouldBe emptyList()
+            terra.cacheTtlSeconds shouldBe catalog.single { it.id == "azure-gpt-61-sol" }.cacheTtlSeconds
+            terra.fallback shouldBe emptyList()
         }
 
         "embeddings: text-embedding-3-small is served by the tatrman deployment of that name" {
