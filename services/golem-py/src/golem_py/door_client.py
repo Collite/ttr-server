@@ -18,14 +18,12 @@ result the validator's row cap bounded says so with a `top_n_applied` notice on 
 batch. `decode_result_batches` is the whole of that reading, and it is pure, so the
 specs drive it without a channel.
 
-⚑ **The live gRPC client is not built in this stage.** `query.proto` imports
-`org/tatrman/translate/v1/translator.proto` (the `Language` enum `RunRequest` needs for
-`source_language = SQL`), and no published `ttr-plan-proto` wheel carries that file —
-not 0.8.4 (master's Python pin) and not the newest (0.12.11); master's JVM pin (0.14.1)
-has no wheel at all. OL-C12 allows `plan.v1` stubs from the wheel only, so generating
-`query.v1` is a stop condition of W1c·S1, recorded under the stage list's "Found while
-doing". The port, the errors and the result decoding are here; `LiveSqlDoor` follows
-once the planner rules on where `translator.proto` comes from.
+Stubs: `query.v1` is generated here; `plan.v1` and `translate.v1`'s `Language` come from
+the published `ttr-plan-proto` wheel at master's pin (OL-C12) — the wheel ships
+`translator.proto` from 0.14.1 on (Collite/ttr-core#409).
+
+A gRPC status on `Run` is never a refusal of the QUERY — the door sends those as error
+batches — so any status is the door being unreachable or broken: `LaneServiceUnavailable`.
 """
 
 from __future__ import annotations
@@ -39,11 +37,17 @@ _GENERATED = Path(__file__).resolve().parents[2] / "generated"
 if str(_GENERATED) not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(_GENERATED))
 
+import grpc  # noqa: E402
 import pyarrow as pa  # noqa: E402
 from org.tatrman.common.v1 import response_message_pb2  # noqa: E402
+from org.tatrman.plan.v1 import context_pb2, plan_pb2  # noqa: E402
+from org.tatrman.query.v1 import query_pb2, query_pb2_grpc  # noqa: E402
+from org.tatrman.translate.v1 import translator_pb2  # noqa: E402
 
-from golem_py.errors import DoorRejected  # noqa: E402
+from golem_py.errors import DoorRejected, LaneServiceUnavailable  # noqa: E402
 from golem_py.query_client import QueryResult  # noqa: E402
+
+SERVICE = "query.v1"
 
 # The validator's row cap bounded the answer (BI C-10): a full page is "the estate's
 # ceiling", not "the end of the data".
@@ -112,3 +116,48 @@ def decode_result_batches(batches: Iterable[Any]) -> QueryResult:
         provenance=provenance,
         truncated=_truncated(received),
     )
+
+
+def build_run_request(
+    *, sql: str, world: str, caller_subject: str, allowed_entities: Sequence[str]
+) -> Any:
+    """The one request shape the lane sends (OL-C12). The allow-list is always PRESENT —
+    an empty slice means "no model reads", which is what the door makes of an empty
+    `ErReadScope`; omitting the message would mean "no list" and read anything."""
+    return query_pb2.RunRequest(
+        source=sql,
+        source_language=translator_pb2.SQL,
+        source_schema=plan_pb2.ER,
+        context=context_pb2.PipelineContext(user_id=caller_subject),
+        world=world,
+        allowed_er_reads=query_pb2.ErReadScope(objects=list(allowed_entities)),
+    )
+
+
+class LiveSqlDoor:
+    """The real `query.v1 Run` rpc (SqlDoorPort)."""
+
+    def __init__(self, target: str, timeout_s: float = 30.0):
+        self.target = target
+        self.timeout_s = timeout_s
+
+    async def run(
+        self,
+        *,
+        sql: str,
+        world: str,
+        caller_subject: str,
+        allowed_entities: Sequence[str],
+    ) -> QueryResult:
+        request = build_run_request(
+            sql=sql, world=world, caller_subject=caller_subject, allowed_entities=allowed_entities
+        )
+        try:
+            async with grpc.aio.insecure_channel(self.target) as channel:
+                stub = query_pb2_grpc.QueryServiceStub(channel)
+                batches = [b async for b in stub.Run(request, timeout=self.timeout_s)]
+        except grpc.aio.AioRpcError as exc:
+            raise LaneServiceUnavailable(
+                SERVICE, f"{exc.code().name}: {exc.details() or ''}".rstrip(": ")
+            ) from exc
+        return decode_result_batches(batches)

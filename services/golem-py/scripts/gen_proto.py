@@ -22,7 +22,7 @@ stubs import `org.tatrman.plan.v1.*_pb2` from it at run time. For that import to
 
 Run:  uv run python scripts/gen_proto.py
 Output: services/golem-py/generated/org/tatrman/{resolver,nlp,common,meta,worker,
-        validate,llm}/v1/*.py(i)
+        validate,translate,query,llm}/v1/*.py(i)
 """
 
 from __future__ import annotations
@@ -50,11 +50,10 @@ OUT_DIR = SERVICE_DIR / "generated"
 # nlp.proto for the parse passthrough, which in turn imports common. Imported files
 # must be generated too — protoc only emits for the files it is given.
 #
-# OL W1c·S1: `meta.v1` (the model slice, OL-C14), `llm.v1` (the gateway, OL-C13) and
-# `worker.v1` (+ its `validate.v1` import) — the `ResultBatch` the query door streams
-# (OL-C12). ⚑ `query.v1` itself is NOT here: query.proto imports
-# `translate/v1/translator.proto`, which no published `ttr-plan-proto` wheel carries
-# (see the stage list's "Found while doing").
+# OL W1c·S1: `query.v1` (the SQL door, OL-C12) with what it imports — `worker.v1` (the
+# `ResultBatch` it streams) + `validate.v1`, `translate.v1`'s `translate.proto` — then
+# `meta.v1` (the model slice, OL-C14) and `llm.v1` (the gateway, OL-C13).
+# `translate/v1/translator.proto` (`Language`) is the wheel's, like `plan.v1`.
 PROTOS = [
     "org/tatrman/resolver/v1/resolver.proto",
     "org/tatrman/nlp/v1/nlp.proto",
@@ -62,6 +61,8 @@ PROTOS = [
     "org/tatrman/meta/v1/meta.proto",
     "org/tatrman/validate/v1/validate.proto",
     "org/tatrman/worker/v1/worker.proto",
+    "org/tatrman/translate/v1/translate.proto",
+    "org/tatrman/query/v1/query.proto",
     "org/tatrman/llm/v1/llm_gateway.proto",
 ]
 
@@ -70,10 +71,15 @@ PLAN_MODULES = [
     "org.tatrman.plan.v1.parameters_pb2",
     "org.tatrman.plan.v1.plan_pb2",
     "org.tatrman.plan.v1.context_pb2",
+    "org.tatrman.translate.v1.translator_pb2",
 ]
 
 # Levels shared with the `ttr-plan-proto` wheel: namespace packages, never regular ones.
 _NAMESPACE_LEVELS = 2  # org, org/tatrman
+# `org/tatrman/translate` is shared too: the wheel owns `translate.v1.translator_pb2` and
+# this tree generates `translate.v1.translate_pb2` beside it, so both levels of
+# `translate/` (and its `v1/`) must merge rather than shadow (see `_SHARED_PACKAGES`).
+_SHARED_PACKAGES = {("org", "tatrman", "translate"), ("org", "tatrman", "translate", "v1")}
 
 
 def _clear_namespace_inits(out_dir: Path) -> None:
@@ -94,7 +100,7 @@ def _ensure_package_inits(out_dir: Path) -> None:
         cur = out_dir
         for depth, part in enumerate(parts, start=1):
             cur = cur / part
-            if depth <= _NAMESPACE_LEVELS:
+            if depth <= _NAMESPACE_LEVELS or tuple(parts[:depth]) in _SHARED_PACKAGES:
                 continue
             init = cur / "__init__.py"
             if not init.exists():

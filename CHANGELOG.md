@@ -19,12 +19,12 @@ outside this repo could notice is in.
 - **golem-py — the LLM lane's three clients (OL W1c·S1).** The `llm.v1` gateway client (`CreateResponse`:
   a JSON object at temperature 0, model class `capable`, the caller's timeout), the `meta.v1` model slice
   (`GetModel` for `GOLEM_META_PACKAGES`; the bound refs' ER entities first, capped at
-  `GOLEM_LLM_MODEL_SLICE_ENTITIES`, default 40; its entity names are the ER read allow-list) and the SQL door's
-  port with the `ResultBatch` decoding (Arrow IPC rows, `top_n_applied` truncation, ERROR batches as
-  `DoorRejected`). New settings `GOLEM_QUERY_*`, `GOLEM_LLM_*`, `GOLEM_META_*`; the new `Deps` ports default to
-  `None`, so nothing answers differently yet. `plan.v1` now comes from the `ttr-plan-proto==0.8.4` wheel,
-  `pyarrow==24.0.0` is a dependency, and the Python floor is 3.13. The live `query.v1` client is not in this
-  change (no published `ttr-plan-proto` wheel carries `translate/v1/translator.proto`).
+  `GOLEM_LLM_MODEL_SLICE_ENTITIES`, default 40; its entity names are the ER read allow-list) and the SQL door
+  (`query.v1 Run`: SQL over `ER`, the caller's subject, the allow-list as `allowed_er_reads` — sent even when
+  empty; Arrow IPC rows, `top_n_applied` truncation, ERROR batches as `DoorRejected`, a gRPC failure as lane
+  unavailable). New settings `GOLEM_QUERY_*`, `GOLEM_LLM_*`, `GOLEM_META_*`; the new `Deps` ports default to
+  `None`, so nothing answers differently yet. `plan.v1` and `translator.proto` now come from the
+  `ttr-plan-proto==0.14.1` wheel, `pyarrow==24.0.0` is a dependency, and the Python floor is 3.13.
 
 - **llm-gateway — DX-P4 extraction route and Azure prices.** `extract-strong` now aliases the existing
   Azure chat row (catalog name `gpt-4.1`; the reference deployments point it at `gpt-5-mini`), preserving

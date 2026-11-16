@@ -21,11 +21,12 @@ dependencies = [
     # CONFORMANCE, not code reuse (PROVENANCE.md).
     "grpcio==1.83.0",
     "protobuf>=5.28.0",
-    # OL-C12: `plan.v1` (PipelineContext, SchemaCode, QualifiedName) comes from the
-    # PUBLISHED wheel at the version master's Python lane pins (`shared/proto`'s
-    # `ttr-plan-proto==0.8.4`) — never vendored. Field numbers of every type read here
-    # were checked equal to the JVM pin (0.14.1) the door is built with.
-    "ttr-plan-proto==0.8.4",
+    # OL-C12: `plan.v1` (PipelineContext, SchemaCode, QualifiedName) and
+    # `translate/v1/translator.proto` (`Language`) come from the PUBLISHED wheel —
+    # never vendored — at the JVM pin the door is built with (`gradle/libs.versions.toml`).
+    # 0.14.1 is the first wheel that ships `translator.proto` (Collite/ttr-core#409);
+    # `shared/proto`'s Python lane still pins 0.8.4, whose `plan.v1` field numbers match.
+    "ttr-plan-proto==0.14.1",
     # OL-C12: the door streams Arrow IPC. Pinned exactly, at the version the estate's
     # other Arrow reader (workers/worker-polars) locks.
     "pyarrow==24.0.0",

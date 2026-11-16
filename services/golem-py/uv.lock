@@ -510,7 +510,7 @@ requires-dist = [
     { name = "pydantic-ai", specifier = "==2.22.0" },
     { name = "pydantic-graph", specifier = "==2.22.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "ttr-plan-proto", specifier = "==0.8.4" },
+    { name = "ttr-plan-proto", specifier = "==0.14.1" },
     { name = "zstandard", specifier = ">=0.23" },
 ]
 
@@ -2042,13 +2042,13 @@ wheels = [
 
 [[package]]
 name = "ttr-plan-proto"
-version = "0.8.4"
+version = "0.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/ec/66defcb52fa48be978d4de324e787053d599f76078c4956b9d40f0a82795/ttr_plan_proto-0.8.4-py3-none-any.whl", hash = "sha256:349ebb39564aa2bad1e2dc0cd30276ebd398da60024b3b41131893a7cb66732d", size = 11178, upload-time = "2026-07-07T00:53:15.772Z" },
+    { url = "https://files.pythonhosted.org/packages/47/73/359d6217c4aa1b0ac9d8cdc028ed84e9712e5e48633ce169b1f56a7f9ef0/ttr_plan_proto-0.14.1-py3-none-any.whl", hash = "sha256:6de053464ee47941ec144c589d9ad3d0962a85fe2c872f326d9e539c8baeff92", size = 19094, upload-time = "2026-11-16T16:05:17.635Z" },
 ]
 
 [[package]]

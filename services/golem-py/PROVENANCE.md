@@ -81,7 +81,7 @@ scoring input, never a source.
   read: OL `contracts.md` §C and §H, the stage list and the OL plan / architecture (Tatrman project
   documents); the shared `.proto` tree (`query.v1`, `worker.v1`, `meta.v1`, `common.v1`) and
   `shared/proto-llm`'s `llm_gateway.proto`; the published `ttr-plan-proto` wheels' file lists and
-  `plan.v1` descriptors (0.8.4, 0.12.11), and the field numbers of `PipelineContext`, `SchemaCode`
+  `plan.v1` descriptors (0.8.4, 0.12.11, 0.14.1), and the field numbers of `PipelineContext`, `SchemaCode`
   and `QualifiedName` in the `ttr-plan-proto` 0.14.1 artefact — the wire contract at master's JVM pin;
   `shared/proto/build.gradle.kts` for the Python lane's pin; this directory's own code.
 - Sessions that touch this directory later **append a dated line here**. A session that

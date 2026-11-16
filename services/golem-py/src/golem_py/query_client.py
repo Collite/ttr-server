@@ -29,6 +29,10 @@ LIVE gRPC client is not built at P4.** Two reasons, both external to this servic
    md → SQL with the model in hand? Either is a design question with its own list, and
    inventing one here would put a second query dialect in the estate.
 
+(OL W1c·S1 answered both: reason 1 by the `ttr-plan-proto` 0.14.1 wheel, which ships
+`translator.proto`; reason 2 by OL-C12 — the LLM lane writes SQL over `ER` and
+`golem_py.door_client.LiveSqlDoor` sends it. This module's port is unchanged.)
+
 What P4.3 therefore ships is the PORT, the envelope, and the recorded-door tests — the
 same posture the ladder's rungs take: the seam is real, tested and empty, rather than
 filled with a fake that would have to be unbuilt.
