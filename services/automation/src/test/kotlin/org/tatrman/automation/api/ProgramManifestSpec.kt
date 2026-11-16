@@ -5,6 +5,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -252,6 +253,29 @@ class ProgramManifestSpec :
             manifestLink(bundle, morning) shouldBe "/automation/programs/morning_release/manifest"
         }
 
+        "(d) a recipe loaded without its manifest text: no link; manifest-unavailable, not a 500" {
+            // Only a Bundle built outside BundleLoader can hold one; the link and the route must still agree.
+            val served = BundleFixture.load()
+            val release = served.recipes.getValue("release_order")
+            val bundle = served.copy(recipes = served.recipes + ("release_order" to release.copy(manifestText = null)))
+            val morning = bundle.programs.getValue("morning_release")
+            manifestLink(bundle, morning) shouldBe null
+            val refusal = shouldThrow<AutomationException> { programManifest(bundle, "morning_release") }
+            refusal.code shouldBe ErrorCode.MANIFEST_UNAVAILABLE
+            refusal.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("bundle-missing")
+            refusal.detail!!.jsonObject["recipe"] shouldBe JsonPrimitive("release_order")
+            manifestLink(bundle, bundle.programs.getValue("settle_daily")) shouldBe
+                "/automation/programs/settle_daily/manifest"
+        }
+
+        "(c) program-unknown names the bundle it looked in" {
+            val served = BundleFixture.load()
+            val inServed = shouldThrow<AutomationException> { programManifest(served, "nope") }
+            inServed.message!! shouldContain served.id
+            val noneServed = shouldThrow<AutomationException> { programManifest(null, "nope") }
+            noneServed.message!! shouldContain "no bundle is served"
+        }
+
         "the descriptor's programs[] link every hartland program to its manifest route" {
             testApplication {
                 service(registry())
@@ -272,12 +296,19 @@ class ProgramManifestSpec :
                 recipe.status shouldBe HttpStatusCode.Unauthorized
                 manifest.status shouldBe recipe.status
                 errorOf(manifest.bodyAsText())["code"] shouldBe errorOf(recipe.bodyAsText())["code"]
+                manifest.headers[HttpHeaders.ETag] shouldBe null
+                val forgedRecipe =
+                    client.get("/automation/recipes/release_order") {
+                        header(HttpHeaders.Authorization, "Bearer not-a-token")
+                    }
                 val forged =
                     client.get("/automation/programs/morning_release/manifest") {
                         header(HttpHeaders.Authorization, "Bearer not-a-token")
                     }
-                forged.status shouldBe HttpStatusCode.Unauthorized
-                manifest.headers[HttpHeaders.ETag] shouldBe null
+                forgedRecipe.status shouldBe HttpStatusCode.Unauthorized
+                forged.status shouldBe forgedRecipe.status
+                errorOf(forged.bodyAsText())["code"] shouldBe errorOf(forgedRecipe.bodyAsText())["code"]
+                forged.headers[HttpHeaders.ETag] shouldBe null
             }
         }
     })

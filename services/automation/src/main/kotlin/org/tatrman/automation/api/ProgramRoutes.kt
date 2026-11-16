@@ -50,7 +50,7 @@ internal fun bundleOf(
 /**
  * [name]'s manifest in [bundle]: `404 program-unknown` when the bundle (or nothing served) lacks the program;
  * `404 manifest-unavailable` when it has no recipe (`recipe-null` — Core refuses that today, the model allows it) or
- * its recipe has no bundle in this commit (`bundle-missing`).
+ * its recipe has no bundle — or none with its manifest text — in this commit (`bundle-missing`).
  */
 fun programManifest(
     bundle: Bundle?,
@@ -58,34 +58,51 @@ fun programManifest(
 ): ProgramManifest {
     val program =
         bundle?.programs?.get(name)
-            ?: throw AutomationException(ErrorCode.PROGRAM_UNKNOWN, "no program $name is served")
-    val recipe =
-        program.recipe
-            ?: throw unavailable(name, "recipe-null", null, "program $name names no recipe")
-    val loaded =
-        bundle.recipes[recipe]
-            ?: throw unavailable(name, "bundle-missing", recipe, "program $name's recipe $recipe has no bundle")
-    val text = checkNotNull(loaded.manifestText) { "recipe $recipe was loaded without its manifest text" }
-    return ProgramManifest(text, Fingerprints.sha256(text))
+            ?: throw AutomationException(
+                ErrorCode.PROGRAM_UNKNOWN,
+                bundle?.let { "no program $name in bundle ${it.id}" } ?: "no program $name: no bundle is served",
+            )
+    return when (val found = lookup(bundle, program)) {
+        is Lookup.Found -> ProgramManifest(found.text, Fingerprints.sha256(found.text))
+        is Lookup.Unavailable ->
+            throw AutomationException(
+                ErrorCode.MANIFEST_UNAVAILABLE,
+                found.message(name),
+                buildJsonObject {
+                    put("program", name)
+                    put("reason", found.reason)
+                    found.recipe?.let { put("recipe", it) }
+                },
+            )
+    }
 }
 
-/** The descriptor's link to [p]'s manifest route; null when that route would answer `manifest-unavailable`. */
+/** The descriptor's link to [p]'s manifest route; null exactly when that route answers `manifest-unavailable`. */
 fun manifestLink(
     bundle: Bundle,
     p: AutomationProgram,
-): String? = p.recipe?.takeIf { it in bundle.recipes }?.let { "/automation/programs/${p.qname.name}/manifest" }
+): String? = if (lookup(bundle, p) is Lookup.Found) "/automation/programs/${p.qname.name}/manifest" else null
 
-private fun unavailable(
-    program: String,
-    reason: String,
-    recipe: String?,
-    message: String,
-) = AutomationException(
-    ErrorCode.MANIFEST_UNAVAILABLE,
-    message,
-    buildJsonObject {
-        put("program", program)
-        put("reason", reason)
-        recipe?.let { put("recipe", it) }
-    },
-)
+/** Whether [bundle] can serve [p]'s manifest — the one check both the route and the descriptor's link read. */
+private sealed interface Lookup {
+    data class Found(
+        val text: String,
+    ) : Lookup
+
+    data class Unavailable(
+        val reason: String,
+        val recipe: String?,
+    ) : Lookup {
+        fun message(program: String) =
+            recipe?.let { "program $program's recipe $it has no bundle" } ?: "program $program names no recipe"
+    }
+}
+
+private fun lookup(
+    bundle: Bundle,
+    p: AutomationProgram,
+): Lookup {
+    val recipe = p.recipe ?: return Lookup.Unavailable("recipe-null", null)
+    val text = bundle.recipes[recipe]?.manifestText ?: return Lookup.Unavailable("bundle-missing", recipe)
+    return Lookup.Found(text)
+}
