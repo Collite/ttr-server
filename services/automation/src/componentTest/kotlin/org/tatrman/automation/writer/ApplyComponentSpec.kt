@@ -2430,6 +2430,87 @@ class ApplyComponentSpec :
                 )
         }
 
+        // ---- review-303 N1: a held row is written when it is decided, not when its run started ----
+
+        fun heldFor(department: String) =
+            ApplyRow(1, "er.entity.order", "update", key("4711"), set = buildJsonObject { put("held_for", department) })
+
+        /**
+         * Run A of P holds `held_for=Sales` and waits; a debug replay B (`watermark: false`, the F8 fixture) applies
+         * `held_for=AR`; then the operator commits A's group, so Sales is sent last. P's watermark is put back for a re-read.
+         */
+        suspend fun lateCommit() {
+            val t0 = clock.instant()
+            val first =
+                prepare(
+                    { planned(listOf(heldFor("Sales").copy(group = key("4711"))), keys = emptyList()) },
+                    deployment = "release_native_event",
+                    program = "P",
+                    port = window(t0),
+                )
+            closeRun(first)
+            ledger.findRun(first)?.status shouldBe RunStatus.WAITING
+            clock.now = t0.plus(Duration.ofHours(1))
+            val replay =
+                prepare(
+                    { planned(listOf(heldFor("AR")), keys = emptyList()) },
+                    program = "P",
+                    port = Watermark.port(Watermark.EPOCH, clock.instant(), listOf("day"), watermark = false),
+                )
+            applyOnce(replay)
+            ledger.closeCommitted(replay, subject)
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe listOf(listOf("AR"))
+            // The run was opened under the served fingerprints (D-99); `prepare` claims without them.
+            val fps =
+                bundle.recipes
+                    .getValue("release_order")
+                    .recipe.fingerprints
+            transaction {
+                Runs.update({ Runs.id eq first }) {
+                    it[fpText] = fps.text
+                    it[fpValues] = fps.values
+                    it[fpDeployment] = bundle.deploymentFps["release_native_event"]
+                }
+            }
+            clock.now = t0.plus(Duration.ofHours(2))
+            fake.writes.clear()
+            Held(ledger, Apply(door(), clock), contexts, { bundle }, clock).commitHeld(first, key("4711"), ops)
+            erpRows() shouldBe listOf(1)
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe listOf(listOf("Sales"))
+            ledger.findRun(first)?.status shouldBe RunStatus.CLOSED
+            heldBack()
+            clock.now = t0.plus(Duration.ofHours(3))
+            fake.writes.clear()
+        }
+
+        "review-303 N1: a held row committed after a debug replay is the later write — the replay's value is resent" {
+            lateCommit()
+            val again =
+                prepare(
+                    { planned(listOf(heldFor("AR")), keys = emptyList()) },
+                    program = "P",
+                    port = window(clock.instant()),
+                )
+            closeRun(again)
+            outcomes(again).values.single() shouldBe ("applied" to null)
+            erpRows() shouldBe listOf(1)
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe listOf(listOf("AR"))
+        }
+
+        "review-303 N1 mirror: the late-committed held value is the one that settles the re-read" {
+            lateCommit()
+            val again =
+                prepare(
+                    { planned(listOf(heldFor("Sales")), keys = emptyList()) },
+                    program = "P",
+                    port = window(clock.instant()),
+                )
+            closeRun(again)
+            outcomes(again).values.single() shouldBe ("skipped" to RowOutcome.SETTLED)
+            fake.writes shouldBe emptyList()
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe listOf(listOf("Sales"))
+        }
+
         "review-293 R1: perform on a watermark re-read records a row an earlier run applied as settled, sends nothing" {
             val t0 = clock.instant()
             val plan = { _: UUID -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) }

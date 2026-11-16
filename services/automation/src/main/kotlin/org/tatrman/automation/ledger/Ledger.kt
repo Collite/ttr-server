@@ -1177,10 +1177,11 @@ class Ledger(
      * Never from a batch in state `reverted` or a revert batch (`rev_of` set; D-206 F7). An insert left `staged ·
      * unknown-outcome` or `in-flight` is returned apart ([Settlement.unknown], D-206 F10).
      *
-     * **The latest write wins (review-303 F1, ✅R303-B).** Per (entity, key, op) only the latest run — by `started_at`,
-     * not by window: a later re-run of an older window is the later write — that settled or lost a row of it counts; its
-     * digests (a current key has one insert per route) are the settled identities, and an older lost insert is not
-     * reconciled against a newer write. A value that went A → B → A is therefore re-applied. A D-210 business-key insert
+     * **The latest write wins (review-303 F1, ✅R303-B).** Per (entity, key, op) only the latest write — by write time
+     * (a held row's decision, else its run's start), not by window: a later re-run of an older window is the later write,
+     * and a held row an operator commits after a debug replay applied is later than the replay (review-303 N1) — that
+     * settled or lost a row of it counts. One write is one (run, write time): its digests (a current key has one insert
+     * per route) are the settled identities, and an older lost insert is not reconciled against a newer write. A value that went A → B → A is therefore re-applied. A D-210 business-key insert
      * is unaffected: its values are constant.
      *
      * Identities are [RowIdentity.of] the journaled rows (the planner's [ApplyRow.settle] evidence where it set one); a
@@ -1195,6 +1196,7 @@ class Ledger(
 
         class Latest(
             val run: String,
+            val at: String,
         ) {
             val settled = linkedMapOf<RowIdentity, JsonObject>()
             val unknown = mutableListOf<Pair<RowIdentity, ApplyRow>>()
@@ -1204,7 +1206,8 @@ class Ledger(
         tx.exec(
             // review-303 F5: only the rows that settle or were lost are read.
             """
-            SELECT r.id::text, br.seq, br.entity, br.op, br.key::text, br.row::text, br.status, br.error
+            SELECT r.id::text, br.seq, br.entity, br.op, br.key::text, br.row::text, br.status, br.error,
+              coalesce((br.row -> '${ApplyRow.DECIDED}' ->> 'at')::timestamptz, r.started_at)::text AS written
             FROM automation.runs r
             JOIN automation.batches b ON b.run = r.id
             JOIN automation.batch_rows br ON br.batch = b.id
@@ -1216,7 +1219,7 @@ class Ledger(
                 OR (br.status = 'skipped' AND br.error IN ('${RowOutcome.REJECTED}', '${RowOutcome.SETTLED}'))
                 OR (br.status = 'staged' AND br.op = 'insert'
                   AND br.error IN ('${RowOutcome.UNKNOWN}', '${RowOutcome.IN_FLIGHT}')))
-            ORDER BY r.started_at, r.id, br.seq
+            ORDER BY written, r.started_at, r.id, br.seq
             """.trimIndent(),
             listOf<Pair<org.jetbrains.exposed.v1.core.IColumnType<*>, Any>>(
                 org.jetbrains.exposed.v1.core
@@ -1231,6 +1234,8 @@ class Ledger(
         ) { rs ->
             while (rs.next()) {
                 val runId = rs.getString(1)
+                // review-303 N1: a held row is written at its decision (commit or reject), any other at its run's start.
+                val written = rs.getString(9)
                 val status = rs.getString(7)
                 val error = rs.getString(8)
                 // The tables of settled and transient codes live in code (F5: the rest of the filter is SQL's).
@@ -1247,7 +1252,9 @@ class Ledger(
                     )
                 val identity = RowIdentity.of(row) ?: continue
                 val slot = Triple(identity.entity, identity.key, identity.op)
-                val entry = latest[slot]?.takeIf { it.run == runId } ?: Latest(runId).also { latest[slot] = it }
+                val entry =
+                    latest[slot]?.takeIf { it.run == runId && it.at == written }
+                        ?: Latest(runId, written).also { latest[slot] = it }
                 if (status == "staged") {
                     entry.unknown += identity to row
                 } else {
