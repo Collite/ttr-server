@@ -16,6 +16,8 @@ import org.tatrman.fuzzy.v1.BatchMatchRequest
 import org.tatrman.fuzzy.v1.BatchMatchResponse
 import org.tatrman.fuzzy.v1.FuzzyMatchResponse
 import org.tatrman.fuzzy.v1.FuzzyStatusResponse
+import org.tatrman.grounding.v1.GetStatusRequest
+import org.tatrman.grounding.v1.GetStatusResponse
 import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
 import org.tatrman.grounding.v1.GroundingServiceGrpcKt
@@ -472,6 +474,14 @@ class ScanSeamTest :
                 return fixture.ground[request.spanText]
                     ?: GroundResponse.newBuilder().setStatus(GroundResponse.Status.UNGROUNDABLE).build()
             }
+
+            // OL-C1: the TS chrono declares Scan; the resolver calls it only then (OL-C2).
+            override suspend fun getStatus(request: GetStatusRequest): GetStatusResponse =
+                GetStatusResponse
+                    .newBuilder()
+                    .setService("chrono")
+                    .putCapabilities("scan", "true")
+                    .build()
         }
 
         fun withKernel(

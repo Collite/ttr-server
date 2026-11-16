@@ -26,6 +26,15 @@ outside this repo could notice is in.
   `None`, so nothing answers differently yet. `plan.v1` and `translator.proto` now come from the
   `ttr-plan-proto==0.14.1` wheel, `pyarrow==24.0.0` is a dependency, and the Python floor is 3.13.
 
+- **chrono · resolver · grounding-mcp — the `scan` capability (OL W1a·S1).** `grounding.v1` gains no field: the
+  comment on `GetStatusResponse.capabilities` names the key `scan`, and `"true"` means the service implements
+  `Scan` (OL-C1). chrono declares it. The resolver reads the grounder's `GetStatus` (kept for
+  `RESOLVER_GROUNDING_STATUS_TTL_SECONDS`, default 60) and calls `Scan` only while the key is there; without it the
+  turn writes no `scan_failed` and logs nothing per turn, and `Ground` is unchanged. `grounding-mcp`'s `scan_time`
+  stays listed and answers the tool error `not_available` against a chrono without the key
+  (`GROUNDING_STATUS_TTL_SECONDS`). Roll chrono before, or with, the resolver and `grounding-mcp`: a reader that
+  meets an older chrono scans nothing until its next status read (OL-C5).
+
 - **llm-gateway — DX-P4 extraction route and Azure prices.** `extract-strong` now aliases the existing
   Azure chat row (catalog name `gpt-4.1`; the reference deployments point it at `gpt-5-mini`), preserving
   strict JSON-schema forwarding. Sol, gpt-5-mini, text-embedding-3-small and the new Terra row carry Azure

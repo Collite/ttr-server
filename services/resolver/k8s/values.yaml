@@ -108,7 +108,10 @@ lexicon:
   key: lexicon.tar.zst
   mountPath: /etc/tatrman/lexicon
 
-# Any other env (a deploying env REPLACES this list).
+# Any other env (a deploying env REPLACES this list). With the grounding rung on
+# (RESOLVER_GROUNDING_ENABLED=true), RESOLVER_GROUNDING_STATUS_TTL_SECONDS (default 60) is how long
+# the grounder's GetStatus answer is kept: Scan is called only while it declares
+# capabilities["scan"]="true" (OL-C2), and a grounder rolled to declare it is picked up within one TTL.
 extraEnv: []
 
 readinessProbe:

@@ -231,6 +231,9 @@ message GetStatusRequest {}
 message GetStatusResponse {
   bool ready = 1;
   string service = 2;                 // "chrono" | "geo" | "money"
-  map<string, string> capabilities = 3; // e.g. {"postgis":"true","nominatim":"false","llm_fallback":"true","metadata":"ok"}
+  // e.g. {"postgis":"true","nominatim":"false","llm_fallback":"true","metadata":"ok"}.
+  // OL-C1: "scan" = "true" means the service implements Scan. The key absent, or any other value, means it
+  // does not; readers (the resolver, grounding-mcp) then do not call Scan.
+  map<string, string> capabilities = 3;
   repeated org.tatrman.common.v1.ResponseMessage messages = 99;
 }

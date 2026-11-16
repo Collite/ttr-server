@@ -13,6 +13,7 @@ import org.tatrman.nlp.v1.StatusResponse
 import org.tatrman.resolver.client.FuzzyClient
 import org.tatrman.resolver.client.GroundingClient
 import org.tatrman.resolver.client.NlpClient
+import org.tatrman.resolver.client.ScanCapability
 import org.tatrman.resolver.model.Reach
 import org.tatrman.resolver.model.ResolverEntityType
 import org.tatrman.resolver.model.kindsByRef
@@ -45,6 +46,8 @@ import org.tatrman.resolver.v1.RungLogEntry
 import org.tatrman.resolver.v1.Span
 import org.tatrman.resolver.v1.Universal
 import org.tatrman.resolver.v1.UniversalEntityType
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The deterministic resolver pipeline (RG-P5): parse → extractUniversal →
@@ -89,6 +92,10 @@ class ResolverPipeline(
     // UD-P3 — which member vocabularies hold place or person names (lex-matcher's entity profiles).
     // Null = the reading is off, and a bare place stays a place exactly as before UD-P3.
     private val namedCategories: NamedCategorySource? = null,
+    // OL-C2 — whether the grounder implements `Scan`, read from its `GetStatus` and kept for a TTL. Without the
+    // `scan` key `Scan` is not called at all: no `scan_failed`, nothing logged per turn. `Ground` is not gated.
+    private val scanCapability: ScanCapability? =
+        grounding?.let { kernel -> ScanCapability(DEFAULT_STATUS_TTL) { kernel.getStatus() } },
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -151,7 +158,7 @@ class ResolverPipeline(
         // Scan runs once, before any reader of the parse. Without NER, universals remain off;
         // taking their words out of the mention path would leave neither a value nor a gap.
         val scan =
-            if (assessment.csNer && grounding != null) {
+            if (assessment.csNer && grounding != null && scanCapability?.available() == true) {
                 TimeScan.augment(
                     grounding,
                     analyzed,
@@ -1064,6 +1071,9 @@ class ResolverPipeline(
 
         /** ttr-server#231 — `Option.object_kind` of a kernel's option. */
         const val PERIOD_KIND: String = "period"
+
+        /** OL-C2 — `resolver.grounding.status-ttl-seconds`' default: how long a grounder's `scan` answer is kept. */
+        val DEFAULT_STATUS_TTL: Duration = 60.seconds
 
         /** Map the caller-supplied `Registry` proto override into the internal model (RS-24). */
         fun fromProto(
