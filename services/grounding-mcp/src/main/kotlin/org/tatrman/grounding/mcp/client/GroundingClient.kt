@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.grounding.mcp.client
 
+import org.tatrman.grounding.v1.GetStatusResponse
 import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
 import org.tatrman.grounding.v1.ScanRequest
@@ -20,4 +21,7 @@ interface GroundingClient : Closeable {
 
     /** The time phrases in a text (TS-P0 S0.3, contracts §3); chrono implements it, geo and money do not. */
     suspend fun scan(request: ScanRequest): ScanResponse
+
+    /** The service's readiness and capabilities; `capabilities["scan"] = "true"` says it implements Scan (OL-C1). */
+    suspend fun getStatus(): GetStatusResponse
 }
