@@ -2,8 +2,8 @@
 # (LG-P1·S1·T3). Tier aliases (haiku/sonnet/claude-haiku) and rules.conf aliases (gpt-4/fast) are folded
 # into `aliases:` on the concrete models — NOT duplicate rows (1.x faked tier-1 with dup rows; C-1 tier 1).
 #
-# Pricing is USD per 1M tokens; embeddings are input-only. DX-D22 (Bora, 2026-11-16) supplies the
-# Azure list prices for the bp-dsk deployments (Sol, Terra, gpt-5-mini and text-embedding-3-small).
+# Pricing is USD per 1M tokens; embeddings are input-only. DX-D22 (2026-11-16) supplies the
+# Azure list prices for the deployed models (Sol, Terra, gpt-5-mini and text-embedding-3-small).
 # Other rows retain the interim 1.x single `cost` as input/output, flagged per row.
 # Cached-input/cache-write prices are comments: the current pricing shape has no fields for them.
 models:
@@ -61,7 +61,8 @@ models:
     # Generic tier keys (LlmGatewayPromptExecutor emits these) — Golem's mini/fast asks land on this one Azure
     # model; `deep` is the smart row's (azure-gpt-61-sol). DX-P4's extract-strong uses this Azure
     # OpenAI-wire route, which forwards strict response_format (Anthropic drops it).
-    # bp-dsk overrides this row's upstream to gpt-5-mini; its existing caller-facing name stays gpt-4.1.
+    # The olymp clusters override this row's upstream to gpt-5-mini (AZURE_OPENAI_CHAT_DEPLOYMENT);
+    # its existing caller-facing name stays gpt-4.1.
     aliases: ["mini", "fast", "extract-strong"]
     provider: azure
     upstream: "${AZURE_OPENAI_CHAT_DEPLOYMENT:-tatrman-gpt-4.1}"   # per-deployment (olymp env); baked default off-Azure

@@ -36,7 +36,7 @@ class RoutingParitySpec :
                 // target (gpt-4o-mini) to match that remap.
                 "fast" to "gpt-4.1",
                 "mini" to "gpt-4.1",
-                "extract-strong" to "gpt-4.1", // DX-P4: bp-dsk overrides its deployment to gpt-5-mini
+                "extract-strong" to "gpt-4.1", // DX-P4: reference deployments override its deployment to gpt-5-mini
                 "gpt-6.1-terra" to "gpt-6.1-terra", // roster only; no tier points at Terra
                 // `deep` is the smart tier's (Bora, 2026-10-24): Golem composes the query on `deep`, while mini/fast
                 // stay on the chat deployment.
@@ -53,6 +53,14 @@ class RoutingParitySpec :
 
         "tag live contract: model_tags=[tatrman] (no name) → gpt-4.1" {
             landsOn(null, listOf("tatrman")) shouldBe "gpt-4.1"
+        }
+
+        "tag routing follows price (G4.1, R304-A)" {
+            landsOn(null, listOf("complex")) shouldBe "gpt-6.1-sol"
+            landsOn(null, listOf("coding", "smart")) shouldBe "gpt-6.1-sol"
+            landsOn(null, listOf("complex", "embedding")) shouldBe "gpt-6.1-sol"
+            landsOn(null, listOf("balanced", "tatrman")) shouldBe "gpt-4.1"
+            landsOn(null, listOf("default", "tatrman")) shouldBe "gpt-4.1"
         }
 
         "the smart tier: 'smart' and model_tags=[smart] → gpt-6.1-sol, a reasoning model (2026-10-24)" {
@@ -83,7 +91,7 @@ class RoutingParitySpec :
         "DX-D22 deployed Azure models have separate input and output list prices per million tokens" {
             val prices =
                 mapOf(
-                    "azure-gpt-41" to Pricing(0.25, 2.0), // bp-dsk: gpt-5-mini
+                    "azure-gpt-41" to Pricing(0.25, 2.0), // reference deployments: gpt-5-mini
                     "azure-gpt-61-sol" to Pricing(4.0, 15.0),
                     "azure-gpt-61-terra" to Pricing(2.0, 7.5),
                     "azure-text-embedding-3-small" to Pricing(0.022),
