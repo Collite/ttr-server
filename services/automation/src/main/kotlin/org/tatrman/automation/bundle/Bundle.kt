@@ -33,7 +33,7 @@ data class Checkout(
 /**
  * A recipe bundle as loaded (`automation/<r>/<r>.bundle/`): its manifest, the recipe block, and every island
  * statement read into memory, keyed by the file name the manifest gives (`islands/overdue.rows.sql`).
- * [manifestText] is `manifest.json` exactly as the commit holds it, read once beside the parse (S3.4, D-209): the
+ * [manifestFile] is `manifest.json` exactly as the commit holds it, read once beside the parse (S3.4, D-209): the
  * parse is lenient and drops what this Server does not read, so a client that needs the whole manifest (the Studio's
  * Flow tab) gets these bytes, never a re-print. Null only for a recipe built outside [BundleLoader] (specs).
  */
@@ -43,8 +43,24 @@ data class LoadedRecipe(
     val recipe: ManifestRecipe,
     val statements: Map<String, String>,
     val coverage: ApprovalDependencies.Checked = ApprovalDependencies.unprepared(),
-    val manifestText: String? = null,
+    val manifestFile: ManifestFile? = null,
 )
+
+/**
+ * A `manifest.json`'s raw bytes, never decoded and re-encoded, and their strong ETag value (`sha256:<hex>`,
+ * unquoted), computed once at load (S3.4, D-209; review-301 ⚑A). Equal by content.
+ */
+class ManifestFile(
+    val bytes: ByteArray,
+) {
+    val etag: String = Fingerprints.sha256(bytes)
+
+    override fun equals(other: Any?): Boolean = other is ManifestFile && bytes.contentEquals(other.bytes)
+
+    override fun hashCode(): Int = bytes.contentHashCode()
+
+    override fun toString(): String = "ManifestFile(${bytes.size} bytes, $etag)"
+}
 
 /**
  * What one world declares for its own deployments: the validator resolves a deployment's identity and

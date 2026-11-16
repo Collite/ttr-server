@@ -168,6 +168,24 @@ class ProgramManifestSpec :
             }
         }
 
+        "(a) bytes, not text: a stray non-UTF-8 byte is served as the file holds it, and the ETag hashes the file" {
+            val root = BundleFixture.copy()
+            val text = Files.readString(root.resolve(releaseOrder)).trimEnd()
+            check(text.endsWith("}"))
+            // 0xFF is never valid UTF-8: a decode/re-encode turns it into EF BF BD, moving the body and the ETag.
+            val raw =
+                text.dropLast(1).toByteArray() + ",\"zRaw\":\"".toByteArray() + byteArrayOf(0xFF.toByte()) +
+                    "\"}\n".toByteArray()
+            Files.write(root.resolve(releaseOrder), raw)
+            testApplication {
+                service(registry(served = root))
+                val r = get("/automation/programs/morning_release/manifest")
+                r.status shouldBe HttpStatusCode.OK
+                r.bodyAsBytes().contentEquals(raw) shouldBe true
+                r.headers[HttpHeaders.ETag] shouldBe "\"${sha256(raw)}\""
+            }
+        }
+
         "(b) ?bundle=<preview id> answers that bundle's manifest; the served id answers the served one" {
             val preview = BundleFixture.copy()
             preview.edit(releaseOrder) { it.trimEnd() + "\n " }
@@ -257,7 +275,7 @@ class ProgramManifestSpec :
             // Only a Bundle built outside BundleLoader can hold one; the link and the route must still agree.
             val served = BundleFixture.load()
             val release = served.recipes.getValue("release_order")
-            val bundle = served.copy(recipes = served.recipes + ("release_order" to release.copy(manifestText = null)))
+            val bundle = served.copy(recipes = served.recipes + ("release_order" to release.copy(manifestFile = null)))
             val morning = bundle.programs.getValue("morning_release")
             manifestLink(bundle, morning) shouldBe null
             val refusal = shouldThrow<AutomationException> { programManifest(bundle, "morning_release") }
