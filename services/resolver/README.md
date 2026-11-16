@@ -26,6 +26,14 @@ year”. Interpretation owns narrowing and comparison. The resolver contains no 
 table. If Scan fails or returns an invalid response, the turn keeps NER's entities, logs a warning
 and adds `scan_failed` to the rung log without retrying Scan.
 
+Scan is optional (OL-C1, OL-C2). The resolver calls it only while the grounder's `GetStatus` declares
+`capabilities["scan"] = "true"`; the answer is kept for `resolver.grounding.status-ttl-seconds` (default 60,
+env `RESOLVER_GROUNDING_STATUS_TTL_SECONDS`). Without the key, or while `GetStatus` fails, the turn does not
+call Scan, writes no `scan_failed` and logs nothing; NER's entities go on to `Ground` as before, which is
+never gated. One INFO line is logged when the known state changes. A resolver that meets an older grounder
+first recovers by itself one TTL after the grounder declares the key. `ScanCapabilityTest` covers both
+grounders, the TTL and the log line.
+
 `ScanSeamTest` replays Scan and Ground responses from `src/test/resources/time-scan/replay.json`
 through the gRPC client and pipeline, including the Czech reserve question at `[19,31)` and its
 `date_dim.cal_date` attribution. It needs no live chrono. Run `:services:resolver:build` on the
