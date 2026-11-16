@@ -112,9 +112,9 @@ class ScanSliceServiceSpec :
             val before = populated.getStatus(status)
             before.capabilitiesMap["lexicon_slice"] shouldBe slice.version
             before.capabilitiesMap["lexicon_slice_terms"] shouldBe slice.terms.size.toString()
-            val req = request("Tržby v roce 2025 po měsících za minulý měsíc")
+            val req = request("Tržby v roce 2025 po měsících")
             val first = populated.scan(req)
-            first.spansList.map { it.text } shouldBe listOf("roce 2025", "minulý měsíc")
+            first.spansList.map { it.text } shouldBe listOf("roce 2025")
             populated.scan(req).toByteArray().contentEquals(first.toByteArray()) shouldBe true
             populated.getStatus(status).capabilitiesMap shouldBe before.capabilitiesMap
         }

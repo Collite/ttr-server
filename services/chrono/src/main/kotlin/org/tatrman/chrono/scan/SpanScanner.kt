@@ -133,6 +133,8 @@ class SpanScanner(
                 val confidence = confidenceOf(reading) ?: return@mapNotNull null
                 when {
                     !phraseWords(w, words, timeWords) && !r.completeYearRange -> null
+                    // §3.4: a slice trigger may give Ground an inferred period, but a grain alone is no Scan phrase.
+                    (w.first..w.last).all { NOUN.matches(words[it]) || SMALL.matches(words[it]) } -> null
                     bareCode(working, tokens, w) -> null
                     amount(working, tokens, w, reading) -> null
                     // A year no word places is a span only as the bare number (§3.4): "last year for 2000" is not 2000.
