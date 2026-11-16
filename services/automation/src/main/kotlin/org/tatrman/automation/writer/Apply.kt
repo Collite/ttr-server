@@ -45,6 +45,11 @@ data class RowOutcome(
     val committedAt: Instant? = null,
     /** review-258 B3: the door request the row was sent in (read back from the journal; never written from here). */
     val request: String? = null,
+    /**
+     * review-303 F3: on a `skipped · settled` row, the earlier outcome it matched — `{ run, status, error }`, the
+     * original one when that match was itself settled — journaled as [org.tatrman.automation.apply.ApplyRow.SETTLED_BY].
+     */
+    val settledBy: JsonObject? = null,
 ) {
     init {
         require(status in setOf("staged", "applied", "failed", "skipped"))
@@ -210,10 +215,15 @@ interface ApplyJournal {
 }
 
 /**
- * D-202 (F2) + D-206 (F4/F5): a batch row's identity across runs of one program — (entity, key, op, values). [key] is
- * the planned source key when the planner set one ([ApplyRow.settle]: a writer-sink or obligation insert, keyed by the
- * route row, never by an id the run seeds), else the row's own non-empty key. [values] is a digest of what the row
- * writes ([digest]): a changed value is a new identity, so it is re-applied; an unchanged one settles.
+ * D-202 (F2) + D-206 (F4/F5) + D-210: a batch row's identity across runs of one program — (entity, key, op, values).
+ * [key] is the planned key when the planner set one ([ApplyRow.settle]), else the row's own non-empty key. [values] is a
+ * digest of what the row writes ([digest]): a changed value is a new identity, so it is re-applied; an unchanged one
+ * settles. The planner's keys:
+ * - an insert on a **business key** — a writer-sink row (its route row's key, wiring and route) or an obligation (its
+ *   entity, key and kind) — never by an id the run seeds, and with [values] = [BUSINESS_KEY]: the row exists under its
+ *   key, a changed planned value is not a second row, the first proposal stands (D-210, D-67);
+ * - a **current pair**: the delete by its key, with the digest of every row it precedes; each insert by its key and
+ *   route, with that group digest and its own — any change in the group is a change of every member (review-303 F2).
  */
 data class RowIdentity(
     val entity: String,
@@ -224,6 +234,9 @@ data class RowIdentity(
     companion object {
         /** Columns every run seeds in a verdict, detail or current row (the planner's `common` values, D-206 F4). */
         val SEEDED = setOf("run", "as_of", "written_at")
+
+        /** D-210: the [values] of an insert on a business key — its values are not part of its identity. */
+        const val BUSINESS_KEY = "business-key"
 
         /** A row's identity; null for a row without a key (an insert the plan did not key): never settled. */
         fun of(row: ApplyRow): RowIdentity? {
@@ -250,7 +263,10 @@ data class RowIdentity(
                 },
             )
 
-        /** A SHA-256 of [value]'s canonical text: object keys sorted, numbers by value (jsonb keeps neither order nor scale). */
+        /**
+         * A SHA-256 of [value]'s canonical text: object keys sorted, numbers by value (jsonb keeps neither order nor
+         * scale) and unquoted, so the number 100 and the string "100" differ (review-303 F4).
+         */
         fun digest(value: JsonElement): String {
             val hash = java.security.MessageDigest.getInstance("SHA-256")
             hash.update(canonical(value).toString().toByteArray(Charsets.UTF_8))
@@ -267,16 +283,21 @@ data class RowIdentity(
                         value
                     } else {
                         value.content.toBigDecimalOrNull()?.let {
-                            JsonPrimitive(it.stripTrailingZeros().toPlainString())
+                            @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+                            kotlinx.serialization.json.JsonUnquotedLiteral(it.stripTrailingZeros().toPlainString())
                         } ?: value
                     }
             }
     }
 }
 
-/** D-206: what earlier runs of a windowed program settled ([ApplyInput.settled]) and left unknown ([ApplyInput.unknown]). */
+/**
+ * D-206 + review-303 F1/F3: what earlier runs of a windowed program settled ([ApplyInput.settled]: each identity → the
+ * outcome it matched, `{ run, status, error }`) and left unknown ([ApplyInput.unknown]). Per (entity, key, op), only the
+ * latest run that wrote it counts.
+ */
 data class Settlement(
-    val settled: Set<RowIdentity> = emptySet(),
+    val settled: Map<RowIdentity, JsonObject> = emptyMap(),
     val unknown: Map<RowIdentity, List<ApplyRow>> = emptyMap(),
 )
 
@@ -310,9 +331,10 @@ data class ApplyInput(
     val units: List<List<Int>> = emptyList(),
     /**
      * D-202 (F2): the identities an earlier sealed run of this windowed program applied over a window that overlaps this
-     * run's (the ledger's `ApplyState.settled`). A row not yet sent with one of them is `skipped · settled`, never sent.
+     * run's (the ledger's `ApplyState.settled`). A row not yet sent with one of them is `skipped · settled`, never sent;
+     * the value is the outcome it matched (review-303 F3, journaled as the row's `settled_by`).
      */
-    val settled: Set<RowIdentity> = emptySet(),
+    val settled: Map<RowIdentity, JsonObject> = emptyMap(),
     /**
      * D-206 (F10): the inserts earlier runs of the program left `staged · unknown-outcome` (or `in-flight`), by the
      * identity a row of this run would share with them. Before such a row is sent, each earlier row's key is read
@@ -362,10 +384,21 @@ class Apply(
         }
         // D-202 (F2): a re-read settles per row — what an earlier run of the program applied over this range is not resent.
         if (input.settled.isNotEmpty()) {
+            // review-303 F2: a delete that is sent clears its key, so no insert of that key may settle beside it — a
+            // current pair settles as one unit or not at all (the planner's group digest makes it so; this guards it).
+            val cleared =
+                input.rows
+                    .filter { it.op == "delete" && outcomes[it.seq] == null && RowIdentity.of(it) !in input.settled }
+                    .map { it.entity to it.key }
+                    .toSet()
             val settled =
                 input.rows
-                    .filter { outcomes[it.seq] == null && RowIdentity.of(it) in input.settled }
-                    .map { RowOutcome(it.seq, "skipped", RowOutcome.SETTLED) }
+                    .filter { outcomes[it.seq] == null && !(it.op == "insert" && (it.entity to it.key) in cleared) }
+                    .mapNotNull { row ->
+                        RowIdentity.of(row)?.let { input.settled[it] }?.let { matched ->
+                            RowOutcome(row.seq, "skipped", RowOutcome.SETTLED, settledBy = matched)
+                        }
+                    }
             if (settled.isNotEmpty()) {
                 journal.record(settled)
                 settled.forEach { outcomes[it.seq] = it }

@@ -78,8 +78,11 @@ data class ApplyRow(
         /** D-206: the planned [SettleKey], kept beside the payload (not an attribute name, `:`). */
         const val SETTLE = "automation:settle"
 
+        /** review-303 F3: on a `skipped · settled` row, the earlier outcome it matched (`{ run, status, error }`). */
+        const val SETTLED_BY = "settled_by"
+
         /** The apply evidence kept beside a row's §4 payload in `batch_rows.row`. */
-        val EVIDENCE = setOf("prior", HISTORY_OUTCOME, HISTORY_AT, DECIDED, REQUEST, SETTLE)
+        val EVIDENCE = setOf("prior", HISTORY_OUTCOME, HISTORY_AT, DECIDED, REQUEST, SETTLE, SETTLED_BY)
 
         fun restore(
             seq: Int,
@@ -93,7 +96,9 @@ data class ApplyRow(
             // evidence, not §4.
             val fields =
                 if (op == "insert") {
-                    mapOf<String, JsonElement>("row" to JsonObject(requireNotNull(data).jsonObject - REQUEST - SETTLE))
+                    mapOf<String, JsonElement>(
+                        "row" to JsonObject(requireNotNull(data).jsonObject - REQUEST - SETTLE - SETTLED_BY),
+                    )
                 } else {
                     requireNotNull(data).jsonObject - EVIDENCE
                 }
@@ -233,7 +238,7 @@ data class ApplyState(
     /** The run's original absolute deadline (`started_at` + budget): the apply and the close never pass it. */
     val deadline: java.time.Instant,
     /** D-202 (F2) + D-206: what earlier runs of this windowed program settled over an overlapping window. */
-    val settled: Set<org.tatrman.automation.writer.RowIdentity> = emptySet(),
+    val settled: Map<org.tatrman.automation.writer.RowIdentity, JsonObject> = emptyMap(),
     /** D-206 (F10): the inserts earlier runs left unknown, by identity ([org.tatrman.automation.writer.ApplyInput.unknown]). */
     val unknown: Map<org.tatrman.automation.writer.RowIdentity, List<ApplyRow>> = emptyMap(),
 )

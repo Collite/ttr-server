@@ -9,6 +9,7 @@ import io.kotest.engine.spec.tempdir
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.*
@@ -1091,16 +1092,26 @@ class RunRuntimeComponentSpec :
         }
 
         /**
-         * D-206 (F5): two runs of one program over overlapping windows, evaluated by the real producers — the second's
-         * [entity] rows carry ids its own run seeded, yet settle on what the first applied, and no row reaches the door.
+         * D-206 (F5) + D-210: two runs of one program over overlapping windows, evaluated by the real producers — the
+         * second ([second], [advance] later) plans [entity] rows whose ids its own run seeded and whose [changed] value
+         * differs from the first's; they settle on what the first applied all the same (an insert on a business key: the
+         * first proposal stands), and no row reaches the door.
          */
         suspend fun settlesAcrossRuns(
-            f: DurableRuntimeFixture,
+            first: DurableRuntimeFixture,
+            second: DurableRuntimeFixture,
             entity: String,
+            advance: java.time.Duration,
+            changed: String,
+            between: () -> Unit = {},
         ) {
-            val runtime = f.start()
+            val runtimes = mutableListOf<RunRuntime>()
             try {
-                suspend fun evaluated(key: String): Pair<UUID, RunContext> {
+                suspend fun evaluated(
+                    f: DurableRuntimeFixture,
+                    key: String,
+                ): Pair<UUID, RunContext> {
+                    val runtime = f.start().also { runtimes += it }
                     val opened = runtime.sessions.open("release_order", f.request.copy(idempotencyKey = key), f.caller)
                     val id = UUID.fromString(opened.response.runId)
                     runtime.sessions.evaluate(id, f.caller)
@@ -1113,13 +1124,15 @@ class RunRuntimeComponentSpec :
                             it[Runs.port] = window
                         }
                     }
+                    runtime.shutdown()
                     return id to opened.context!!
                 }
-                val (first, _) = evaluated("f5-first")
-                f.base.now = f.base.now.plusSeconds(60)
-                val (second, context) = evaluated("f5-second")
-                val theirs = f.ledger.readRunBatch(first, f.caller.sub)
-                f.ledger.recordApply(
+                val (one, _) = evaluated(first, "f5-first")
+                second.base.now = first.base.now.plus(advance)
+                between()
+                val (two, context) = evaluated(second, "f5-second")
+                val theirs = first.ledger.readRunBatch(one, first.caller.sub)
+                first.ledger.recordApply(
                     UUID.fromString(theirs.batch),
                     theirs.rows.filter { it.entity == entity }.map {
                         org.tatrman.automation.writer
@@ -1127,18 +1140,21 @@ class RunRuntimeComponentSpec :
                     },
                 )
 
-                val state = f.ledger.applyState(second, f.caller.sub)
+                val state = second.ledger.applyState(two, second.caller.sub)
                 val mine = state.plan.rows.filter { it.entity == entity }
-                (mine.isNotEmpty() && mine.size == theirs.rows.count { it.entity == entity }) shouldBe true
+                val earlier = theirs.rows.filter { it.entity == entity }
+                (mine.isNotEmpty() && mine.size == earlier.size) shouldBe true
                 // The run seeds the ids: no key of the re-read's rows is one the first run wrote.
-                (mine.map { it.key }.toSet() intersect theirs.rows.map { it.key }.toSet()) shouldBe emptySet()
+                (mine.map { it.key }.toSet() intersect earlier.map { it.key }.toSet()) shouldBe emptySet()
+                // D-210: the planned value differs too (a window-relative `due`, a changed writer argument).
+                mine.map { it.row!![changed] } shouldNotBe earlier.map { it.row!![changed] }
                 val recorded = mutableListOf<org.tatrman.automation.writer.RowOutcome>()
                 val metadata = requireNotNull(context.previewMetadata)
                 org.tatrman.automation.writer
-                    .Apply(Door { error("a settled row reaches no door") }, f.clock)
+                    .Apply(Door { error("a settled row reaches no door") }, second.clock)
                     .apply(
                         org.tatrman.automation.writer.ApplyInput(
-                            second,
+                            two,
                             context.world,
                             context.identity,
                             context.modelFp,
@@ -1167,16 +1183,19 @@ class RunRuntimeComponentSpec :
                 recorded.map { it.status to it.error }.toSet() shouldBe
                     setOf("skipped" to org.tatrman.automation.writer.RowOutcome.SETTLED)
             } finally {
-                runtime.shutdown()
-                f.close()
+                runtimes.forEach { runCatching { it.shutdown() } }
+                first.close()
+                if (second !== first) second.close()
             }
         }
 
-        "D-206 (F5): an obligation the run seeded an id for settles on the re-read by its business identity" {
-            settlesAcrossRuns(obligationFixture(), "er.entity.obligation")
+        "D-206 (F5) + D-210: an obligation settles on its business identity, its window-relative due not counted" {
+            // `due = as_of + inbound_reminder`: two days later the re-read plans another due — not a second obligation.
+            val f = obligationFixture()
+            settlesAcrossRuns(f, f, "er.entity.obligation", java.time.Duration.ofDays(2), "due")
         }
 
-        "D-206 (F5): a writer-sink row with a generated id settles on the re-read by its route row's key" {
+        "D-206 (F5) + D-210: a writer-sink row settles on its route row's key, a changed argument not counted" {
             val root =
                 ApprovalFixture.copyTo(
                     tempdir(prefix = "automation-bundles-").toPath().resolve("generated"),
@@ -1187,14 +1206,37 @@ class RunRuntimeComponentSpec :
                     Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
                     BundleKind.SERVED,
                 )
+            // The proposal's `state` argument is wired to the route row's `verdict_reason` column, so the data decides it
+            // (an action change would be a rebuild — its approval dependencies are pinned — not a re-read).
+            val recipe = source.recipes.getValue("release_order")
+            val wired =
+                recipe.recipe.copy(
+                    wiring =
+                        recipe.recipe.wiring.map {
+                            if (it.action ==
+                                "release"
+                            ) {
+                                it.copy(columns = it.columns + ("state" to "verdict_reason"))
+                            } else {
+                                it
+                            }
+                        },
+                )
             val selected =
                 source.withWriterStorage("reorder_proposal").copy(
+                    recipes =
+                        source.recipes +
+                            (
+                                "release_order" to
+                                    recipe.copy(recipe = wired, manifest = recipe.manifest.copy(recipe = wired))
+                            ),
                     deployments =
                         source.deployments + (
                             "release_native_event" to
                                 source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
                         ),
                 )
+            var state = "proposed"
             val f =
                 DurableRuntimeFixture(transformBundle = { selected }, queryTable = { request ->
                     if ("approved writer fixture" in request.source) {
@@ -1204,13 +1246,21 @@ class RunRuntimeComponentSpec :
                                 ManifestColumn("route", "text"),
                                 ManifestColumn("verdict_reason", "text"),
                             ),
-                            listOf(listOf("4711", "release", "approved writer fixture")),
+                            listOf(listOf("4711", "release", state)),
                         )
                     } else {
                         Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
                     }
                 })
-            settlesAcrossRuns(f, "er.entity.reorder_proposal")
+            // The first run proposes `proposed`; the re-read reads `approved` for the same route row.
+            settlesAcrossRuns(
+                f,
+                f,
+                "er.entity.reorder_proposal",
+                java.time.Duration.ofSeconds(60),
+                "state",
+                between = { state = "approved" },
+            )
         }
 
         "writer defaults persist across clock movement close and restart" {
