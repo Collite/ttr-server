@@ -16,6 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **llm-gateway — DX-P4 extraction route and Azure prices.** `extract-strong` now aliases the existing
+  Azure chat row (catalog name `gpt-4.1`; the reference deployments point it at `gpt-5-mini`), preserving
+  strict JSON-schema forwarding. Sol, gpt-5-mini, text-embedding-3-small and the new Terra row carry Azure
+  list input/output prices (DX-D22); Terra is an Azure reasoning model without tier aliases or tags.
+  Tag routing (`model_tags`) breaks ties by price, so the new prices move `complex` to gpt-6.1-sol and
+  `balanced`/`default`+`tatrman` to gpt-4.1 (from gpt-4o / claude-sonnet-4-6). Other rows retain their flagged
+  interim prices. No key or governance changes.
+
 - **resolver — chrono finds time spans.** One `Scan` call adds DATE entities before the existing
   universal path, retaining original NER DATE/numeric/MONEY ownership, quoted literals, request context
   and separate time phrases for interpretation. Any overlap drops the whole Scan candidate; numeric

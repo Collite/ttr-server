@@ -2,9 +2,10 @@
 # (LG-P1·S1·T3). Tier aliases (haiku/sonnet/claude-haiku) and rules.conf aliases (gpt-4/fast) are folded
 # into `aliases:` on the concrete models — NOT duplicate rows (1.x faked tier-1 with dup rows; C-1 tier 1).
 #
-# ⚠ INTERIM PRICING: 1.x carried a single legacy `cost` per model; 2.0 requires split input/output
-# per-1M-token prices. Until Bora supplies the real numbers, input = output = the 1.x cost (flagged
-# per row). Embeddings are input-only. Replace before cutover (pre-cutover checklist).
+# Pricing is USD per 1M tokens; embeddings are input-only. DX-D22 (2026-11-16) supplies the
+# Azure list prices for the deployed models (Sol, Terra, gpt-5-mini and text-embedding-3-small).
+# Other rows retain the interim 1.x single `cost` as input/output, flagged per row.
+# Cached-input/cache-write prices are comments: the current pricing shape has no fields for them.
 models:
   - id: azure-gpt-4o
     name: gpt-4o
@@ -13,7 +14,7 @@ models:
     upstream: gpt-4o
     type: chat
     tags: ["complex", "coding"]   # "smart" moved to gpt-6.1-sol (2026-10-24); no gpt-4o deployment on the tatrman resource
-    pricing: { input: 10.0, output: 10.0 }   # interim (1.x cost=10)
+    pricing: { input: 10.0, output: 10.0 }   # interim (1.x cost=10); not deployed on bp-dsk (2026-11-16)
     cacheTtlSeconds: 3600
     fallback: []                 # chains populated in LG-P3
 
@@ -24,7 +25,7 @@ models:
     upstream: gpt-4o-mini
     type: chat
     tags: ["fast", "cheap", "chat"]
-    pricing: { input: 1.0, output: 1.0 }     # interim (1.x cost=1)
+    pricing: { input: 1.0, output: 1.0 }     # interim (1.x cost=1); not deployed on bp-dsk (2026-11-16)
     cacheTtlSeconds: 3600
     fallback: []
 
@@ -38,7 +39,7 @@ models:
     upstream: text-embedding-ada-002
     type: embedding
     tags: []
-    pricing: { input: 1.0 }                   # interim (1.x cost=1); embeddings are input-only
+    pricing: { input: 1.0 }                   # interim (1.x cost=1); embeddings are input-only; not deployed on bp-dsk (2026-11-16)
     cacheTtlSeconds: 0
     fallback: []
 
@@ -51,15 +52,18 @@ models:
     upstream: "${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-text-embedding-3-small}"   # the tatrman deployment's name
     type: embedding
     tags: ["embedding"]
-    pricing: { input: 1.0 }                   # interim, as ada-002; embeddings are input-only
+    pricing: { input: 0.022 }                 # DX-D22; embeddings are input-only
     cacheTtlSeconds: 0
     fallback: []
 
   - id: azure-gpt-41
     name: gpt-4.1
     # Generic tier keys (LlmGatewayPromptExecutor emits these) — Golem's mini/fast asks land on this one Azure
-    # model; `deep` is the smart row's (azure-gpt-61-sol).
-    aliases: ["mini", "fast"]
+    # model; `deep` is the smart row's (azure-gpt-61-sol). DX-P4's extract-strong uses this Azure
+    # OpenAI-wire route, which forwards strict response_format (Anthropic drops it).
+    # The olymp clusters override this row's upstream to gpt-5-mini (AZURE_OPENAI_CHAT_DEPLOYMENT);
+    # its existing caller-facing name stays gpt-4.1.
+    aliases: ["mini", "fast", "extract-strong"]
     provider: azure
     upstream: "${AZURE_OPENAI_CHAT_DEPLOYMENT:-tatrman-gpt-4.1}"   # per-deployment (olymp env); baked default off-Azure
     reasoning: ${AZURE_OPENAI_REASONING:-false}   # true when the deployment is a reasoning model (gpt-5/o-series):
@@ -67,7 +71,7 @@ models:
     # alongside AZURE_OPENAI_CHAT_DEPLOYMENT in olymp so it tracks the deployment per cluster.
     type: chat
     tags: ["tatrman"]
-    pricing: { input: 10.0, output: 10.0 }   # interim (1.x cost=10)
+    pricing: { input: 0.25, output: 2.0 }   # DX-D22 gpt-5-mini; cached input 0.03
     cacheTtlSeconds: 3600
     fallback: []
 
@@ -84,7 +88,20 @@ models:
     reasoning: ${AZURE_OPENAI_SMART_REASONING:-true}
     type: chat
     tags: ["smart", "complex"]
-    pricing: { input: 10.0, output: 10.0 }   # interim, as gpt-4.1 — real price pending
+    pricing: { input: 4.0, output: 15.0 }    # DX-D22; cached input 0.20 · cache write 5.00
+    cacheTtlSeconds: 3600
+    fallback: []
+
+  # Deployed but unused (DX-D22): roster only, with no tier alias or soft-match tag.
+  - id: azure-gpt-61-terra
+    name: gpt-6.1-terra
+    aliases: []
+    provider: azure
+    upstream: "${AZURE_OPENAI_TERRA_DEPLOYMENT:-gpt-6.1-terra}"
+    reasoning: ${AZURE_OPENAI_TERRA_REASONING:-true}
+    type: chat
+    tags: []
+    pricing: { input: 2.0, output: 7.5 }     # DX-D22; cached input 0.10 · cache write 2.50
     cacheTtlSeconds: 3600
     fallback: []
 
@@ -94,7 +111,7 @@ models:
     upstream: claude-opus-4-7
     type: chat
     tags: ["complex", "coding", "frontier"]   # "smart" moved to gpt-6.1-sol (2026-10-24)
-    pricing: { input: 15.0, output: 15.0 }   # interim (1.x cost=15)
+    pricing: { input: 15.0, output: 15.0 }   # interim (1.x cost=15); not deployed on bp-dsk (2026-11-16)
     cacheTtlSeconds: 3600
     fallback: []
 
@@ -105,7 +122,7 @@ models:
     upstream: claude-sonnet-4-6
     type: chat
     tags: ["balanced", "default"]
-    pricing: { input: 3.0, output: 3.0 }     # interim (1.x cost=3)
+    pricing: { input: 3.0, output: 3.0 }     # interim (1.x cost=3); not deployed on bp-dsk (2026-11-16)
     cacheTtlSeconds: 3600
     fallback: []
 
@@ -116,6 +133,6 @@ models:
     upstream: claude-haiku-4-5
     type: chat
     tags: ["fast", "cheap"]
-    pricing: { input: 1.0, output: 1.0 }     # interim (1.x cost=1)
+    pricing: { input: 1.0, output: 1.0 }     # interim (1.x cost=1); not deployed on bp-dsk (2026-11-16)
     cacheTtlSeconds: 3600
     fallback: []
