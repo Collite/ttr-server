@@ -182,7 +182,17 @@ class ApplyPlanSpec :
                 planner.plan(
                     PreviewPlan("b", "r", emptyList(), emptyList(), source = source(), candidateKeys = listOf(other)),
                 )
-            empty.rows shouldBe listOf(ApplyRow(1, "er.entity.release_order_verdict_current", "delete", other))
+            // D-206 (F4): a current delete carries the digest of the rows it precedes (none here) as its settle key.
+            empty.rows shouldBe
+                listOf(
+                    ApplyRow(
+                        1,
+                        "er.entity.release_order_verdict_current",
+                        "delete",
+                        other,
+                        settle = SettleKey(other, RowIdentity.digest(JsonArray(emptyList()))),
+                    ),
+                )
             for (routes in listOf(listOf("none", "remind"), listOf("remind"))) {
                 val plan =
                     planner.plan(

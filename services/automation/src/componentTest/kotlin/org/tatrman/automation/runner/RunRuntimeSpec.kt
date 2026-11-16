@@ -15,6 +15,7 @@ import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
@@ -1087,6 +1088,129 @@ class RunRuntimeComponentSpec :
                 refused.shutdown()
                 stale.close()
             }
+        }
+
+        /**
+         * D-206 (F5): two runs of one program over overlapping windows, evaluated by the real producers — the second's
+         * [entity] rows carry ids its own run seeded, yet settle on what the first applied, and no row reaches the door.
+         */
+        suspend fun settlesAcrossRuns(
+            f: DurableRuntimeFixture,
+            entity: String,
+        ) {
+            val runtime = f.start()
+            try {
+                suspend fun evaluated(key: String): Pair<UUID, RunContext> {
+                    val opened = runtime.sessions.open("release_order", f.request.copy(idempotencyKey = key), f.caller)
+                    val id = UUID.fromString(opened.response.runId)
+                    runtime.sessions.evaluate(id, f.caller)
+                    // A wet watermark run of program P over [epoch, now) (`prepare`-style: the open is a dry one).
+                    val window = Watermark.port(Watermark.EPOCH, f.clock.instant(), listOf("day"), watermark = true)
+                    transaction {
+                        Runs.update({ Runs.id eq id }) {
+                            it[Runs.dryRun] = false
+                            it[Runs.program] = "P"
+                            it[Runs.port] = window
+                        }
+                    }
+                    return id to opened.context!!
+                }
+                val (first, _) = evaluated("f5-first")
+                f.base.now = f.base.now.plusSeconds(60)
+                val (second, context) = evaluated("f5-second")
+                val theirs = f.ledger.readRunBatch(first, f.caller.sub)
+                f.ledger.recordApply(
+                    UUID.fromString(theirs.batch),
+                    theirs.rows.filter { it.entity == entity }.map {
+                        org.tatrman.automation.writer
+                            .RowOutcome(it.seq, "applied")
+                    },
+                )
+
+                val state = f.ledger.applyState(second, f.caller.sub)
+                val mine = state.plan.rows.filter { it.entity == entity }
+                (mine.isNotEmpty() && mine.size == theirs.rows.count { it.entity == entity }) shouldBe true
+                // The run seeds the ids: no key of the re-read's rows is one the first run wrote.
+                (mine.map { it.key }.toSet() intersect theirs.rows.map { it.key }.toSet()) shouldBe emptySet()
+                val recorded = mutableListOf<org.tatrman.automation.writer.RowOutcome>()
+                val metadata = requireNotNull(context.previewMetadata)
+                org.tatrman.automation.writer
+                    .Apply(Door { error("a settled row reaches no door") }, f.clock)
+                    .apply(
+                        org.tatrman.automation.writer.ApplyInput(
+                            second,
+                            context.world,
+                            context.identity,
+                            context.modelFp,
+                            state.deadline,
+                            mine,
+                            state.actions,
+                            requireNotNull(metadata.planSource),
+                            metadata.entities,
+                            emptyList(),
+                            settled = state.settled,
+                        ),
+                        object : org.tatrman.automation.writer.ApplyJournal {
+                            override fun begin(
+                                seqs: List<Int>,
+                                request: String,
+                            ) = error("a settled row is never sent")
+
+                            override fun release(seqs: List<Int>) = Unit
+
+                            override fun record(outcomes: List<org.tatrman.automation.writer.RowOutcome>) {
+                                recorded += outcomes
+                            }
+                        },
+                    )
+                recorded.map { it.seq } shouldBe mine.map { it.seq }
+                recorded.map { it.status to it.error }.toSet() shouldBe
+                    setOf("skipped" to org.tatrman.automation.writer.RowOutcome.SETTLED)
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "D-206 (F5): an obligation the run seeded an id for settles on the re-read by its business identity" {
+            settlesAcrossRuns(obligationFixture(), "er.entity.obligation")
+        }
+
+        "D-206 (F5): a writer-sink row with a generated id settles on the re-read by its route row's key" {
+            val root =
+                ApprovalFixture.copyTo(
+                    tempdir(prefix = "automation-bundles-").toPath().resolve("generated"),
+                    generatedIds = true,
+                )
+            val source =
+                BundleLoader(AuthorMap(emptyMap())).load(
+                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+            val selected =
+                source.withWriterStorage("reorder_proposal").copy(
+                    deployments =
+                        source.deployments + (
+                            "release_native_event" to
+                                source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                        ),
+                )
+            val f =
+                DurableRuntimeFixture(transformBundle = { selected }, queryTable = { request ->
+                    if ("approved writer fixture" in request.source) {
+                        Table(
+                            listOf(
+                                ManifestColumn("order_number", "text"),
+                                ManifestColumn("route", "text"),
+                                ManifestColumn("verdict_reason", "text"),
+                            ),
+                            listOf(listOf("4711", "release", "approved writer fixture")),
+                        )
+                    } else {
+                        Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                    }
+                })
+            settlesAcrossRuns(f, "er.entity.reorder_proposal")
         }
 
         "writer defaults persist across clock movement close and restart" {
