@@ -210,3 +210,55 @@ Commands used explicit `kubectl --context bp-dsk -n ttr-server exec`:
 
 The disposable pod was deleted after verification. No deployed workload changed.
 This verified tag supersedes 0.11.31 as the source for later consumer stages.
+
+## OL W1a·S1 internal release — the `scan` capability, 2026-11-16
+
+The three immutable tags point to merge `91543b66d3d15236ecdcfdd61218530de7fd2e07`
+of [#419](https://github.com/Collite/ttr-server/pull/419) (review-315, repair re-review
+PASS; PR CI [43888468009](https://github.com/Collite/ttr-server/actions/runs/43888468009)
+green on head `864fdb9b`). The next free versions were checked against the remote tags and GHCR before
+the cut: chrono and the resolver had reached 0.11.37 (the resolver's 0.11.33–0.11.37 exist on GHCR only,
+from dispatch builds), and grounding-mcp 0.11.31.
+
+| Tag | Published artifact | Release CI |
+|---|---|---|
+| `chrono/v0.11.38` | `ghcr.io/collite/chrono:0.11.38` | [43899729726](https://github.com/Collite/ttr-server/actions/runs/43899729726), green on `91543b66` |
+| `resolver/v0.11.38` | `ghcr.io/collite/resolver:0.11.38` | [43899735548](https://github.com/Collite/ttr-server/actions/runs/43899735548), green on `91543b66` |
+| `grounding-mcp/v0.11.32` | `ghcr.io/collite/grounding-mcp:0.11.32` | [43899741417](https://github.com/Collite/ttr-server/actions/runs/43899741417), green on `91543b66` |
+
+Manifest-list digests (each lists `linux/amd64` and `linux/arm64`):
+
+| Image | Digest |
+|---|---|
+| `chrono:0.11.38` | `sha256:36cfde368261a81995f2c5e90575e47d2a10d10a492be6cd162af9fcc3f3e848` |
+| `resolver:0.11.38` | `sha256:1298ee2742582a7e1cc974bd23d416ab9ba76bd546100a9ed4cea2eeb4b1b481` |
+| `grounding-mcp:0.11.32` | `sha256:e97a65b6334ab3b9b17d1312701444fa9a15dc61506b6cf21d4b1b980cc7a599` |
+
+chrono's `GetStatus` declares `capabilities["scan"] = "true"` (OL-C1). The resolver calls
+`Scan` only when its grounder declares that capability, and grounding-mcp's `scan_time`
+answers `not_available` when the grounder does not (OL-C2, OL-C4). Roll order (OL-C5): roll chrono
+before or together with the resolver and grounding-mcp. A reader that rolls first sees no `scan`
+key in the older chrono's status, so it stops calling Scan until chrono rolls; `Ground` is
+unaffected. No library cut, no pin change and no cluster roll in this stage.
+
+### Released-image check
+
+The chrono image was pulled by digest on a developer Mac (`linux/arm64`) and started with
+`GRPC_REFLECTION_ENABLED=true` and no metadata service. Then
+`grpcurl -plaintext -d '{}' localhost:17220 org.tatrman.grounding.v1.GroundingService/GetStatus`
+answered:
+
+```json
+{
+  "service": "chrono",
+  "capabilities": {
+    "lexicon_slice": "",
+    "lexicon_slice_terms": "0",
+    "llm_fallback": "false",
+    "metadata": "down",
+    "scan": "true"
+  }
+}
+```
+
+The probe container was removed afterwards. No deployed workload changed.
