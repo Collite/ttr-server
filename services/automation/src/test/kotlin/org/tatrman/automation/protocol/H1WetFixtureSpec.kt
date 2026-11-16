@@ -47,15 +47,25 @@ class H1WetFixtureSpec :
         }
 
         "the wet open records the granted decider identity and all four observed verdict routes" {
-            val opened = document.sections.getValue("automation").first().payload.jsonObject
+            val opened =
+                document.sections
+                    .getValue("automation")
+                    .first()
+                    .payload.jsonObject
             opened["recipe"] shouldBe JsonPrimitive("release_order")
             opened["deployment"] shouldBe JsonPrimitive("release_morning_cz")
             opened["dryRun"] shouldBe JsonPrimitive(false)
             opened["caller"] shouldBe JsonPrimitive("operator")
             opened["runAs"] shouldBe JsonPrimitive("svc-hartland-automation")
             val routes =
-                document.sections.getValue("decision").single().payload.jsonObject
-                    .getValue("verdict").jsonObject.getValue("routes").jsonObject
+                document.sections
+                    .getValue("decision")
+                    .single()
+                    .payload.jsonObject
+                    .getValue("verdict")
+                    .jsonObject
+                    .getValue("routes")
+                    .jsonObject
             routes.mapValues { (_, route) -> route.jsonObject.getValue("rowCount") } shouldBe
                 mapOf(
                     "hold_sales" to JsonPrimitive(19),
@@ -66,7 +76,11 @@ class H1WetFixtureSpec :
         }
 
         "the applied writer evidence distinguishes successful rows and history from approval-held rows" {
-            val writes = document.sections.getValue("writes").last().payload.jsonObject
+            val writes =
+                document.sections
+                    .getValue("writes")
+                    .last()
+                    .payload.jsonObject
             writes["event"] shouldBe JsonPrimitive("closed")
             writes["state"] shouldBe JsonPrimitive("held")
             writes["rows"] shouldBe JsonPrimitive(670)
@@ -79,6 +93,7 @@ class H1WetFixtureSpec :
             val entities = writes.getValue("entities").jsonObject
             entities.getValue("er.entity.release_order_verdict").jsonObject["applied"] shouldBe JsonPrimitive(155)
             entities.getValue("er.entity.release_order_verdict_detail").jsonObject["applied"] shouldBe JsonPrimitive(26)
-            entities.getValue("er.entity.release_order_verdict_current").jsonObject["applied"] shouldBe JsonPrimitive(308)
+            entities.getValue("er.entity.release_order_verdict_current").jsonObject["applied"] shouldBe
+                JsonPrimitive(308)
         }
     })
