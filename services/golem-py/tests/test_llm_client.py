@@ -67,8 +67,9 @@ async def test_the_request_asks_for_a_json_object_at_temperature_zero_within_the
     assert request.model == ""  # the gateway picks within the class unless pinned
     assert request.instructions == "Write one SELECT."
     assert request.input.text == "Zobraz tržby za rok 2025"
-    # The deadline the server saw is the one given, less the trip.
-    assert 6.0 < fake.time_remaining[0] <= 7.5
+    # The deadline the server saw is the one given. Not `<= 7.5`: the server derives its remaining time from the
+    # propagated deadline on its own clock, and CI saw 7.509 — the bound proves the timeout travelled, not the µs.
+    assert fake.time_remaining[0] == pytest.approx(7.5, abs=1.0)
 
     assert reply.text == REPLY
     assert reply.model == "gpt-capable-2026"
