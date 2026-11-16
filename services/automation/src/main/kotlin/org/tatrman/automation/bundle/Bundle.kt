@@ -33,6 +33,9 @@ data class Checkout(
 /**
  * A recipe bundle as loaded (`automation/<r>/<r>.bundle/`): its manifest, the recipe block, and every island
  * statement read into memory, keyed by the file name the manifest gives (`islands/overdue.rows.sql`).
+ * [manifestText] is `manifest.json` exactly as the commit holds it, read once beside the parse (S3.4, D-209): the
+ * parse is lenient and drops what this Server does not read, so a client that needs the whole manifest (the Studio's
+ * Flow tab) gets these bytes, never a re-print. Null only for a recipe built outside [BundleLoader] (specs).
  */
 data class LoadedRecipe(
     val name: String,
@@ -40,6 +43,7 @@ data class LoadedRecipe(
     val recipe: ManifestRecipe,
     val statements: Map<String, String>,
     val coverage: ApprovalDependencies.Checked = ApprovalDependencies.unprepared(),
+    val manifestText: String? = null,
 )
 
 /**
