@@ -54,6 +54,8 @@ import org.tatrman.resolver.v1.FreshQuestion
 import org.tatrman.resolver.v1.ResolveContext
 import org.tatrman.resolver.v1.ResolveRequest
 import org.tatrman.resolver.v1.ResolveResponse
+import org.tatrman.resolver.v1.UniversalEntityType
+import org.tatrman.resolver.v1.ValueKind
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -216,6 +218,15 @@ class ScanCapabilityTest :
                 val out = resolve(pipeline(kernel, listOf(year)), q)
                 kernel.scans shouldBe 0
                 kernel.grounds shouldContainExactly listOf("2025")
+                // The result, not only the call: an UNGROUNDABLE answer would pass the lines above.
+                out.resolution.bindingsList
+                    .single { it.hasUniversal() }
+                    .universal.entityType shouldBe UniversalEntityType.DATE
+                val value = out.resolutionState.valuesList.single { it.span.text == "2025" }
+                value.kind shouldBe ValueKind.VALUE_KIND_GROUNDED
+                value.grounding.normalizedValue shouldBe "2025-01-01T00:00:00Z/2026-01-01T00:00:00Z"
+                value.attributionsList.map { it.attributeRef } shouldContainExactly
+                    listOf("er.entity.date_dim.cal_date")
                 out.resolutionState.rungLogList.none { it.action == "scan_failed" } shouldBe true
                 warnings.list.shouldBeEmpty()
             } finally {
