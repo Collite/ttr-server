@@ -93,6 +93,8 @@ data class ProgramDescriptor(
     val schedule: String?,
     val deliver: JsonElement?,
     val fingerprint: String,
+    /** S3.4: `/automation/programs/<p>/manifest`, or null when the program has no manifest (D-209). */
+    val manifest: String?,
 )
 
 @Serializable
@@ -197,6 +199,7 @@ fun Route.descriptorRoutes(sources: DescriptorSources) {
             ),
         )
     }
+    programRoutes(sources.bundles)
     post("/automation/refresh") {
         // A refresh swaps what every deployment runs, and a preview clones a branch: an operator's or the CI's call,
         // not any verified caller's.
@@ -284,6 +287,7 @@ private fun programOf(
         schedule = null,
         deliver = null,
         fingerprint = bundle.programFps.getValue(p.qname.name),
+        manifest = manifestLink(bundle, p),
     )
 
 /** Each world's identity rules: its own grants and identities (review-114 — never another world's). */

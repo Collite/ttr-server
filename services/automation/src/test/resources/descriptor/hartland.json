@@ -76,7 +76,8 @@
             "asOf": "run",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:a7b3bef17c9586e0b28bba7f1ed7f9383aa999fc04beec82dbc0f680daeffa02"
+            "fingerprint": "sha256:a7b3bef17c9586e0b28bba7f1ed7f9383aa999fc04beec82dbc0f680daeffa02",
+            "manifest": "/automation/programs/morning_release/manifest"
         },
         {
             "name": "release_on_placement",
@@ -86,7 +87,8 @@
             "asOf": "event",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:75ea334ae26ece109421dba8f6c1cebf146987d5e5fdeac270e39ac2b9055f33"
+            "fingerprint": "sha256:75ea334ae26ece109421dba8f6c1cebf146987d5e5fdeac270e39ac2b9055f33",
+            "manifest": "/automation/programs/release_on_placement/manifest"
         },
         {
             "name": "decide_on_request",
@@ -96,7 +98,8 @@
             "asOf": "event",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:1d6841c950a09c46223b855906316ba50d81bc1e8701bea39ab7dd2a7dfc3387"
+            "fingerprint": "sha256:1d6841c950a09c46223b855906316ba50d81bc1e8701bea39ab7dd2a7dfc3387",
+            "manifest": "/automation/programs/decide_on_request/manifest"
         },
         {
             "name": "decide_catch_up",
@@ -106,7 +109,8 @@
             "asOf": "run",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:f5ec9e13de2faa7c5f31578c4b369dc0007cabbb14c173176d541a610c3b2e34"
+            "fingerprint": "sha256:f5ec9e13de2faa7c5f31578c4b369dc0007cabbb14c173176d541a610c3b2e34",
+            "manifest": "/automation/programs/decide_catch_up/manifest"
         },
         {
             "name": "inbound_on_receipt",
@@ -116,7 +120,8 @@
             "asOf": "event",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:8f0cdfb27056eea519f503f197f32e4a69b77df530083ec042d965f8345c4c47"
+            "fingerprint": "sha256:8f0cdfb27056eea519f503f197f32e4a69b77df530083ec042d965f8345c4c47",
+            "manifest": "/automation/programs/inbound_on_receipt/manifest"
         },
         {
             "name": "inbound_daily",
@@ -126,7 +131,8 @@
             "asOf": "run",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:c33492039d014362591a7c9c82b4abced548e5da6e49faee9bece9f53529c145"
+            "fingerprint": "sha256:c33492039d014362591a7c9c82b4abced548e5da6e49faee9bece9f53529c145",
+            "manifest": "/automation/programs/inbound_daily/manifest"
         },
         {
             "name": "settle_on_document",
@@ -136,7 +142,8 @@
             "asOf": "event",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:4f8bce753560b48393e0cb9697613bed66570e058a5fc8e8fb49d6d5902c2083"
+            "fingerprint": "sha256:4f8bce753560b48393e0cb9697613bed66570e058a5fc8e8fb49d6d5902c2083",
+            "manifest": "/automation/programs/settle_on_document/manifest"
         },
         {
             "name": "settle_daily",
@@ -146,7 +153,8 @@
             "asOf": "run",
             "schedule": null,
             "deliver": null,
-            "fingerprint": "sha256:0d2710cc4574fdfc412ba5112e8fe44b185a6bf0e3cc6411780d7a9815d30a13"
+            "fingerprint": "sha256:0d2710cc4574fdfc412ba5112e8fe44b185a6bf0e3cc6411780d7a9815d30a13",
+            "manifest": "/automation/programs/settle_daily/manifest"
         }
     ],
     "deployments": [

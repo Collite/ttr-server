@@ -29,6 +29,11 @@ enum class ErrorCode(
     BUNDLE_INVALID("bundle-invalid", HttpStatusCode.UnprocessableEntity, "S0.2"),
     REFRESH_FORBIDDEN("refresh-forbidden", HttpStatusCode.Forbidden, "S0.2"),
 
+    // §1.1 — a program's manifest (S3.4, D-209): the program, the `?bundle=` id, a program with no manifest.
+    PROGRAM_UNKNOWN("program-unknown", HttpStatusCode.NotFound, "S3.4"),
+    BUNDLE_UNKNOWN("bundle-unknown", HttpStatusCode.NotFound, "S3.4"),
+    MANIFEST_UNAVAILABLE("manifest-unavailable", HttpStatusCode.NotFound, "S3.4"),
+
     // §1.2 — runs
     PORT("port", HttpStatusCode.BadRequest, "S1.1"),
     AS_OF("as-of", HttpStatusCode.BadRequest, "S1.1"),
