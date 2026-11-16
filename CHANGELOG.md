@@ -16,6 +16,17 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **golem-py — the LLM lane at `emit` (OL W1c·S2).** With `GOLEM_LLM_LANE_ENABLED` (default on), a gateway
+  and a door configured, a question that composed and carries no blocking gap is answered by one `llm.v1`
+  call that writes a `SELECT` over the model slice's `er.*` entities (prompt: `config/llm-lane-prompt.md`).
+  Before the door, the code checks a strict JSON object, one `SELECT`, slice names only, no parameters,
+  member literals traced to the lattice, and `handled_spans` naming carried gaps. The door runs it under the
+  caller's subject; one rejection buys one repair. Each call counts against `max_llm_invocations`. New
+  refusal reasons `QUERY_NOT_WRITTEN` (budget, second rejection, invalid object, broken rule) and
+  `LANE_UNAVAILABLE` (meta.v1, llm.v1 or query.v1 unreachable). The answer envelope gains `sql`,
+  `llm_handled` and `provenance.lane` / `llm_model` / `sql_sha256`; `gaps_carried` is unchanged. With the
+  lane off, answers are exactly as before.
+
 - **golem-py — the LLM lane's three clients (OL W1c·S1).** The `llm.v1` gateway client (`CreateResponse`:
   a JSON object at temperature 0, model class `capable`, the caller's timeout), the `meta.v1` model slice
   (`GetModel` for `GOLEM_META_PACKAGES`; the bound refs' ER entities first, capped at
