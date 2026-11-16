@@ -5,10 +5,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.IntegerColumnType
@@ -41,6 +41,7 @@ import org.tatrman.automation.apply.ApplyRow.Companion.DECIDED
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_AT
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_OUTCOME
 import org.tatrman.automation.writer.RowIdentity
+import org.tatrman.automation.writer.Settlement
 import org.tatrman.automation.writer.RowOutcome
 import org.tatrman.automation.protocol.IslandExecution
 import org.tatrman.automation.protocol.ProtocolDocument
@@ -195,8 +196,8 @@ data class HeldGroup(
     val statuses: List<BatchRowStatus>,
     val actions: List<DryRunAction>,
     val budget: Duration,
-    /** D-202 (F2), review-293 F8: what an earlier wet run of the program applied over this run's window. */
-    val settled: Set<RowIdentity> = emptySet(),
+    /** D-202 (F2), review-293 F8, D-206: what earlier wet runs of the program settled over this run's window. */
+    val settlement: Settlement = Settlement(),
 )
 
 /** S2.3: what a revert reads (see [Ledger.revertState]). */
@@ -475,7 +476,7 @@ class Ledger(
             this[BatchRows.entity] = item.entity
             this[BatchRows.op] = item.op
             this[BatchRows.key] = item.key
-            this[BatchRows.row] = item.storedRow()
+            this[BatchRows.row] = ApplyRow.journaled(item)
             this[BatchRows.groupKey] = item.group
             this[BatchRows.status] = "staged"
         }
@@ -637,6 +638,8 @@ class Ledger(
                 ensureRunBudget(runId, defaultBudget, clock, wetClose = true)
             }
             val plan = batchPlan(runId, batchId)
+            // Only a run that still applies reads it (the close and perform apply an `evaluated` run only).
+            val settlement = if (status == RunStatus.EVALUATED) settled(row) else Settlement()
             ApplyState(
                 batchId,
                 row[Runs.runAs].orEmpty(),
@@ -659,8 +662,8 @@ class Ledger(
                             )
                     },
                 runDeadline(runId, defaultBudget),
-                // Only a run that still applies reads it (the close and perform apply an `evaluated` run only).
-                if (status == RunStatus.EVALUATED) settled(row) else emptySet(),
+                settlement.settled,
+                settlement.unknown,
             )
         }
     }
@@ -725,12 +728,16 @@ class Ledger(
                 BatchRows.update({ (BatchRows.batch eq batch) and (BatchRows.seq eq outcome.seq) }) {
                     it[status] = outcome.status
                     it[error] = outcome.error
-                    if (stored is JsonObject && (outcome.prior != null || outcome.history != null)) {
+                    if (stored is JsonObject &&
+                        (outcome.prior != null || outcome.history != null || outcome.settledBy != null)
+                    ) {
                         val evidence =
                             listOfNotNull(
                                 outcome.prior?.let { p -> "prior" to p },
                                 outcome.history?.let { h -> HISTORY_OUTCOME to JsonPrimitive(h) },
                                 outcome.committedAt?.let { a -> HISTORY_AT to JsonPrimitive(a.toString()) },
+                                // review-303 F3: what a `skipped · settled` row matched, carried to the next window.
+                                outcome.settledBy?.let { b -> ApplyRow.SETTLED_BY to b },
                             )
                         it[row] = JsonObject(stored + evidence)
                     }
@@ -978,6 +985,8 @@ class Ledger(
                             },
                         ),
                     )
+                    // D-206 (F10) + review-258 B3: unknown outcomes a read proved applied (counted in `applied` too).
+                    put("reconciled", JsonPrimitive(rows.count { it[BatchRows.error] == RowOutcome.RECONCILED }))
                     put("history", historyCounts(rows))
                     if (waiting) {
                         // S2.3: held rows are counted apart, with their groups; each decision appends after the seal.
@@ -1098,7 +1107,10 @@ class Ledger(
      * undecided, so another group's decision never closes the run without it (D-97).
      */
     private fun undecidedHeld(r: org.jetbrains.exposed.v1.core.ResultRow): Boolean =
-        r[BatchRows.groupKey] != null && (r[BatchRows.row] as? JsonObject)?.get(DECIDED) == null
+        r[BatchRows.groupKey] != null &&
+            (r[BatchRows.row] as? JsonObject)?.get(DECIDED) == null &&
+            // D-206 (F9): a held row the close settled (an earlier run applied or rejected it) awaits no decision.
+            !(r[BatchRows.status] == "skipped" && r[BatchRows.error] == RowOutcome.SETTLED)
 
     /**
      * S2.3: what a decision on one held group reads — the run (its pinned fps and names, for D-99), the batch, every
@@ -1152,55 +1164,117 @@ class Ledger(
     }
 
     /**
-     * D-202 (F2): the identities (entity, key, op) of the rows an earlier wet run of [run]'s program `applied` over a
-     * window that overlaps [run]'s `[from, to)` — the re-read of a held range sends only the rest. Empty unless [run] is
-     * a wet watermark run. Per program: another program's applied rows never settle this one's. Any status (planner
-     * ~15:45, Found 4; review-293 F6): an applied row's effect is done whatever happened to its run afterwards — a run
-     * that applied rows and then failed (`close-deadline-exceeded`) settles them too. A row without a key has no
-     * identity and is never settled. Read in the caller's transaction.
+     * D-202 (F2) + D-206 + review-303: what earlier wet runs of [run]'s program settled over a window that overlaps
+     * [run]'s `[from, to)` — the re-read of a held range sends only the rest. Empty unless [run] is a wet watermark run.
+     * Per program: another program's rows never settle this one's. Any run status (planner ~15:45, Found 4; review-293
+     * F6): an applied row's effect is done whatever happened to its run afterwards. A row settles when its outcome is:
+     * - `applied` (a reconciled one too);
+     * - `failed` with a settled code ([RowOutcome.holds] false; D-206 F2: the re-read does not resend it beside the
+     *   rows it rolled back);
+     * - `skipped · rejected` (D-206 F9: an operator's decision is not asked again);
+     * - `skipped · settled` (review-303 F3: the identity was in place — the settlement carries on to a run that overlaps
+     *   only the settling one; its `settled_by` names the original outcome, which is carried on).
+     * Never from a batch in state `reverted` or a revert batch (`rev_of` set; D-206 F7). An insert left `staged ·
+     * unknown-outcome` or `in-flight` is returned apart ([Settlement.unknown], D-206 F10).
+     *
+     * **The latest write wins (review-303 F1, ✅R303-B).** Per (entity, key, op) only the latest write — by write time
+     * (a held row's decision, else its run's start), not by window: a later re-run of an older window is the later write,
+     * and a held row an operator commits after a debug replay applied is later than the replay (review-303 N1) — that
+     * settled or lost a row of it counts. One write is one (run, write time): its digests (a current key has one insert
+     * per route) are the settled identities, and an older lost insert is not reconciled against a newer write. A value that went A → B → A is therefore re-applied. A D-210 business-key insert
+     * is unaffected: its values are constant.
+     *
+     * Identities are [RowIdentity.of] the journaled rows (the planner's [ApplyRow.settle] evidence where it set one); a
+     * row without a key has none and never settles. Read in the caller's transaction.
      */
-    private fun settled(run: org.jetbrains.exposed.v1.core.ResultRow): Set<RowIdentity> {
-        val program = run[Runs.program] ?: return emptySet()
-        if (run[Runs.dryRun]) return emptySet()
-        val window = Watermark.keeping(run[Runs.port]) ?: return emptySet()
+    private fun settled(run: org.jetbrains.exposed.v1.core.ResultRow): Settlement {
+        val program = run[Runs.program] ?: return Settlement()
+        if (run[Runs.dryRun]) return Settlement()
+        val window = Watermark.keeping(run[Runs.port]) ?: return Settlement()
         val from = Instant.parse(window.getValue("from").jsonPrimitive.content).atOffset(ZoneOffset.UTC)
         val to = Instant.parse(window.getValue("to").jsonPrimitive.content).atOffset(ZoneOffset.UTC)
+
+        class Latest(
+            val run: String,
+            val at: String,
+        ) {
+            val settled = linkedMapOf<RowIdentity, JsonObject>()
+            val unknown = mutableListOf<Pair<RowIdentity, ApplyRow>>()
+        }
+        val latest = linkedMapOf<Triple<String, JsonObject, String>, Latest>()
         val tx = TransactionManager.current()
-        return tx
-            .exec(
-                """
-                SELECT br.entity, br.key::text, br.op
-                FROM automation.runs r
-                JOIN automation.batches b ON b.run = r.id
-                JOIN automation.batch_rows br ON br.batch = b.id
-                WHERE r.program = ? AND r.id <> ? AND NOT r.dry_run
-                  AND (r.port -> '${Watermark.PORT_KEY}' ->> 'from')::timestamptz < ?
-                  AND (r.port -> '${Watermark.PORT_KEY}' ->> 'to')::timestamptz > ?
-                  AND br.status = 'applied' AND br.key IS NOT NULL AND br.key <> '{}'::jsonb
-                """.trimIndent(),
-                listOf<Pair<org.jetbrains.exposed.v1.core.IColumnType<*>, Any>>(
-                    org.jetbrains.exposed.v1.core
-                        .TextColumnType() to program,
-                    org.jetbrains.exposed.v1.core.java
-                        .UUIDColumnType() to run[Runs.id],
-                    org.jetbrains.exposed.v1.javatime
-                        .JavaOffsetDateTimeColumnType() to to,
-                    org.jetbrains.exposed.v1.javatime
-                        .JavaOffsetDateTimeColumnType() to from,
-                ),
-            ) { rs ->
-                buildSet {
-                    while (rs.next()) {
-                        add(
-                            RowIdentity(
-                                rs.getString(1),
-                                Json.parseToJsonElement(rs.getString(2)).jsonObject,
-                                rs.getString(3),
-                            ),
-                        )
-                    }
+        tx.exec(
+            // review-303 F5: only the rows that settle or were lost are read.
+            """
+            SELECT r.id::text, br.seq, br.entity, br.op, br.key::text, br.row::text, br.status, br.error,
+              coalesce((br.row -> '${ApplyRow.DECIDED}' ->> 'at')::timestamptz, r.started_at)::text AS written
+            FROM automation.runs r
+            JOIN automation.batches b ON b.run = r.id
+            JOIN automation.batch_rows br ON br.batch = b.id
+            WHERE r.program = ? AND r.id <> ? AND NOT r.dry_run
+              AND (r.port -> '${Watermark.PORT_KEY}' ->> 'from')::timestamptz < ?
+              AND (r.port -> '${Watermark.PORT_KEY}' ->> 'to')::timestamptz > ?
+              AND b.state <> 'reverted' AND b.rev_of IS NULL
+              AND (br.status IN ('applied', 'failed')
+                OR (br.status = 'skipped' AND br.error IN ('${RowOutcome.REJECTED}', '${RowOutcome.SETTLED}'))
+                OR (br.status = 'staged' AND br.op = 'insert'
+                  AND br.error IN ('${RowOutcome.UNKNOWN}', '${RowOutcome.IN_FLIGHT}')))
+            ORDER BY written, r.started_at, r.id, br.seq
+            """.trimIndent(),
+            listOf<Pair<org.jetbrains.exposed.v1.core.IColumnType<*>, Any>>(
+                org.jetbrains.exposed.v1.core
+                    .TextColumnType() to program,
+                org.jetbrains.exposed.v1.core.java
+                    .UUIDColumnType() to run[Runs.id],
+                org.jetbrains.exposed.v1.javatime
+                    .JavaOffsetDateTimeColumnType() to to,
+                org.jetbrains.exposed.v1.javatime
+                    .JavaOffsetDateTimeColumnType() to from,
+            ),
+        ) { rs ->
+            while (rs.next()) {
+                val runId = rs.getString(1)
+                // review-303 N1: a held row is written at its decision (commit or reject), any other at its run's start.
+                val written = rs.getString(9)
+                val status = rs.getString(7)
+                val error = rs.getString(8)
+                // The tables of settled and transient codes live in code (F5: the rest of the filter is SQL's).
+                if (status == "failed" && RowOutcome.holds(status, error)) continue
+                val data = rs.getString(6)?.let(Json::parseToJsonElement)
+                val row =
+                    ApplyRow.restore(
+                        rs.getInt(2),
+                        rs.getString(3),
+                        rs.getString(4),
+                        rs.getString(5)?.let(Json::parseToJsonElement),
+                        data,
+                        null,
+                    )
+                val identity = RowIdentity.of(row) ?: continue
+                val slot = Triple(identity.entity, identity.key, identity.op)
+                val entry =
+                    latest[slot]?.takeIf { it.run == runId && it.at == written }
+                        ?: Latest(runId, written).also { latest[slot] = it }
+                if (status == "staged") {
+                    entry.unknown += identity to row
+                } else {
+                    entry.settled[identity] =
+                        ((data as? JsonObject)?.get(ApplyRow.SETTLED_BY) as? JsonObject)
+                            ?: kotlinx.serialization.json.buildJsonObject {
+                                put("run", JsonPrimitive(runId))
+                                put("status", JsonPrimitive(status))
+                                put("error", error?.let(::JsonPrimitive) ?: JsonNull)
+                            }
                 }
-            }.orEmpty()
+            }
+        }
+        val settled = latest.values.flatMap { it.settled.entries }.associate { it.key to it.value }
+        val unknown =
+            latest.values
+                .flatMap { it.unknown }
+                .filter { it.first !in settled }
+                .groupBy({ it.first }, { it.second })
+        return Settlement(settled, unknown)
     }
 
     /**

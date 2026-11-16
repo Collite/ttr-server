@@ -36,6 +36,10 @@ class RowOutcomeHoldsSpec :
                 Triple("failed", "query_failed", true),
                 Triple("failed", "no_worker_for_connection", true),
                 Triple("failed", "no_stateful_worker_available", true),
+                // Transient: the read of an earlier run's unknown insert failed; the row was not sent (D-206 F10).
+                Triple("failed", RowOutcome.RECONCILE_UNREAD, true),
+                // Holds: the request rolled back beside a failed row — nothing of it was written (D-206 F2).
+                Triple("skipped", RowOutcome.ROLLED_BACK, true),
                 Triple("failed", null, true),
                 // Settled: the verdict stands (D-67, D-201).
                 Triple("failed", RowOutcome.STALE_STATE, false),
@@ -59,13 +63,16 @@ class RowOutcomeHoldsSpec :
                 Triple("failed", "parameter_unbound", false),
                 Triple("failed", "row_writes_schema_mismatch", false),
                 Triple("failed", "row_writes_connection_mismatch", false),
+                // Settled: the worker's refusal of one row's shape (the request rolls back; D-206 F2).
+                Triple("failed", "row_writes_shape", false),
                 // Never: applied and skipped rows (a history sub-outcome is not a row status).
                 Triple("applied", null, false),
                 Triple("applied", RowOutcome.RECONCILED, false),
                 Triple("applied", "history-failed: worker_execution_failed", false),
                 Triple("skipped", "if_absent", false),
                 Triple("skipped", "not-writable", false),
-                Triple("skipped", "rolled-back", false),
+                Triple("skipped", RowOutcome.SETTLED, false),
+                Triple("skipped", RowOutcome.REJECTED, false),
             )
 
         "only a transient outcome holds the watermark — one row per code" {

@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
@@ -44,6 +45,11 @@ data class RowOutcome(
     val committedAt: Instant? = null,
     /** review-258 B3: the door request the row was sent in (read back from the journal; never written from here). */
     val request: String? = null,
+    /**
+     * review-303 F3: on a `skipped · settled` row, the earlier outcome it matched — `{ run, status, error }`, the
+     * original one when that match was itself settled — journaled as [org.tatrman.automation.apply.ApplyRow.SETTLED_BY].
+     */
+    val settledBy: JsonObject? = null,
 ) {
     init {
         require(status in setOf("staged", "applied", "failed", "skipped"))
@@ -68,8 +74,14 @@ data class RowOutcome(
          */
         const val HISTORY_PENDING = "pending"
 
-        /** review-258 B3: an unknown outcome a re-read found applied ([Apply.reconcile]). */
+        /** review-258 B3: an unknown outcome a re-read found applied ([Apply.reconcile]); D-206 F10 too. */
         const val RECONCILED = "reconciled"
+
+        /**
+         * D-206 (F10): the read of an earlier run's unknown insert failed — the row is not sent (its key may differ from
+         * the earlier row's) and the code is transient, so it holds and the next re-read reads again.
+         */
+        const val RECONCILE_UNREAD = "reconcile-unread"
 
         /**
          * D-202 (F2): `skipped · settled` — an earlier sealed run of this windowed program applied the row's (entity, key,
@@ -111,18 +123,69 @@ data class RowOutcome(
                 "query_failed",
                 "no_worker_for_connection",
                 "no_stateful_worker_available",
+                RECONCILE_UNREAD,
             )
 
         /** D-202 (F5): door code families that are transient as a whole (the worker's and the connection's faults). */
         val TRANSIENT_PREFIXES = listOf("worker_", "connection_")
 
         /**
+         * D-206 (F1 residual): the `failed` codes a later attempt would repeat — a verdict on the row, not a fault. With
+         * [SETTLED_PREFIXES] this is the whole table of settled failures today's producers name: this writer
+         * (`stale-state`, `no-row`, `rows-affected-N`, `not-writable`, `bad-transition`, `bad-value`, `unknown-attribute`,
+         * `unknown-entity`, `row_writes_key`, `row_writes_values`), the door (`storage-unmapped`), query and translate/
+         * validate's plan refusals, and dispatch's and the worker's request-shape refusals (`row_writes_*`, e.g. the
+         * worker's `row_writes_shape`). A code in neither table still settles at run time (✅R293-C); the classification
+         * spec (`RowOutcomeHoldsSpec`) fails on one a producer names.
+         */
+        val SETTLED_FAILURES =
+            setOf(
+                STALE_STATE,
+                "no-row",
+                "not-writable",
+                "storage-unmapped",
+                "bad-transition",
+                "bad-value",
+                "unknown-attribute",
+                "unknown-entity",
+                "write_under_row_policy",
+                "unknown_world",
+                "world_unspecified",
+                "out-of-scope-read",
+                "parameter_unbound",
+                "cross_database_not_supported",
+                "workspace_requires_session",
+                "session_lost",
+            )
+
+        /** D-206 (F1 residual): settled code families (`rows-affected-N`; every `row_writes_*` request-shape refusal). */
+        val SETTLED_PREFIXES = listOf("rows-affected-", "row_writes_")
+
+        /** D-206 (F1 residual): whether [code] is named in the transient or the settled table. */
+        fun classified(code: String): Boolean =
+            code in TRANSIENT ||
+                TRANSIENT_PREFIXES.any { code.startsWith(it) } ||
+                code in SETTLED_FAILURES ||
+                SETTLED_PREFIXES.any { code.startsWith(it) }
+
+        /**
+         * `skipped · rolled-back`: the row was sent beside a row the worker failed, and the request rolled back. It
+         * holds (D-206 F2): nothing of it was written.
+         */
+        const val ROLLED_BACK = "rolled-back"
+
+        /** `skipped · rejected`: an operator rejected the row's held group (S2.3); a decision, it settles (D-206 F9). */
+        const val REJECTED = "rejected"
+
+        /**
          * D-202 (F5) + D-201 — the one hold rule: whether a closed row's outcome holds a windowed program's watermark.
          * Only a transient outcome holds: a `staged` row (an unknown commit, [UNKNOWN]; never resent) and a `failed`
          * row whose code is [TRANSIENT] or in a [TRANSIENT_PREFIXES] family. A settled failure does not hold — the
          * verdict stands (`stale-state`, D-67) or the refusal would repeat on every re-read (`write_under_row_policy`,
-         * `not-writable`, `bad-transition`, `no-row`, `rows-affected-N`, a validation refusal). `applied` and `skipped`
-         * never hold, whatever an applied transition's `state_history` sub-outcome (not a row status, ⚑AU-S32-2).
+         * `not-writable`, `bad-transition`, `no-row`, `rows-affected-N`, a validation refusal). A `skipped ·
+         * rolled-back` row holds (D-206 F2: its request rolled back, nothing of it was written); every other `skipped`
+         * row and every `applied` row does not, whatever an applied transition's `state_history` sub-outcome (not a row
+         * status, ⚑AU-S32-2).
          */
         fun holds(
             status: String,
@@ -131,6 +194,7 @@ data class RowOutcome(
             when (status) {
                 "staged" -> true
                 "failed" -> error == null || error in TRANSIENT || TRANSIENT_PREFIXES.any { error.startsWith(it) }
+                "skipped" -> error == ROLLED_BACK
                 else -> false
             }
     }
@@ -150,18 +214,92 @@ interface ApplyJournal {
     fun record(outcomes: List<RowOutcome>)
 }
 
-/** D-202 (F2): a batch row's identity across runs of one program — `batch_rows` (entity, key, op); the key is non-empty. */
+/**
+ * D-202 (F2) + D-206 (F4/F5) + D-210: a batch row's identity across runs of one program — (entity, key, op, values).
+ * [key] is the planned key when the planner set one ([ApplyRow.settle]), else the row's own non-empty key. [values] is a
+ * digest of what the row writes ([digest]): a changed value is a new identity, so it is re-applied; an unchanged one
+ * settles. The planner's keys:
+ * - an insert on a **business key** — a writer-sink row (its route row's key, wiring and route) or an obligation (its
+ *   entity, key and kind) — never by an id the run seeds, and with [values] = [BUSINESS_KEY]: the row exists under its
+ *   key, a changed planned value is not a second row, the first proposal stands (D-210, D-67);
+ * - a **current pair**: the delete by its key, with the digest of every row it precedes; each insert by its key and
+ *   route, with that group digest and its own — any change in the group is a change of every member (review-303 F2).
+ */
 data class RowIdentity(
     val entity: String,
     val key: JsonObject,
     val op: String,
+    val values: String,
 ) {
     companion object {
+        /** Columns every run seeds in a verdict, detail or current row (the planner's `common` values, D-206 F4). */
+        val SEEDED = setOf("run", "as_of", "written_at")
+
+        /** D-210: the [values] of an insert on a business key — its values are not part of its identity. */
+        const val BUSINESS_KEY = "business-key"
+
         /** A row's identity; null for a row without a key (an insert the plan did not key): never settled. */
-        fun of(row: ApplyRow): RowIdentity? =
-            row.key?.takeIf { it.isNotEmpty() }?.let { RowIdentity(row.entity, it, row.op) }
+        fun of(row: ApplyRow): RowIdentity? {
+            row.settle?.let { return RowIdentity(row.entity, it.key, row.op, it.values) }
+            val key = row.key?.takeIf { it.isNotEmpty() } ?: return null
+            return RowIdentity(row.entity, key, row.op, digest(row))
+        }
+
+        /**
+         * What [row] writes, as a digest: an insert its values less the [SEEDED] columns, an update its `set:`, a
+         * transition its attribute and `to`, a delete nothing (a current delete carries its planned digest instead).
+         */
+        fun digest(row: ApplyRow): String =
+            digest(
+                when (row.op) {
+                    "insert" -> JsonObject(requireNotNull(row.row) - SEEDED)
+                    "update" -> requireNotNull(row.set)
+                    "transition" ->
+                        buildJsonObject {
+                            put("attribute", requireNotNull(row.attribute))
+                            put("to", requireNotNull(row.to))
+                        }
+                    else -> JsonObject(emptyMap())
+                },
+            )
+
+        /**
+         * A SHA-256 of [value]'s canonical text: object keys sorted, numbers by value (jsonb keeps neither order nor
+         * scale) and unquoted, so the number 100 and the string "100" differ (review-303 F4).
+         */
+        fun digest(value: JsonElement): String {
+            val hash = java.security.MessageDigest.getInstance("SHA-256")
+            hash.update(canonical(value).toString().toByteArray(Charsets.UTF_8))
+            return "sha256:" + hash.digest().joinToString("") { "%02x".format(it) }
+        }
+
+        private fun canonical(value: JsonElement): JsonElement =
+            when (value) {
+                is JsonObject -> JsonObject(value.toSortedMap().mapValues { canonical(it.value) })
+                is JsonArray -> JsonArray(value.map(::canonical))
+                is JsonNull -> value
+                is JsonPrimitive ->
+                    if (value.isString || value.booleanOrNull != null) {
+                        value
+                    } else {
+                        value.content.toBigDecimalOrNull()?.let {
+                            @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+                            kotlinx.serialization.json.JsonUnquotedLiteral(it.stripTrailingZeros().toPlainString())
+                        } ?: value
+                    }
+            }
     }
 }
+
+/**
+ * D-206 + review-303 F1/F3: what earlier runs of a windowed program settled ([ApplyInput.settled]: each identity → the
+ * outcome it matched, `{ run, status, error }`) and left unknown ([ApplyInput.unknown]). Per (entity, key, op), only the
+ * latest run that wrote it counts.
+ */
+data class Settlement(
+    val settled: Map<RowIdentity, JsonObject> = emptyMap(),
+    val unknown: Map<RowIdentity, List<ApplyRow>> = emptyMap(),
+)
 
 /** What a committed run applies: the journaled plan and the context pinned at Open. */
 data class ApplyInput(
@@ -193,9 +331,16 @@ data class ApplyInput(
     val units: List<List<Int>> = emptyList(),
     /**
      * D-202 (F2): the identities an earlier sealed run of this windowed program applied over a window that overlaps this
-     * run's (the ledger's `ApplyState.settled`). A row not yet sent with one of them is `skipped · settled`, never sent.
+     * run's (the ledger's `ApplyState.settled`). A row not yet sent with one of them is `skipped · settled`, never sent;
+     * the value is the outcome it matched (review-303 F3, journaled as the row's `settled_by`).
      */
-    val settled: Set<RowIdentity> = emptySet(),
+    val settled: Map<RowIdentity, JsonObject> = emptyMap(),
+    /**
+     * D-206 (F10): the inserts earlier runs of the program left `staged · unknown-outcome` (or `in-flight`), by the
+     * identity a row of this run would share with them. Before such a row is sent, each earlier row's key is read
+     * through the door ([Apply.apply]): one found → `applied · reconciled`, not sent; none → sent.
+     */
+    val unknown: Map<RowIdentity, List<ApplyRow>> = emptyMap(),
 )
 
 /**
@@ -239,13 +384,41 @@ class Apply(
         }
         // D-202 (F2): a re-read settles per row — what an earlier run of the program applied over this range is not resent.
         if (input.settled.isNotEmpty()) {
+            // review-303 F2: a delete that is sent clears its key, so no insert of that key may settle beside it — a
+            // current pair settles as one unit or not at all (the planner's group digest makes it so; this guards it).
+            val cleared =
+                input.rows
+                    .filter { it.op == "delete" && outcomes[it.seq] == null && RowIdentity.of(it) !in input.settled }
+                    .map { it.entity to it.key }
+                    .toSet()
             val settled =
                 input.rows
-                    .filter { outcomes[it.seq] == null && RowIdentity.of(it) in input.settled }
-                    .map { RowOutcome(it.seq, "skipped", RowOutcome.SETTLED) }
+                    .filter { outcomes[it.seq] == null && !(it.op == "insert" && (it.entity to it.key) in cleared) }
+                    .mapNotNull { row ->
+                        RowIdentity.of(row)?.let { input.settled[it] }?.let { matched ->
+                            RowOutcome(row.seq, "skipped", RowOutcome.SETTLED, settledBy = matched)
+                        }
+                    }
             if (settled.isNotEmpty()) {
                 journal.record(settled)
                 settled.forEach { outcomes[it.seq] = it }
+            }
+        }
+        // D-206 (F10): an insert an earlier run left unknown is read before it is resent; found, it is not sent again.
+        // An insert that follows a delete of its key in this plan (a current row) is not read: the pair is resent
+        // whole, and the delete clears what the lost request left.
+        if (input.unknown.isNotEmpty()) {
+            val replaced =
+                input.rows
+                    .filter { it.op == "delete" }
+                    .map { it.entity to it.key }
+                    .toSet()
+            for (row in input.rows) {
+                if (outcomes[row.seq] != null || row.op != "insert" || (row.entity to row.key) in replaced) continue
+                val earlier = RowIdentity.of(row)?.let { input.unknown[it] } ?: continue
+                val outcome = reconcileEarlier(input, row, earlier) ?: continue
+                journal.record(listOf(outcome))
+                outcomes[row.seq] = outcome
             }
         }
         val partners = partners(input.rows, input.actions, input.units)
@@ -373,7 +546,7 @@ class Apply(
                         ) {
                             RowOutcome(it, "failed", e.code)
                         } else {
-                            RowOutcome(it, "skipped", "rolled-back")
+                            RowOutcome(it, "skipped", RowOutcome.ROLLED_BACK)
                         }
                     },
                 )
@@ -542,6 +715,55 @@ class Apply(
         } catch (e: DoorWriteFailure) {
             failed(e.code)
         }
+    }
+
+    /**
+     * D-206 (F10): reads each [earlier] insert's key through the door, one read per row under the run's identity (a
+     * probe writes nothing). One found → [row] is `applied · reconciled`. None found → null: [row] is sent. A key that
+     * cannot be read back (no declared key, a null key value) proves nothing: null, sent as before. A read the door
+     * refuses or loses is `failed · reconcile-unread` — transient, it holds, and the next re-read reads again; the row
+     * is not sent, since a row of this run need not share the earlier row's key (a writer's generated id).
+     */
+    private suspend fun reconcileEarlier(
+        input: ApplyInput,
+        row: ApplyRow,
+        earlier: List<ApplyRow>,
+    ): RowOutcome? {
+        for (prior in earlier) {
+            val lowering = RowWrites(input.entities, input.routes, input.inverse)
+            val probe =
+                try {
+                    val names = lowering.keyNames(prior.entity)
+                    val values = requireNotNull(prior.row)
+                    if (names.isEmpty() || names.any { values[it] == null || values[it] == JsonNull }) continue
+                    lowering.probe(prior.entity, JsonObject(names.associateWith { values.getValue(it) }), names)
+                } catch (_: RowRefusal) {
+                    continue
+                }
+            val found =
+                try {
+                    val storage = ApplyPlanner.groups(listOf(prior), input.source).single().storage
+                    door
+                        .write(
+                            DoorWrite(
+                                input.run,
+                                "reconcile/$storage/${row.seq}",
+                                input.world,
+                                storage,
+                                RowWritesProto.newBuilder().addRows(probe).build(),
+                                lowering.parameters,
+                                input.identity,
+                                input.modelFp,
+                                remaining(input),
+                            ),
+                        ).prior
+                        .getOrNull(0) != null
+                } catch (_: DoorWriteFailure) {
+                    return RowOutcome(row.seq, "failed", RowOutcome.RECONCILE_UNREAD)
+                }
+            if (found) return RowOutcome(row.seq, "applied", RowOutcome.RECONCILED)
+        }
+        return null
     }
 
     /** The time left before the run's original deadline; none left → `close-deadline-exceeded`, nothing is sent. */

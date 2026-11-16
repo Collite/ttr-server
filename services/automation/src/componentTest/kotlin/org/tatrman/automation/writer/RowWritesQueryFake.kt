@@ -54,6 +54,12 @@ class RowWritesQueryFake(
     /** A Query/validate refusal before dispatch (`identity`, `write_under_row_policy`, …): its code, or null. */
     @Volatile var refuse: (RunRequest) -> String? = { null }
 
+    /**
+     * The worker's refusal of one row before anything ran (worker-postgres `ExecutePipeline`: the translator refuses
+     * row N's unparse → `row_writes_shape`, "row_writes seq N: …"); the whole request rolls back. Its (seq, code), or null.
+     */
+    @Volatile var failRow: (RunRequest) -> Pair<Int, String>? = { null }
+
     /** Commit, then answer as if the connection dropped during the commit (an unknown outcome). */
     @Volatile var loseCommit: (RunRequest) -> Boolean = { false }
 
@@ -70,6 +76,7 @@ class RowWritesQueryFake(
     private fun write(request: RunRequest): ResultBatch {
         writes += request
         refuse(request)?.let { return error(request, it, "refused before dispatch") }
+        failRow(request)?.let { (seq, code) -> return error(request, code, "row_writes seq $seq: refused") }
         val schema = worlds[request.world] ?: return error(request, "unknown_world", "no writer world ${request.world}")
         val plan = PlanNode.parseFrom(request.source.toByteArray(Charsets.ISO_8859_1))
         check(plan.nodeCase == PlanNode.NodeCase.ROW_WRITES) { "not a row_writes root" }

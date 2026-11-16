@@ -11,6 +11,7 @@ import org.tatrman.automation.bundle.Bundle
 import org.tatrman.automation.bundle.ManifestRoute
 import org.tatrman.automation.bundle.ManifestWiring
 import org.tatrman.automation.runner.*
+import org.tatrman.automation.writer.RowIdentity
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttr.metadata.model.Entity
 import org.tatrman.ttrp.graph.recipe.RecipeChecker
@@ -46,6 +47,8 @@ class ApplyPlanner(
         val fulfilment: PreviewFulfilment?,
         val targets: Map<String, TargetResolution.Resolved>?,
         val generated: Boolean,
+        /** The wiring's position in the recipe: with the route, what a generated id is seeded by besides the run. */
+        val index: Int = 0,
     )
 
     private data class PreparedRoute(
@@ -241,6 +244,7 @@ class ApplyPlanner(
                                 fulfilment,
                                 targets,
                                 (defaults.generated - wiring.columns.keys).isNotEmpty(),
+                                wiringIndex,
                             )
                         }
                 PreparedRoute(route, table, routeKeys, details, selected)
@@ -377,15 +381,27 @@ class ApplyPlanner(
                                     fulfilments.add(fulfilment.transition(assigned, lookup, rows.size + 1), rows)
                             } else {
                                 val insert = requireNotNull(obligation).insert(rows.size + 1, assigned, context)
-                                obligationRows = listOf(obligations.add(insert, rows))
+                                obligationRows = listOf(obligations.add(insert.copy(settle = settleKey(insert)), rows))
                             }
                         }
                         "transition" -> effects(action, args, metadata, targets, rows)
                         "writer" -> {
                             val fields = assignmentNames(action, args.keys)
-                            val insert = requireNotNull(writer).insert(rows.size + 1, args.filterKeys { it in fields })
+                            val assigned = args.filterKeys { it in fields }
+                            val insert = requireNotNull(writer).insert(rows.size + 1, assigned)
                             writerKeys.record(insert, generated)
-                            rows += insert
+                            // D-206 (F5) + D-210: an insert on a business key — the route row's key with the wiring and
+                            // route (what the generated id is seeded by besides the run, `PreviewWriterIds`), never the
+                            // id the run generated; its values are not part of its identity (the first proposal stands).
+                            val business =
+                                JsonObject(
+                                    key +
+                                        mapOf(
+                                            "automation:wiring" to JsonPrimitive(prepared.index),
+                                            "automation:route" to JsonPrimitive(route.name),
+                                        ),
+                                )
+                            rows += insert.copy(settle = SettleKey(business, RowIdentity.BUSINESS_KEY))
                         }
                         ENGINE_SINK -> Unit
                         else -> unsupported("native $sink preview requires its writer lowering")
@@ -500,9 +516,23 @@ class ApplyPlanner(
             val byKey = verdicts.groupBy { requireNotNull(it.key) }
             if (!preview.candidateKeys.containsAll(byKey.keys)) unsupported("verdict key outside the run's candidates")
             for (key in preview.candidateKeys) {
-                val rows = byKey[key].orEmpty()
-                selected += ApplyRow(selected.size + 1, current, "delete", key)
-                rows.forEach { selected += it.copy(seq = selected.size + 1, entity = current) }
+                val rows = byKey[key].orEmpty().map { it.copy(entity = current) }
+                // D-206 (F4) + review-303 F2: a current pair settles as one unit or not at all. The delete carries the
+                // group digest of every row it precedes; each insert is keyed by its key and route and carries the group
+                // digest with its own — so a change of any route's row resends the delete and every insert of the key.
+                val group = RowIdentity.digest(JsonArray(rows.map { JsonPrimitive(RowIdentity.digest(it)) }))
+                selected += ApplyRow(selected.size + 1, current, "delete", key, settle = SettleKey(key, group))
+                rows.forEach {
+                    val route = requireNotNull(it.row)["route"] ?: JsonNull
+                    val member =
+                        SettleKey(
+                            JsonObject(key + ("automation:route" to route)),
+                            RowIdentity.digest(
+                                JsonArray(listOf(JsonPrimitive(group), JsonPrimitive(RowIdentity.digest(it)))),
+                            ),
+                        )
+                    selected += it.copy(seq = selected.size + 1, settle = member)
+                }
             }
         }
         val groups = groups(selected, source)
@@ -659,6 +689,17 @@ class ApplyPlanner(
         }
 
     private fun entityName(name: String) = if (name.startsWith("er.entity.")) name else "er.entity.$name"
+
+    /**
+     * D-206 (F5) + D-210: an obligation insert settles on the obligation's own business identity (entity, key, kind — the
+     * identity [PreviewObligation.Proposals] plans one row for), never on the id the run seeds, and without its values: a
+     * window-relative `due` that differs on an overlapping re-read is not a second obligation (the first proposal stands).
+     */
+    private fun settleKey(insert: ApplyRow): SettleKey =
+        SettleKey(
+            JsonObject(requireNotNull(insert.row).filterKeys { it in setOf("entity", "key", "kind") }),
+            RowIdentity.BUSINESS_KEY,
+        )
 
     companion object {
         /** The writer sinks whose rows an `approval: required` action holds (D-142: no other sink writes §4 rows). */
