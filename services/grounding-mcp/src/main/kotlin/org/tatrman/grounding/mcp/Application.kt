@@ -17,10 +17,12 @@ import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import kotlinx.coroutines.runBlocking
 import org.slf4j.event.Level
 import org.tatrman.grounding.mcp.client.GroundingGrpcClient
+import org.tatrman.grounding.mcp.client.ScanCapability
 import org.tatrman.grounding.mcp.telemetry.GroundingMcpTelemetry
 import shared.ktor.mcp.McpKtorConfig
 import shared.ktor.mcp.installMcpKtorBase
 import shared.ktor.mcp.safeMcpTool
+import kotlin.time.Duration.Companion.seconds
 
 private const val TOOL_TIMEOUT_MS = 25_000L
 
@@ -54,7 +56,14 @@ fun main(): Unit =
         registerWithCapabilities(config)
 
         try {
-            val tools = Tools(chrono, geo, money)
+            val tools =
+                Tools(
+                    chrono,
+                    geo,
+                    money,
+                    chronoScan =
+                        ScanCapability(config.getLong("grounding.status-ttl-seconds").seconds) { chrono.getStatus() },
+                )
             println("grounding-mcp running on port $serverPort (chrono/geo/money)")
 
             val appConfig =

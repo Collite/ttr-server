@@ -27,6 +27,10 @@ class ChronoScaffoldSpec :
             s.capabilitiesMap["llm_fallback"] shouldBe "false"
         }
 
+        "OL-C1: GetStatus declares scan=true — this chrono implements Scan" {
+            svc.getStatus(GetStatusRequest.getDefaultInstance()).capabilitiesMap["scan"] shouldBe "true"
+        }
+
         "Ground on an unrecognized span degrades to UNGROUNDABLE (scaffold)" {
             val r =
                 svc.ground(

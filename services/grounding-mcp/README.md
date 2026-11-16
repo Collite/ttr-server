@@ -15,7 +15,13 @@ wrappers, no grounding logic: each tool's arguments are the camelCase mirror of 
 Warnings (including `text_too_long`, after 128 tokens) and chrono errors are preserved; any ERROR makes the tool
 result `isError=true`. What a span is, and why, is chrono's: see `services/chrono/README.md` § `Scan`.
 
-`isError` is for a bad argument (`INVALID_ARGUMENT`) or a failed call to the service (`TRANSPORT_ERROR`);
+`scan_time` stays listed whatever chrono runs, but calls `Scan` only while chrono's `GetStatus` declares
+`capabilities["scan"] = "true"` (OL-C4, the same read as the resolver's). Otherwise, or while `GetStatus` fails, it
+answers a tool error with `errorCode: "not_available"` in one sentence and does not call `Scan`. The answer is kept for
+`grounding.status-ttl-seconds` (default 60, env `GROUNDING_STATUS_TTL_SECONDS`).
+
+`isError` is for a bad argument (`INVALID_ARGUMENT`), a failed call to the service (`TRANSPORT_ERROR`) or a chrono
+without Scan (`not_available`);
 `AWAITING_CLARIFICATION`, `UNGROUNDABLE` and a scan that finds nothing are ordinary results. Each tool is wrapped in
 `safeMcpTool`, so a timeout is a well-formed error result. The manifests in `src/main/resources/manifests/tools`
 register the capability ids with capabilities-mcp when `CAPABILITIES_MCP_URL` is set.

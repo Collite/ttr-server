@@ -4,6 +4,7 @@ package org.tatrman.grounding.mcp
 import org.tatrman.grounding.v1.ClarificationOption
 import org.tatrman.grounding.v1.DateTimeInterval
 import org.tatrman.grounding.v1.EntityKind
+import org.tatrman.grounding.v1.GetStatusResponse
 import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
 import org.tatrman.grounding.v1.GroundingResult
@@ -48,10 +49,17 @@ class ToolsTest :
             name: String,
             slot: CapturingSlot<GroundRequest>? = null,
             response: GroundResponse = okResponse(),
+            // OL-C1: chrono on master declares Scan; scan_time calls it only then (OL-C4).
+            status: GetStatusResponse? = GetStatusResponse.newBuilder().putCapabilities("scan", "true").build(),
         ): GroundingClient {
             val c = mockk<GroundingClient>()
             every { c.serviceName } returns name
             every { c.close() } just Runs
+            if (status != null) {
+                coEvery { c.getStatus() } returns status
+            } else {
+                coEvery { c.getStatus() } throws RuntimeException("UNAVAILABLE")
+            }
             if (slot != null) {
                 coEvery { c.ground(capture(slot)) } returns response
             } else {
@@ -290,6 +298,52 @@ class ToolsTest :
                 tools.scanTimeCallback(request(buildJsonObject { put("text", "   ") })).isError shouldBe true
                 coVerify(exactly = 1) { chrono.scan(any()) }
             }
+        }
+
+        // OL W1a·S1 (e) — OL-C4: against a grounder without `scan`, scan_time stays listed and answers the tool error
+        // `not_available` in one sentence; Scan is not called.
+        for ((case, status) in listOf(
+            "declares no scan" to GetStatusResponse.getDefaultInstance(),
+            "says scan=false" to GetStatusResponse.newBuilder().putCapabilities("scan", "false").build(),
+            "cannot be read" to null,
+        )) {
+            "(e) scan_time against a chrono that $case → tool error not_available, no Scan call" {
+                val chrono = client("chrono", status = status)
+                val tools = Tools(chrono, client("geo"), client("money"))
+                tools.scanTimeTool.name shouldBe "scan_time"
+                val result =
+                    tools.scanTimeCallback(
+                        request(
+                            buildJsonObject {
+                                put("text", "minulý měsíc")
+                                putJsonObject("context") { put("referenceDatetime", "2026-11-01T12:00:00+01:00") }
+                            },
+                        ),
+                    )
+                result.isError shouldBe true
+                (result.structuredContent as JsonObject)["errorCode"]!!.jsonPrimitive.content shouldBe "not_available"
+                textOf(result).trimEnd('.').contains('.') shouldBe false
+                coVerify(exactly = 0) { chrono.scan(any()) }
+            }
+        }
+
+        "(e) chrono's status is read once per TTL, not per call" {
+            val chrono = client("chrono")
+            coEvery { chrono.scan(any()) } returns ScanResponse.getDefaultInstance()
+            val tools = Tools(chrono, client("geo"), client("money"))
+            repeat(3) {
+                tools
+                    .scanTimeCallback(
+                        request(
+                            buildJsonObject {
+                                put("text", "Tržby v Brně")
+                                putJsonObject("context") { put("referenceDatetime", "2026-11-01T12:00:00+01:00") }
+                            },
+                        ),
+                    ).isError shouldBe false
+            }
+            coVerify(exactly = 1) { chrono.getStatus() }
+            coVerify(exactly = 3) { chrono.scan(any()) }
         }
 
         "scan_time transport failure → isError=true" {

@@ -217,6 +217,8 @@ class ChronoGroundingService(
             .setService("chrono")
             .putCapabilities("metadata", if (metadataOk) "ok" else "down")
             .putCapabilities("llm_fallback", (llmFallback != null).toString())
+            // OL-C1/C3: this chrono implements Scan; readers call it only while the key says so.
+            .putCapabilities("scan", "true")
             // RV-39/S-1: which vocabulary answered. Empty means no slice is serving, which is a
             // legitimate deployment — the capability map is the existing echo channel, so this
             // needs no wire change (J-v2).
