@@ -1,0 +1,14 @@
+{
+  "core": {
+    "item": {
+      "entity": "item"
+    }
+  },
+  "variables": {
+    "selected": {
+      "kind": "row",
+      "over": "item",
+      "prefix": "item-"
+    }
+  }
+}

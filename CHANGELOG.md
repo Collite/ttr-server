@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.22.3 → 0.22.7; translator/plan-proto stay 0.14.3 (MW S4.1).**
+  Load diagnostics in metadata's `/health` and in refresh warnings now report 1-based columns: the same file shows a
+  column one higher than before (`x.ttrm:12:5` where 0.22.3 showed `x.ttrm:12:4`; `:0:0` still means "no position").
+  metadata, resolver and automation resolve a single translator line (0.14.3; on 0.22.3 automation and resolver took
+  0.14.1 transitively). The `yaml` source kind and `MetadataLoader.of` arrive in the reader. `grounding-lexicon`'s next
+  server-libs POM names ttr-lexicon/ttr-snapshot 0.22.7. The three readers' fat jars are built with Zip64 (✅D-MW-86).
+
 - **golem-py: the CLI takes the LLM lane's settings, and four lane-on conversations join the
   conformance tier (OL W1c·S3).**
   - `src/main.py` builds the door, the gateway and the model slice from `GOLEM_*`. Before
@@ -47,6 +54,7 @@ outside this repo could notice is in.
   **`NLS-PACK-006`**: a pipeline naming a stage that is not installed (ERROR, fail-all), or a typed source file
   no installed stage owns (INFO, not read). `nlp` pipelines take `stages: [{stage: <name>, …}]`; `rules:` stays
   as an alias. Two entries naming one stage are a boot error. No proto change; rule behaviour unchanged.
+
 - **automation 0.11.41 — the route invariant tolerates CHAR padding and records `route_padded` (ttr-server#428).**
   Evaluation accepts trailing plain spaces only when the trimmed route or detail-route stamp matches its route port.
   Other whitespace and detail context stamps remain strict. One non-refusing warning
@@ -2101,6 +2109,19 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
+
+- **platform-question 0.11.0 — the external workflow task contract (OL W6·S3).**
+  `connectors/platform-question` publishes the read-only `/automation/query` and
+  `/automation/check` interface, a configuration JSON Schema with examples, English
+  and Czech Camunda 7 element templates, and one generic BPMN sample. CI validates
+  both templates against the vendored official Camunda schema and all 11 examples
+  (four valid, seven invalid, with expected failure reasons). Templates preserve
+  non-round-tripping BigDecimal values through built-in Java Object serialization
+  (HTTP JSON unchanged), fail missing engine properties as incidents, and protect
+  reserved answer variables. Row prefixes and column selections are constrained.
+  Tag `platform-question/v0.11.0` runs `platform-question.yml` to build the folder
+  archive, test it unpacked, and publish the GitHub release; the image lane excludes it.
+  This release contains the contract and template; the bridge follows separately.
 
 ## chrono 0.11.32 — 2026-11-12
 
