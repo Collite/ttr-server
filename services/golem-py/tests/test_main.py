@@ -352,7 +352,7 @@ async def _h1(skills: LayeredSkillLibrary) -> object:
     from golem_py.state import ResolutionState
 
     core = RecordedCore(lattice_golden("h1-cs"))
-    return await run_turn(ResolutionState(question="h1-cs"), deps(core, skills=skills))  # type: ignore[arg-type]
+    return await run_turn(ResolutionState(question="h1-cs"), deps(core, skills=skills))
 
 
 def test_the_configured_archives_give_the_turn_op_show_estate_first(
