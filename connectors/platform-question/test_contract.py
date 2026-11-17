@@ -2,11 +2,13 @@
 """Offline publication checks; run with unittest discover from the repo root."""
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import unittest
+import xml.etree.ElementTree as ET
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft7Validator, Draft202012Validator
 
 
 ROOT = Path(__file__).resolve().parent
@@ -73,13 +75,92 @@ class ConfigurationTests(unittest.TestCase):
         self.validator.validate(config)
 
     def test_required_variable_keys(self):
-        for kind, missing in (("aggregate", "column"), ("row_count", "over"),
-                              ("scalar", "sql"), ("verdict", "over")):
-            with self.subTest(kind=kind, missing=missing):
-                variable = {"kind": kind, "over": "items", "agg": "sum", "column": "amount"}
-                variable.pop(missing, None)
-                config = {"core": {"items": {"entity": "item"}}, "variables": {"v": variable}}
-                self.assertFalse(self.validator.is_valid(config))
+        for example in ("data", "single_row", "golem"):
+            original = load(f"examples/valid/{example}.json")
+            for name, variable in original["variables"].items():
+                for key in ("kind", "over", "column", "agg", "sql"):
+                    if key not in variable:
+                        continue
+                    with self.subTest(kind=variable["kind"], missing=key):
+                        config = copy.deepcopy(original)
+                        del config["variables"][name][key]
+                        self.assertFalse(self.validator.is_valid(config))
+
+
+class TemplateTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        schema = load("vendor/camunda-element-template.schema.json")
+        Draft7Validator.check_schema(schema)
+        cls.validator = Draft7Validator(schema)
+
+    def test_vendored_schema_checksum(self):
+        raw = (ROOT / "vendor/camunda-element-template.schema.json").read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(),
+                         "df9a6d3dcacc8f4e1cdf4b3cad4265c08dee39ebc63fd24304102037c2abdfd4")
+
+    def test_both_templates_validate(self):
+        for name in ("tatrman-question", "tatrman-dotaz"):
+            with self.subTest(template=name):
+                template = load(f"camunda7/{name}.json")
+                self.assertEqual(template["id"], name)
+                self.validator.validate(template)
+
+    def test_schema_rejects_invalid_connector_binding(self):
+        template = load("camunda7/tatrman-question.json")
+        template["scopes"][0]["properties"][1]["binding"]["type"] = "invalid"
+        self.assertFalse(self.validator.is_valid(template))
+
+    def test_template_localisations_keep_execution_bindings(self):
+        english = load("camunda7/tatrman-question.json")
+        czech = load("camunda7/tatrman-dotaz.json")
+        for template in (english, czech):
+            template.pop("id")
+            template.pop("name")
+            for prop in template["properties"]:
+                prop.pop("label", None)
+                prop.pop("description", None)
+        # Only this engine diagnostic is translated inside the scripts.
+        czech["scopes"][0]["properties"][-1]["binding"]["source"] = (
+            czech["scopes"][0]["properties"][-1]["binding"]["source"]
+            .replace("odpověď HTTP ", "HTTP response ")
+            .replace(" není JSON služby", " is not service JSON"))
+        self.assertEqual(english, czech)
+
+    def test_endpoint_and_credential_are_engine_properties(self):
+        for name in ("tatrman-question", "tatrman-dotaz"):
+            with self.subTest(template=name):
+                template = load(f"camunda7/{name}.json")
+                props = {p["binding"].get("name"): p for p in template["scopes"][0]["properties"]}
+                self.assertEqual(props["url"]["value"], "System.getProperty('tatrman.url')")
+                self.assertIn("System.getProperty('tatrman.token')", props["headers"]["value"])
+
+    def test_sample_carries_template_scripts_and_literal_configuration(self):
+        ns = {"b": "http://www.omg.org/spec/BPMN/20100524/MODEL",
+              "c": "http://camunda.org/schema/1.0/bpmn"}
+        root = ET.parse(ROOT / "samples/question.bpmn").getroot()
+        task = root.find(".//b:serviceTask", ns)
+        self.assertIsNotNone(task)
+        self.assertEqual(task.get("{" + ns["c"] + "}modelerTemplate"), "tatrman-question")
+        self.assertEqual(task.get("{" + ns["c"] + "}asyncBefore"), "true")
+        field = task.find("b:extensionElements/c:field[@name='tatrman_config']/c:string", ns)
+        self.assertIn("id = {item_id}", field.text)
+        self.assertIn("kind: row_count", field.text)
+        template = load("camunda7/tatrman-question.json")
+        end = task.find(".//c:executionListener[@event='end']/c:script", ns)
+        self.assertEqual(end.text, template["properties"][-1]["value"])
+        for prop in template["scopes"][0]["properties"]:
+            binding = prop["binding"]
+            if binding["type"] == "property":
+                self.assertEqual(task.find(".//c:connectorId", ns).text, prop["value"])
+                continue
+            output = binding["type"] == "camunda:outputParameter"
+            kind = "outputParameter" if output else "inputParameter"
+            name = prop["value"] if output else binding["name"]
+            parameter = task.find(f".//c:connector/c:inputOutput/c:{kind}[@name='{name}']", ns)
+            self.assertIsNotNone(parameter)
+            actual = parameter.find("c:script", ns) if "scriptFormat" in binding else parameter
+            self.assertEqual(actual.text, binding["source"] if output else prop["value"])
 
 
 if __name__ == "__main__":
