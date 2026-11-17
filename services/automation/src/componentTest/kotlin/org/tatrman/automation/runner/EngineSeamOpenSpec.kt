@@ -5,6 +5,8 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import org.tatrman.automation.writer.RowOutcome
 import org.tatrman.automation.apply.ApplyRow
+import io.kotest.matchers.string.shouldContain
+import org.tatrman.automation.apply.DryRunAction
 import io.kotest.matchers.shouldNotBe
 import io.kotest.assertions.withClue
 import io.kotest.engine.spec.tempdir
@@ -1030,6 +1032,98 @@ class EngineSeamOpenSpec :
             opened.httpStatus shouldBe 201
             opened.response.dryRun shouldBe true
             ledger.findRun(UUID.fromString(opened.response.runId))!!.open.dryRun shouldBe true
+        }
+
+        // ---- review-354 (S3.5) ----
+
+        "review-354 F6: shutdown starting during an answer's engine check refuses it (503) and claims nothing" {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            lateinit var sessions: RunSessions
+            val held =
+                org.tatrman.automation.writer.Held(
+                    ledger,
+                    org.tatrman.automation.writer.Apply(Door { error("no door read") }, clock),
+                    { _, _, _ -> error("no decision") },
+                    { named },
+                    clock,
+                )
+            sessions =
+                RunSessions(
+                    open(named),
+                    scope,
+                    { _, _ -> error("nothing is claimed") },
+                    { null },
+                    { _, _ -> },
+                    clock = clock,
+                    engineRuns =
+                        engineSeam({ _, _ ->
+                            sessions.stopAccepting()
+                            listOf(HistoricTask("task-3", "pi-1", "maya", null, null))
+                        }),
+                    answers = AnswerRuns(open(named), ledger, held),
+                )
+            val ref = EngineRef("pi-1", "4711", "dep-7", taskId = "task-3", answeredBy = "maya")
+            val refused =
+                shouldThrow<AutomationException> {
+                    runBlocking {
+                        sessions.open(
+                            recipe,
+                            OpenRequest(deployment, buildJsonObject { put("key", buildJsonObject { put("order_number", "4711") }) }, engine = ref),
+                            engine,
+                        )
+                    }
+                }
+            refused.code shouldBe ErrorCode.RUN_ABANDONED
+            runs() shouldBe 0L
+            scope.cancel()
+        }
+
+        "review-354 F7: an unheld batch's status read finds no held rows through the held-row index (held null)" {
+            val id = runId(open(plain).open(recipe, OpenRequest(deployment, keyPort()), maya))
+            ledger.completeEvaluation(
+                id,
+                EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()),
+                PreviewPlan(UUID.randomUUID().toString(), id.toString(), (0 until 5_000).map { row(it, "insert") }, emptyList()),
+            )
+            ledger.readRunProgress(id, maya.sub).batch!!.let {
+                it.rows shouldBe 5_000
+                it.held shouldBe null
+            }
+            val batch = ledger.applyState(id, maya.sub).batch
+            val plan =
+                transaction {
+                    exec("ANALYZE automation.batch_rows")
+                    exec(
+                        "EXPLAIN " + Ledger.HELD_ROWS_SQL.replace("?", "'$batch'"),
+                        explicitStatementType = org.jetbrains.exposed.v1.core.statements.StatementType.SELECT,
+                    ) { rs ->
+                        buildList { while (rs.next()) add(rs.getString(1)) }
+                    }!!.joinToString("\n")
+                }
+            plan shouldContain "batch_rows_held"
+        }
+
+        "review-354 F8: an action's decided comes from its own key's group, not a row it shares with another key" {
+            val id = runId(open(plain).open(recipe, OpenRequest(deployment, keyPort()), maya))
+            val k1 = buildJsonObject { put("order_number", "4711") }
+            val k2 = buildJsonObject { put("order_number", "4712") }
+            // seq 2 is an obligation deduplicated across both keys: it carries the first key's group (Found 1).
+            val rows = listOf(row(0, "transition", k1), row(1, "insert", k1), row(2, "transition", k2))
+            val actions =
+                listOf(
+                    DryRunAction(k1, "release", "release_confirmed", "transition", buildJsonObject {}, listOf(1, 2), dryRun = false),
+                    DryRunAction(k2, "release", "release_confirmed", "transition", buildJsonObject {}, listOf(3, 2), dryRun = false),
+                )
+            ledger.completeEvaluation(
+                id,
+                EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()),
+                PreviewPlan(UUID.randomUUID().toString(), id.toString(), rows, actions),
+            )
+            ledger.decideHeld(id, k1, "commit", "alice")
+            val progress = ledger.readRunProgress(id, maya.sub)
+            progress.actions.single { it.key == k1 }.decided!!["by"] shouldBe JsonPrimitive("alice")
+            progress.actions.single { it.key == k2 }.decided shouldBe null
+            progress.batch!!.held shouldBe 1
         }
     })
 

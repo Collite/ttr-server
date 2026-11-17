@@ -157,6 +157,8 @@ dependencies {
     // Component tier — the ledger over a REAL Postgres (Testcontainers): Flyway migrates clean, pgmq
     // round-trips, the idempotency claim races. `src/componentTest`, so the unit gate stays Docker-free.
     "componentTestImplementation"(libs.testcontainers.postgresql)
+    // S3.5 review-354 F2: a spy ledger injects a failed or late answer completion.
+    "componentTestImplementation"(libs.mockk)
     "componentTestImplementation"(libs.ktor.server.test.host)
     // S3.1: the query/runs/templates routes are specified over HTTP against the real ledger.
     "componentTestImplementation"(libs.ktor.server.auth)

@@ -6,6 +6,8 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.mockk.every
+import io.mockk.spyk
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -42,6 +44,7 @@ class AnswerRunSpec :
                 "task-1" to ("pi-1" to "alice"),
                 "task-2" to ("pi-1" to "bob"),
                 "task-9" to ("pi-1" to "alice"),
+                "task-3" to ("pi-1" to "alice"),
                 "task-5" to ("pi-2" to "alice"),
             )
         val history =
@@ -55,20 +58,29 @@ class AnswerRunSpec :
         // (`client_id` = the identity's principal).
         val tokens = ServiceTokens(mapOf("AUTOMATION_DECIDER" to "svc-hartland-automation:s"), { DECIDER_TOKEN })
 
-        fun fixture(): Pair<DurableRuntimeFixture, org.tatrman.automation.writer.RowWritesQueryFake> {
+        fun fixture(
+            keys: List<String> = listOf("4711", "4712"),
+            candidates: () -> List<String> = { keys },
+            ledgerFor: (Ledger) -> Ledger = { it },
+        ): Pair<DurableRuntimeFixture, org.tatrman.automation.writer.RowWritesQueryFake> {
             val (f, fake, _) =
                 wetRuntimeFixture(
                     tempdir(prefix = "automation-answer-").toPath(),
                     initial = "placed",
-                    keys = listOf("4711", "4712"),
+                    keys = keys,
                     wire = "release_confirmed",
                     engineHistory = history,
                     tokens = tokens,
                     runAsCaller = false,
+                    candidates = candidates,
+                    ledgerFor = ledgerFor,
                 )
-            wetSql("INSERT INTO public.sales_order VALUES ('4712', 'placed', NULL)")
+            for (order in keys - "4711") wetSql("INSERT INTO public.sales_order VALUES ('$order', 'placed', NULL)")
             return f to fake
         }
+
+        /** An operator of the world's `def role ops` (hartland-ops): the dev held routes' decider. */
+        fun ops(name: String) = Caller("sub-$name", name, emptySet(), TokenKind.PERSON, "t", groups = setOf("hartland-ops"))
 
         fun answer(
             key: JsonElement,
@@ -76,9 +88,11 @@ class AnswerRunSpec :
             by: String,
             instance: String = "pi-1",
             decision: String? = null,
+            idempotencyKey: String? = null,
         ) = OpenRequest(
             "release_native_event",
             buildJsonObject { put("key", key) },
+            idempotencyKey = idempotencyKey,
             engine = EngineRef(instance, "orders-0417", "dep-7", taskId = task, answeredBy = by, decision = decision),
         )
 
@@ -86,6 +100,7 @@ class AnswerRunSpec :
         suspend fun waiting(
             f: DurableRuntimeFixture,
             runtime: RunRuntime,
+            keys: List<String> = listOf("4711", "4712"),
         ): UUID {
             val id =
                 UUID.fromString(
@@ -96,7 +111,7 @@ class AnswerRunSpec :
                                 dryRun = null,
                                 port =
                                     buildJsonObject {
-                                        put("keys", JsonArray(listOf(JsonPrimitive("4711"), JsonPrimitive("4712"))))
+                                        put("keys", JsonArray(keys.map(::JsonPrimitive)))
                                     },
                                 engine = EngineRef("pi-1", "orders-0417", "dep-7"),
                             ),
@@ -247,7 +262,14 @@ class AnswerRunSpec :
                     it["reason"] shouldBe JsonPrimitive("no-held-key")
                     it["run"] shouldBe JsonPrimitive(original.toString())
                     it["key"] shouldBe k9999
+                    it["held"] shouldBe JsonArray(listOf(k4711, k4712))
                 }
+                // review-354 F5 (✅R354-C): `port.key` is verbatim — a number for the text key held as "4711" matches
+                // nothing, and the refusal lists the run's held keys so the type mismatch shows.
+                val numeric = buildJsonObject { put("order_number", 4711) }
+                val typed = refusal { runtime.sessions.open("release_order", answer(numeric, "task-1", "alice"), engine) }
+                typed.code shouldBe ErrorCode.ANSWER_UNMATCHED
+                typed.detail!!.jsonObject["held"] shouldBe JsonArray(listOf(k4711, k4712))
                 val other =
                     refusal {
                         runtime.sessions.open(
@@ -389,6 +411,173 @@ class AnswerRunSpec :
                 runtime.sessions
                     .open("release_order", answer(k4711, "task-1", "alice", decision = "approve"), engine)
                     .httpStatus shouldBe 201
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWetRuntime()
+            }
+        }
+
+        // ---- review-354 F1 (✅R354-A): the original run is looked up by the key it held, whatever its status ----
+
+        "(m) once its last key closed the original, an answer for a decided key replays (200), nothing applied twice" {
+            val (f, fake) = fixture()
+            val runtime = f.start()
+            try {
+                val original = waiting(f, runtime)
+                runtime.sessions.open("release_order", answer(k4711, "task-1", "alice"), engine).httpStatus shouldBe 201
+                runtime.sessions.open("release_order", answer(k4712, "task-2", "bob"), engine).httpStatus shouldBe 201
+                f.ledger.findRun(original)!!.status shouldBe RunStatus.CLOSED
+                val sent = fake.writes.size
+                val late =
+                    runtime.sessions.open(
+                        "release_order",
+                        answer(k4711, "task-9", "alice", idempotencyKey = "late-1"),
+                        engine,
+                    )
+                late.httpStatus shouldBe 200
+                late.response.answer!!.let {
+                    it.replayed shouldBe true
+                    it.decision shouldBe "commit"
+                    it.original shouldBe original.toString()
+                }
+                fake.writes.size shouldBe sent
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWetRuntime()
+            }
+        }
+
+        "(n) the dev route decides the last key first; the engine's answer for it replays (200), not 409" {
+            val (f, fake) = fixture()
+            val runtime = f.start()
+            try {
+                val original = waiting(f, runtime)
+                runtime.sessions.open("release_order", answer(k4711, "task-1", "alice"), engine).httpStatus shouldBe 201
+                runtime.held.commitHeld(original, k4712, ops("olga")).runStatus shouldBe "closed"
+                val sent = fake.writes.size
+                val answered = runtime.sessions.open("release_order", answer(k4712, "task-2", "bob"), engine)
+                answered.httpStatus shouldBe 200
+                answered.response.answer!!.replayed shouldBe true
+                fake.writes.size shouldBe sent
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWetRuntime()
+            }
+        }
+
+        "(o) two waiting runs in one instance: an answer for the older run's key decides the older run" {
+            var candidates = listOf("4713")
+            val (f, _) = fixture(keys = listOf("4711", "4712", "4713"), candidates = { candidates })
+            val runtime = f.start()
+            try {
+                val older = waiting(f, runtime, keys = listOf("4713"))
+                f.base.now = f.base.now.plusSeconds(60)
+                candidates = listOf("4711", "4712")
+                val newer = waiting(f, runtime)
+                val k4713 = buildJsonObject { put("order_number", "4713") }
+                val answered = runtime.sessions.open("release_order", answer(k4713, "task-3", "alice"), engine)
+                answered.httpStatus shouldBe 201
+                answered.response.answer!!.original shouldBe older.toString()
+                state("4713") shouldBe "released"
+                f.ledger.findRun(older)!!.status shouldBe RunStatus.CLOSED
+                f.ledger.findRun(newer)!!.status shouldBe RunStatus.WAITING
+                f.ledger
+                    .readRunBatch(newer, f.caller.sub)
+                    .statuses
+                    .mapNotNull { it.decided } shouldBe emptyList()
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWetRuntime()
+            }
+        }
+
+        // ---- review-354 F2: the completion is inside the failure path; a reaped answer that decided still closes ----
+
+        "(p) a failed completion leaves the answer run failed, not open; the engine's retry replays" {
+            var failOnce = true
+            val (f, _) =
+                fixture(ledgerFor = { ledger ->
+                    spyk(ledger).also { spy ->
+                        every { spy.finishAnswer(any(), any()) } answers {
+                            if (failOnce) {
+                                failOnce = false
+                                throw IllegalStateException("injected: the completion's transaction failed")
+                            }
+                            callOriginal()
+                        }
+                    }
+                })
+            val runtime = f.start()
+            try {
+                waiting(f, runtime)
+                shouldThrow<IllegalStateException> {
+                    runtime.sessions.open("release_order", answer(k4711, "task-1", "alice"), engine)
+                }
+                state("4711") shouldBe "released"
+                transaction {
+                    Runs.selectAll().where { Runs.kind eq RUN_KIND_ANSWER }.map { it[Runs.status] }
+                } shouldBe listOf("failed")
+                val retried = runtime.sessions.open("release_order", answer(k4711, "task-1", "alice"), engine)
+                retried.httpStatus shouldBe 200
+                retried.response.answer!!.replayed shouldBe true
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWetRuntime()
+            }
+        }
+
+        "(q) the sweep abandons the answer run mid-decision; the recorded decision still closes it (201)" {
+            var sweep = true
+            lateinit var fx: DurableRuntimeFixture
+            val (f, _) =
+                fixture(ledgerFor = { ledger ->
+                    spyk(ledger).also { spy ->
+                        every { spy.decideHeld(any(), any(), any(), any(), any()) } answers {
+                            if (sweep) {
+                                sweep = false
+                                fx.base.now = fx.base.now.plusSeconds(3_600)
+                                spy.abandonExpiredRuns().size shouldBe 1
+                            }
+                            callOriginal()
+                        }
+                    }
+                })
+            fx = f
+            val runtime = f.start()
+            try {
+                waiting(f, runtime)
+                val opened = runtime.sessions.open("release_order", answer(k4711, "task-1", "alice"), engine)
+                opened.httpStatus shouldBe 201
+                val answerId = UUID.fromString(opened.response.runId)
+                f.ledger.findRun(answerId)!!.status shouldBe RunStatus.CLOSED
+                f.ledger.answerOf(answerId)!!["applied"] shouldBe JsonPrimitive(1)
+            } finally {
+                runtime.shutdown()
+                f.close()
+                dropWetRuntime()
+            }
+        }
+
+        "review-354 F4: a replayed answer names the recorded decider, not this answer's person" {
+            val (f, _) = fixture()
+            val runtime = f.start()
+            try {
+                val original = waiting(f, runtime)
+                runtime.held.rejectHeld(original, k4711, ops("carol"))
+                val replayed = runtime.sessions.open("release_order", answer(k4711, "task-1", "alice"), engine)
+                replayed.httpStatus shouldBe 200
+                replayed.response.answer!!.let {
+                    it.by shouldBe "carol"
+                    it.decision shouldBe "reject"
+                    it.replayed shouldBe true
+                    it.applied shouldBe 0
+                    it.skipped shouldBe 1
+                }
             } finally {
                 runtime.shutdown()
                 f.close()

@@ -43,6 +43,9 @@ internal fun wetRuntimeFixture(
     engineHistory: org.tatrman.automation.engine.EngineHistory = org.tatrman.automation.engine.NoEngine,
     tokens: ServiceTokens = ServiceTokens(emptyMap(), { error("unused") }),
     runAsCaller: Boolean = true,
+    /** S3.5 review-354 (o): the candidates each evaluation reads (the fake Query ignores the port); default [keys]. */
+    candidates: () -> List<String> = { keys },
+    ledgerFor: (org.tatrman.automation.ledger.Ledger) -> org.tatrman.automation.ledger.Ledger = { it },
 ): Triple<DurableRuntimeFixture, org.tatrman.automation.writer.RowWritesQueryFake, Unit> {
     val root = ApprovalFixture.copyTo(temp.resolve("branch"))
     val catalog =
@@ -150,7 +153,7 @@ internal fun wetRuntimeFixture(
                     if (routed ||
                         "candidates" in request.source
                     ) {
-                        keys.map { listOf(it, "SQL reason") }
+                        candidates().map { listOf(it, "SQL reason") }
                     } else {
                         emptyList()
                     },
@@ -161,6 +164,7 @@ internal fun wetRuntimeFixture(
             engineHistory = engineHistory,
             tokens = tokens,
             runAsCaller = runAsCaller,
+            ledgerFor = ledgerFor,
         )
     return Triple(f, fake, Unit)
 }

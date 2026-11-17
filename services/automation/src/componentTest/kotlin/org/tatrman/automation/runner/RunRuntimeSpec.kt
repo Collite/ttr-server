@@ -2132,6 +2132,8 @@ internal class DurableRuntimeFixture(
     private val tokens: ServiceTokens = ServiceTokens(emptyMap(), { error("unused") }),
     /** The specs run `release_native_event` as its caller; S3.5 keeps its declared `identity.automation_decider`. */
     runAsCaller: Boolean = true,
+    /** S3.5 review-354 F2: the ledger the runtime gets (a spy injects faults); the fixture's own [ledger] by default. */
+    private val ledgerFor: (Ledger) -> Ledger = { it },
 ) {
     /** Every row_writes request that reached the door — a dry run must leave it at zero (R217-L5). */
     val rowWrites = AtomicInteger()
@@ -2330,7 +2332,7 @@ internal class DurableRuntimeFixture(
                 true
             },
             tokens,
-            ledger,
+            ledgerFor(ledger),
             scope,
             clock,
             query,
