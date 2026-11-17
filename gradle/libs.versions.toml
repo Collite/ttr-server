@@ -14,9 +14,13 @@ tatrman-ttr-metadata      = "0.22.3"
 # 0.12.6 (#232): `refuseUnconditionedBareJoins` — translate refuses a bare JOIN that stays a Cartesian product.
 # Never 0.12.5 with the option on: it made a WHERE filter reading both sides of an FK-only bare join the join's
 # whole ON, dropping the foreign key (ttr-core#223).
-# Grammar 0.22.3's emitter (ttrp-emit) publishes against translator 0.14.1; keep the translator pair aligned.
-tatrman-ttr-translator    = "0.14.1"
-tatrman-ttr-plan-proto    = "0.14.1"
+# AU S2.4 / Core#407: 0.14.3 preserves bounded way plans across REL_NODE re-entry (and carries 0.14.2's SQL rails).
+# Keep the translator/plan-proto pair aligned here. Grammar 0.22.3's ttrp-emit / ttr-concept POMs still name 0.14.1:
+# automation and resolver (no direct translator dependency) resolve translator 0.14.1 with plan-proto 0.14.3, which is
+# safe because plan-proto is unchanged 0.14.1 → 0.14.3; metadata runs ttr-concept 0.22.3 on translator 0.14.3 (no public
+# symbol removed). The first grammar tag cut after translator/v0.14.3 realigns them (MW S4.1).
+tatrman-ttr-translator    = "0.14.3"
+tatrman-ttr-plan-proto    = "0.14.3"
 # SV-P1 S4 — Maven Central publishing via the Central Portal.
 vanniktech-publish        = "0.36.0"
 

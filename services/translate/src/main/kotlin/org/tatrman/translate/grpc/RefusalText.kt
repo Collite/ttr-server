@@ -3,7 +3,8 @@ package org.tatrman.translate.grpc
 
 /**
  * BI (contracts C-11) — a refusal as a person reads it: one line, no Java exception class, said once, with where in
- * the statement it points as fields rather than prose. Calcite's validator wraps its message as
+ * the statement it points as fields rather than prose. Qualified and bare leading exception class names go.
+ * Calcite's validator wraps its message as
  *
  * `org.apache.calcite.runtime.CalciteContextException: From line 1, column 15 to line 1, column 26: Object 'warehouse'
  * not found within 'er': From line 1, column 15 to line 1, column 26: Object 'warehouse' not found within 'er': Object
@@ -20,7 +21,7 @@ internal object RefusalText {
         val column: Int = 0,
     )
 
-    private val EXCEPTION_PREFIX = Regex("""^(?:[a-z_$][\w$]*\.)+[A-Z][\w$]*(?:Exception|Error):\s*""")
+    private val EXCEPTION_PREFIX = Regex("""^(?:[a-z_$][\w$]*\.)*[A-Z][\w$]*(?:Exception|Error):\s*""")
     private val RANGE = Regex("""From line (\d+), column (\d+) to line \d+, column \d+:\s*""")
     private val AT = Regex("""\s*at line (\d+), column (\d+)""")
     private val EXPECTING = Regex("""\s*Was expecting(?: one of)?:.*""", RegexOption.DOT_MATCHES_ALL)

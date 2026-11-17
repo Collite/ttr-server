@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **translate · validate · chrono · geo · money · metadata — translator/plan-proto 0.14.1 → 0.14.3 (ttr-core#407).** A
+  parameter the SQL author CASTs (e.g. `CAST(:p AS VARCHAR)` inside `||`) now survives Query's SQL → ER → REL_NODE → DB
+  re-entry. A REL_NODE decode failure keeps the code `rel_node_schema_resolution_failed`, and its text now names the
+  failing plan node (the exception class goes only to translate's WARN log). From 0.14.2: T-SQL `[name]` identifiers are
+  rewritten to quoted identifiers before parsing, schema detection and saved-query reference extraction. That rewrite also
+  catches `ARRAY[…]` and `c[1]` (ttr-core#412). The published `translate-snapshot` and `server-proto` POMs now name 0.14.3.
+
 - **`server-libs` — the grounding kernel published (OL W3·S1).** `org.tatrman:grounding-core` (plan.v1
   recipe scaffolding: `PlanExpr`, `SqlRenderer`) and `org.tatrman:grounding-lexicon` (the `ground:<kind>`
   trigger slice: `GroundingSlice`, `GroundingSliceSource`) join the set, which is now sixteen libraries. Same

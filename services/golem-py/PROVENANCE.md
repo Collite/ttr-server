@@ -82,7 +82,12 @@ scoring input, never a source.
   documents); the shared `.proto` tree (`query.v1`, `worker.v1`, `meta.v1`, `common.v1`) and
   `shared/proto-llm`'s `llm_gateway.proto`; the published `ttr-plan-proto` wheels' file lists and
   `plan.v1` descriptors (0.8.4, 0.12.11, 0.14.1), and the field numbers of `PipelineContext`, `SchemaCode`
-  and `QualifiedName` in the `ttr-plan-proto` 0.14.1 artefact — the wire contract at master's JVM pin;
+  and `QualifiedName` in the `ttr-plan-proto` 0.14.1 artefact — the newest published wheel whose `plan.v1` equals
+  the JVM pin's (today wheel 0.14.1 for JVM 0.14.3, unchanged); the wheel pin moves when a wheel with a `plan.v1`
+  change ships;
   `shared/proto/build.gradle.kts` for the Python lane's pin; this directory's own code.
+- **2026-11-17 · AU S2.4 review-328 F4, compatibility comments only.** Clean-room observed: no legacy predecessor
+  source, `EXAMPLES.md`, or Kantheon Golem code was read. Read this directory's `pyproject.toml` and `PROVENANCE.md`,
+  the JVM version catalog and review-328's compatibility evidence. The wheel remains pinned to 0.14.1.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.
