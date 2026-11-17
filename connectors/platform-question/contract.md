@@ -138,8 +138,11 @@ Groovy are prerequisites. Behavior is the same on Camunda 7.14 and 7.20.
 The listener may use a native Double for a decimal only when the finite Double's
 decimal text round-trips unchanged. Otherwise it must retain the BigDecimal
 exactly using the engine's built-in Java Object serialization
-(`application/x-java-serialized-object`), which the engine must allow. This uses
-the JDK BigDecimal class; the HTTP answer remains JSON with decimal numbers.
+(`application/x-java-serialized-object`). This uses the JDK BigDecimal class;
+the HTTP answer remains JSON with decimal numbers. Camunda 7.20's default
+`javaSerializationFormatEnabled=false` needs no change: that setting restricts
+API-supplied pre-serialized Java values, not an object the template asks the
+engine to serialize itself.
 The listener must skip invalid or `tatrman_`-prefixed keys
 from a service answer and log a warning, preserving the actual answer status.
 
