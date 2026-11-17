@@ -1,0 +1,113 @@
+<?xml version='1.0' encoding='utf-8'?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="PlatformQuestionExample" targetNamespace="https://tatrman.org/platform-question/examples">
+  <bpmn:process id="platform_question_example" name="Ask about an item" isExecutable="true">
+    <bpmn:documentation>Start with item_id. Configure the engine endpoint and credential before deployment. Apply tatrman-question version 1 in Desktop Modeler to edit the task.</bpmn:documentation>
+    <bpmn:startEvent id="start" />
+    <bpmn:serviceTask id="question" name="Find item" camunda:modelerTemplate="tatrman-question" camunda:modelerTemplateVersion="1" camunda:asyncBefore="true">
+      <bpmn:extensionElements>
+        <camunda:field name="tatrman_config">
+          <camunda:string>core:
+  item:
+    entity: item
+    where: id = {item_id}
+variables:
+  item_count:
+    kind: row_count
+    over: item
+</camunda:string>
+        </camunda:field>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="tatrman_params">item_id</camunda:inputParameter>
+          <camunda:inputParameter name="tatrman_result">tatrman_vysledek</camunda:inputParameter>
+        </camunda:inputOutput>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="groovy">def raw = execution.getVariable('tatrman_response')
+def answer = new groovy.json.JsonSlurperClassic().parseText(raw)
+def resultName = execution.getVariable('tatrman_result') ?: 'tatrman_vysledek'
+execution.setVariable(resultName, org.camunda.spin.plugin.variable.SpinValues.jsonValue(raw).create())
+execution.setVariable('tatrman_status', answer.status)
+execution.setVariable('tatrman_chyba', answer.status == 'error' ? answer.error?.message?.toString() : null)
+(answer.variables ?: [:]).each { name, value -&gt;
+  def typed = value
+  if (value instanceof Map || value instanceof List) {
+    typed = org.camunda.spin.plugin.variable.SpinValues.jsonValue(groovy.json.JsonOutput.toJson(value)).create()
+  } else if (value instanceof BigDecimal) {
+    // Camunda native number types are Integer, Long and Double, not BigDecimal.
+    typed = value.doubleValue()
+  } else if (value instanceof BigInteger || (value instanceof CharSequence &amp;&amp; value.length() &gt; 4000)) {
+    // JSON-serialized Objects retain integers beyond Long and text beyond the native column.
+    typed = org.camunda.bpm.engine.variable.Variables.objectValue(value instanceof CharSequence ? value.toString() : value)
+        .serializationDataFormat('application/json').create()
+  } else if (value instanceof CharSequence) {
+    typed = value.toString()
+  }
+  execution.setVariable(name, typed)
+}
+</camunda:script>
+        </camunda:executionListener>
+        <camunda:connector>
+          <camunda:connectorId>http-connector</camunda:connectorId>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="url">
+              <camunda:script scriptFormat="groovy">System.getProperty('tatrman.url')</camunda:script>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="method">POST</camunda:inputParameter>
+            <camunda:inputParameter name="headers">
+              <camunda:script scriptFormat="groovy">['Content-Type':'application/json; charset=UTF-8', 'Accept':'application/json', 'Authorization':'Bearer ' + System.getProperty('tatrman.token')]</camunda:script>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="payload">
+              <camunda:script scriptFormat="groovy">// camunda:string is literal model data; an inputParameter would evaluate JUEL.
+def field = execution.bpmnModelElementInstance.extensionElements.elementsQuery
+    .filterByType(org.camunda.bpm.model.bpmn.instance.camunda.CamundaField).list()
+    .find { it.camundaName == 'tatrman_config' }
+def params = [:]
+(execution.getVariable('tatrman_params') ?: '').split(/[,\s]+/).findAll { it }.each { name -&gt;
+  def value = execution.getVariable(name)
+  // Missing/null is not SQL NULL: let required params fail and optional params default.
+  if (value == null) return
+  params[name] = value instanceof Date ? value.format("yyyy-MM-dd'T'HH:mm:ss") : value
+}
+groovy.json.JsonOutput.toJson([config: field?.camundaString?.textContent, params: params])
+</camunda:script>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="request-config">
+              <camunda:script scriptFormat="groovy">['connection-timeout':5000, 'socket-timeout':130000, 'connection-request-timeout':5000]</camunda:script>
+            </camunda:inputParameter>
+            <camunda:outputParameter name="tatrman_response">
+              <camunda:script scriptFormat="groovy">// Preserve body text: reading a Spin tree back would re-serialize its numbers.
+if (!(response instanceof CharSequence) || !response.toString().trim().startsWith('{'))
+  throw new IllegalStateException('Tatrman: HTTP response ' + statusCode + ' is not service JSON')
+// Transient strings are never persisted, so the 4,000-character column limit does not apply.
+org.camunda.bpm.engine.variable.Variables.stringValue(response.toString(), true)
+</camunda:script>
+            </camunda:outputParameter>
+          </camunda:inputOutput>
+        </camunda:connector>
+      </bpmn:extensionElements>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="end" />
+    <bpmn:sequenceFlow id="to_question" sourceRef="start" targetRef="question" />
+    <bpmn:sequenceFlow id="to_end" sourceRef="question" targetRef="end" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="Diagram">
+    <bpmndi:BPMNPlane id="Plane" bpmnElement="platform_question_example">
+      <bpmndi:BPMNShape id="start_shape" bpmnElement="start">
+        <dc:Bounds x="150" y="140" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="question_shape" bpmnElement="question">
+        <dc:Bounds x="240" y="118" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_shape" bpmnElement="end">
+        <dc:Bounds x="440" y="140" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="to_question_edge" bpmnElement="to_question">
+        <di:waypoint x="186" y="158" />
+        <di:waypoint x="240" y="158" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="to_end_edge" bpmnElement="to_end">
+        <di:waypoint x="380" y="158" />
+        <di:waypoint x="440" y="158" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
