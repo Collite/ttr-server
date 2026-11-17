@@ -57,6 +57,23 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # OL W3·S1 T3 (OL-C27) — the grounding kernel as a CONSUMER sees it: the two libraries and
+      # the set members their POMs name go to Maven Local, then a standalone build resolves
+      # `org.tatrman:grounding-core` + `grounding-lexicon` as artefacts and compiles one class
+      # against each. Catches a POM that names a coordinate nothing publishes, which `build`
+      # cannot see (it wires `project()` edges). `--no-configuration-cache` as in publish.yml.
+      - name: grounding kernel consumer check
+        run: |
+          ./gradlew --no-configuration-cache \
+            :shared:proto:publishToMavenLocal \
+            :shared:libs:kotlin:text:publishToMavenLocal \
+            :shared:libs:kotlin:grounding-core:publishToMavenLocal \
+            :shared:libs:kotlin:grounding-lexicon:publishToMavenLocal
+          ./gradlew -p scripts/verify-grounding-kernel build
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # The real-dependency (Testcontainers) component tier.
   #
   # A SEPARATE job, deliberately, and not wired into `check`: the root build script

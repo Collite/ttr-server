@@ -17,6 +17,29 @@ action; no workflow publishes anything from a branch.
 | `superset/v<superset>-ttr<N>` | the operated Superset image (official + `ttr-sqlalchemy`) | `ghcr.io/collite/superset` | `release-image.yml` | every tag; the version must be `<x.y.z>-ttr<N>` |
 | `python-sqlalchemy/v<x.y.z>[-RELEASE]` | `ttr-sqlalchemy` wheel | PyPI on `-RELEASE` | `publish-python.yml` | as `python-nlp` |
 
+### The `server-libs` set
+
+One `server-libs/v<x.y.z>` tag publishes all sixteen `org.tatrman:*` libraries at the
+tag's version. They are listed in `publishableLibs` and `pomMeta` in the root
+`build.gradle.kts`; `publish.yml`'s header carries the same list.
+
+| Artifact | What it is |
+|---|---|
+| `server-proto` | the gRPC/protobuf wire contracts (`:shared:proto`) |
+| `otel-config` · `logging-config` · `ktor-configurator` | the services' shared bootstrap |
+| `db-common` · `data-formatter` | JDBC helpers and result formatting |
+| `lex-matcher-core` · `text` · `fuzzy-common` | the fuzzy engine, the S-2 text fold, fuzzy types |
+| `whois-common` · `keycloak-auth` | identity and bearer auth |
+| `meta-client` · `llm-client` | clients for `meta.v1` and `llm.v1` |
+| `transfer-core` | the Charon transfer seam (`transfer.v1`) |
+| `grounding-core` · `grounding-lexicon` | the grounding kernel: plan.v1 recipe scaffolding and the `ground:<kind>` lexicon slice (OL W3·S1, OL-C27) |
+
+The grounding kernel joined the set so the time service in `ttr-platform` can build
+on published artefacts rather than `project()` edges (OL-C28). CI's `build` job
+checks both from a consumer's side on every PR: it publishes them to Maven Local,
+and [`scripts/verify-grounding-kernel`](./scripts/verify-grounding-kernel/) compiles
+against them as artefacts.
+
 ## The `-RELEASE` marker
 
 A public registry has no internal staging equivalent and, for Maven Central, a
