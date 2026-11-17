@@ -495,7 +495,15 @@ class PartRunner(
         val detailContext = route.detail.single { output.port == "${route.name}.$it" }
         for ((column, expected) in mapOf("route" to route.name, "context" to detailContext)) {
             val index = table.columns.indexOfFirst { it.name == column }
-            require(index >= 0 && table.rows.all { it[index] == expected }) {
+            val routeStamp = column == "route"
+            require(
+                index >= 0 &&
+                    table.rows.all {
+                        val cell = it[index]
+                        val actual = if (routeStamp) (cell as? String)?.trimEnd(' ') else cell
+                        actual == expected
+                    },
+            ) {
                 "detail stamp differs from its port"
             }
         }

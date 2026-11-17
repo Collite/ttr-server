@@ -133,6 +133,28 @@ class RunStatusSpec :
                 JsonArray(emptyList())
         }
 
+        "stored decisions ignore future additive fields without changing their payload" {
+            val id = open()
+            val payload = JsonObject(Json.encodeToJsonElement(result).jsonObject + ("future" to JsonPrimitive(1)))
+            transaction {
+                RunProtocol.insert {
+                    it[run] = id
+                    it[section] = ProtocolSection.DECISION.wire
+                    it[seq] = 1
+                    it[RunProtocol.payload] = payload
+                    it[at] = now.atOffset(java.time.ZoneOffset.UTC)
+                }
+                Runs.update({ Runs.id eq id }) { it[status] = RunStatus.EVALUATED.wire }
+            }
+            val status = Ledger(Duration.ofMinutes(30), clock).readRunProgress(id, "subject-1")
+            status.verdict shouldBe result.verdict
+            status.guards shouldBe result.guards
+            status.warnings shouldBe emptyList()
+            transaction {
+                RunProtocol.selectAll().single()[RunProtocol.payload] shouldBe payload
+            }
+        }
+
         "waiting and terminal states retain committed verdicts, timestamps and public failure evidence" {
             for (state in listOf(RunStatus.WAITING, RunStatus.CLOSED, RunStatus.FAILED, RunStatus.ABANDONED)) {
                 val id = open()

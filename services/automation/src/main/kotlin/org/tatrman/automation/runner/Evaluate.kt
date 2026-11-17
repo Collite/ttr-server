@@ -71,7 +71,7 @@ internal suspend fun summarizeEvaluation(runner: PartRunner): EvaluationResult {
             require(output.table.columns.any { it.name == "verdict_reason" }) { "route requires verdict_reason" }
             val routeColumn = output.table.columns.indexOfFirst { it.name == "route" }
             require(
-                routeColumn < 0 || output.table.rows.all { (it[routeColumn] as? String)?.trimEnd() == name },
+                routeColumn < 0 || output.table.rows.all { (it[routeColumn] as? String)?.trimEnd(' ') == name },
             ) { "route column differs from its port" }
             if (routeColumn >= 0) {
                 val padded = output.table.rows.count { it[routeColumn] != name }
@@ -86,6 +86,9 @@ internal suspend fun summarizeEvaluation(runner: PartRunner): EvaluationResult {
                 roles.routes.single { it.name == name }.detail.associateWith { context ->
                     val snapshot = outputs.getValue("$name.$context")
                     require(routeKeys.containsAll(snapshot.table.keyValues(keys))) { "detail contains a non-route key" }
+                    val stamp = snapshot.table.columns.indexOfFirst { it.name == "route" }
+                    val padded = snapshot.table.rows.count { it[stamp] != name }
+                    if (padded > 0) warnings += EvaluationWarning("route_padded", "$name.$context", padded)
                     "/automation/runs/${runner.context.id}/routes/$name/details/$context"
                 }
             RouteSummary(output.output.rows, output.ref, detail)

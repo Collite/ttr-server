@@ -17,9 +17,12 @@ outside this repo could notice is in.
 ## Unreleased
 
 - **automation 0.11.41 — the route invariant tolerates CHAR padding and records `route_padded` (ttr-server#428).**
-  Evaluation accepts trailing whitespace only when the trimmed route matches its port. One non-refusing warning
+  Evaluation accepts trailing plain spaces only when the trimmed route or detail-route stamp matches its route port.
+  Other whitespace and detail context stamps remain strict. One non-refusing warning
   per padded port, including its row count, is persisted in the decision, surfaced in run status and logged at WARN.
+  Both durable and session status carry the warnings; decision readers ignore future additive fields.
   Genuine mismatches and the other decision invariants still fail; older decisions default to no warnings.
+  Rolling back below 0.11.41 breaks run status for decisions that recorded a warning.
 
 - **golem-py — the LLM lane at `emit` (OL W1c·S2).** With `GOLEM_LLM_LANE_ENABLED` (default on), a gateway
   and a door configured, a question that composed and carries no blocking gap is answered by one `llm.v1`
