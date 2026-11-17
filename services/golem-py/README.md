@@ -91,6 +91,7 @@ file (`check_lane_config`), and exits **2** naming what is missing — never the
 | `GOLEM_QUERY_TARGET` / `GOLEM_QUERY_WORLD` / `GOLEM_QUERY_TIMEOUT_S` | — / — / `30` | `query.v1`, the door; the world every lane query runs in |
 | `GOLEM_META_TARGET` / `GOLEM_META_PACKAGES` / `GOLEM_META_TIMEOUT_S` | — / — / `10` | `meta.v1`, and the packages the slice is read from |
 | `GOLEM_LLM_MODEL_SLICE_ENTITIES` | `40` | the slice's cap; its entity names are the ER read allow-list |
+| `GOLEM_LEXICON_ARCHIVE_PATHS` | — | the lexicon archives the operator library is read from, estate first, `os.pathsep`-separated; one that cannot be read exits 2 |
 
 The call is one request, bounded as a whole by the ladder's `capable` timeout, with no retry; it
 counts against the profile's
@@ -103,30 +104,48 @@ The image is the CLI: one turn per run, the outcome on stdout. `--json` prints t
 for an answer (`sql`, `provenance.lane` / `llm_model` / `sql_sha256`, `row_count`, `rows`,
 `llm_handled`, `gaps_carried`), and for a refusal or an ask, the outcome without its
 lattice. Five variables name the estate: `GOLEM_QUERY_TARGET`, `GOLEM_QUERY_WORLD`,
-`GOLEM_LLM_TARGET`, `GOLEM_META_TARGET` and `GOLEM_META_PACKAGES`. `--subject` is the
-caller, and the door applies that caller's row rules to the query the lane wrote.
+`GOLEM_LLM_TARGET`, `GOLEM_META_TARGET` and `GOLEM_META_PACKAGES`. Two more come from the
+cluster: `GOLEM_LLM_API_KEY`, the team's gateway key, from a Secret; and
+`GOLEM_LEXICON_ARCHIVE_PATHS`, the estate's lexicon archive, which holds the operator library.
+`--subject` is the caller, and the door applies that caller's row rules to the query the
+lane wrote.
 
 ```bash
 docker run --rm \
   -e GOLEM_QUERY_TARGET=query:7306 -e GOLEM_QUERY_WORLD=hartland_cz \
-  -e GOLEM_LLM_TARGET=llm-gateway:9090 \
+  -e GOLEM_LLM_TARGET=http://llm-gateway:7280/v1 -e GOLEM_LLM_API_KEY \
   -e GOLEM_META_TARGET=metadata:7261 -e GOLEM_META_PACKAGES=hartland \
+  -e GOLEM_LEXICON_ARCHIVE_PATHS=/lexicon/lexicon.tar.zst -v "$PWD/lexicon:/lexicon:ro" \
   ghcr.io/collite/golem-py:<version> \
   --core resolver:7276 --subject <persona> --question "Zobraz tržby za rok 2025" --json
 ```
 
-On a cluster, run it as a one-off Job in a throwaway namespace with the same environment and
-arguments. Leave out `GOLEM_QUERY_TARGET` or `GOLEM_LLM_TARGET`, and the same command answers
-structurally, as before W1c.
+(`-e GOLEM_LLM_API_KEY` with no value passes the key from your environment, so it is not on
+the command line.) On a cluster, run it as a one-off Job in a throwaway namespace. The key
+comes from the team's Secret, and the operator library from the estate's `hartland-lexicon`
+ConfigMap (bp-dsk: namespaces `ttr-server` and `kantheon`, binary key `lexicon.tar.zst`):
 
-⚑ **Two gaps, checked live on bp-dsk on 2026-11-17** (OL W1c·S3 "Found while doing", for the
-planner):
+```yaml
+env:
+  - name: GOLEM_LLM_TARGET
+    value: http://llm-gateway.ttr-server.svc.cluster.local:7280/v1
+  - name: GOLEM_LLM_API_KEY
+    valueFrom: { secretKeyRef: { name: <team-key-secret>, key: <key> } }
+  - name: GOLEM_LEXICON_ARCHIVE_PATHS
+    value: /lexicon/lexicon.tar.zst
+volumeMounts:
+  - { name: lexicon, mountPath: /lexicon, readOnly: true }
+# …and under the pod's volumes:
+#   - name: lexicon
+#     configMap: { name: hartland-lexicon, items: [ { key: lexicon.tar.zst, path: lexicon.tar.zst } ] }
+```
 
-1. The open gateway (`services/llm-gateway` 2.0) serves HTTP `/v1/chat/completions` only.
-   Nothing answers `llm.v1` gRPC, so a lane that is on refuses `LANE_UNAVAILABLE` there.
-2. The CLI does not load an operator library yet. Without the estate's lexicon archive, any
-   question naming an operator (`Zobraz …` → `op:show`) refuses `NO_CAPABLE_PLUGIN` before
-   the lane. A question that names no operator refuses that way with or without one (OL-C18).
+A Secret or ConfigMap mounts only in its own namespace, so a throwaway namespace needs its own
+copy of the key, deleted with the namespace. Leave out `GOLEM_QUERY_TARGET` or
+`GOLEM_LLM_TARGET`, and the same command answers structurally, as before W1c. Leave out the
+archive, and a question naming an operator (`Zobraz …` → `op:show`) refuses
+`NO_CAPABLE_PLUGIN`. A question that names no operator refuses that way with or without one
+(OL-C18).
 
 ## Two traps worth knowing before you edit the graph
 

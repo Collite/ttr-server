@@ -8,13 +8,18 @@ the one end-to-end turn here runs over the recorded fakes of the lane spec.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
+import io
 import json
+import os
+import tarfile
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
+import zstandard
 
 import main
 from golem_py.door_client import LiveSqlDoor
@@ -27,7 +32,9 @@ from golem_py.model_slice import LiveModelSlice
 from golem_py.outputs import Answer, RefusalWithGaps
 from golem_py.query_client import QueryResult, sql_sha256
 from golem_py.settings import GolemSettings
-from tests.helpers import h1_lattice
+from golem_py.skills import LayeredSkillLibrary
+from tests.helpers import RecordedCore, deps, h1_lattice
+from tests.lattice_fixtures import lattice_golden
 from tests.test_llm_lane import (
     PERIOD,
     PERIOD_SQL,
@@ -306,3 +313,97 @@ def test_the_key_is_in_no_repr_and_a_lane_that_is_off_needs_none(
         monkeypatch, **(LANE_ENV | {"GOLEM_LLM_API_KEY": "", "GOLEM_LLM_LANE_ENABLED": "false"})
     )
     main.check_startup(main.build_deps(off, load_default(), "resolver:7276"), "CHAT_QUICK")
+
+
+# OL W1c·S3a·T4 — the CLI reads the estate's operator library from the lexicon archives.
+LIBRARY = Path(__file__).resolve().parent / "fixtures" / "lexicon" / "operator-library.json"
+
+
+def _archive(path: Path, library: dict[str, object]) -> Path:
+    """A `kind: lexicon` archive as `SnapshotWriter` lays it out: zstd over a tar that holds
+    `docs/operator-library.json` (the only document the Golem reads)."""
+    raw = json.dumps(library).encode()
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        info = tarfile.TarInfo("docs/operator-library.json")
+        info.size = len(raw)
+        tar.addfile(info, io.BytesIO(raw))
+    path.write_bytes(zstandard.ZstdCompressor().compress(buf.getvalue()))
+    return path
+
+
+def _cli_skills(monkeypatch: pytest.MonkeyPatch, **env: str) -> LayeredSkillLibrary:
+    """Run the CLI up to the turn and return the library it would run the turn with."""
+    _settings(monkeypatch, **env)
+    seen: list[LayeredSkillLibrary] = []
+
+    async def capture(_state: object, d: object) -> None:
+        seen.append(d.skills)  # type: ignore[attr-defined]
+        raise SystemExit(0)
+
+    monkeypatch.setattr(main, "run_turn", capture)
+    with pytest.raises(SystemExit):
+        main.main(["--question", "Zobraz tržby za rok 2025"])
+    [skills] = seen
+    return skills
+
+
+async def _h1(skills: LayeredSkillLibrary) -> object:
+    from golem_py.state import ResolutionState
+
+    core = RecordedCore(lattice_golden("h1-cs"))
+    return await run_turn(ResolutionState(question="h1-cs"), deps(core, skills=skills))  # type: ignore[arg-type]
+
+
+def test_the_configured_archives_give_the_turn_op_show_estate_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = json.loads(LIBRARY.read_text(encoding="utf-8"))
+    estate = {**library, "operators": {"op:show": library["operators"]["op:show"]}}
+    first = _archive(tmp_path / "estate.tar.zst", estate)
+    second = _archive(tmp_path / "stdlib.tar.zst", library)
+
+    skills = _cli_skills(
+        monkeypatch, GOLEM_LEXICON_ARCHIVE_PATHS=os.pathsep.join([str(first), str(second)])
+    )
+
+    assert [layer.archive_id for layer in skills.layers] == [str(first), str(second)]
+    assert skills.has("op:show") and skills.has("op:trend")
+    out = asyncio.run(_h1(skills))  # main() runs its own loop, so this test is sync
+    assert isinstance(out, Answer), out
+    assert "op:show" in out.envelope.formatting_directives  # type: ignore[union-attr]
+
+
+def test_with_no_archive_configured_an_operator_question_still_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    skills = _cli_skills(monkeypatch)
+
+    assert skills.layers == []
+    out = asyncio.run(_h1(skills))  # main() runs its own loop, so this test is sync
+    assert isinstance(out, RefusalWithGaps)
+    assert out.reason == "NO_CAPABLE_PLUGIN" and "op:show" in out.explanation
+
+
+@pytest.mark.parametrize("problem", ["missing", "not an archive", "no operator library"])
+def test_a_configured_archive_that_cannot_be_read_exits_2_naming_it(
+    problem: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "lexicon.tar.zst"
+    if problem == "not an archive":
+        path.write_bytes(b"this is not zstd")
+    elif problem == "no operator library":
+        _archive(path, {"schemaVersion": "something-else/v9", "operators": {}})
+    _settings(monkeypatch, GOLEM_LEXICON_ARCHIVE_PATHS=str(path))
+
+    async def no_turn(*_: object, **__: object) -> None:
+        raise AssertionError("a turn ran on an unreadable operator library")
+
+    monkeypatch.setattr(main, "run_turn", no_turn)
+
+    assert main.main(["--question", "q"]) == main.EXIT_CONFIG
+    err = capsys.readouterr().err
+    assert str(path) in err and "GOLEM_LEXICON_ARCHIVE_PATHS" in err

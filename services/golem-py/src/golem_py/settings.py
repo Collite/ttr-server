@@ -66,6 +66,11 @@ class GolemSettings(BaseModel):
     meta_packages: list[str] = []  # GOLEM_META_PACKAGES — comma-separated
     meta_timeout_s: float = 10.0  # GOLEM_META_TIMEOUT_S
 
+    # GOLEM_LEXICON_ARCHIVE_PATHS — the compiled lexicon archives the operator library is read
+    # from, estate first (`os.pathsep`-separated, the `*_LEXICON_ARCHIVE_PATH` mount). Empty:
+    # no library, and a question naming an operator refuses NO_CAPABLE_PLUGIN, as before.
+    lexicon_archive_paths: list[str] = []
+
     @model_validator(mode="after")
     def _ttl_covers_the_token(self) -> GolemSettings:
         if self.snapshot_ttl_s < self.core_token_max_age_s:
@@ -111,8 +116,8 @@ class GolemSettings(BaseModel):
                 return False
             raise ValueError(f"{name} must be true or false, got {raw!r}")
 
-        def _list(name: str) -> list[str]:
-            return [part.strip() for part in (os.getenv(name) or "").split(",") if part.strip()]
+        def _list(name: str, sep: str = ",") -> list[str]:
+            return [part.strip() for part in (os.getenv(name) or "").split(sep) if part.strip()]
 
         try:
             return cls(
@@ -135,6 +140,7 @@ class GolemSettings(BaseModel):
                 meta_target=os.getenv("GOLEM_META_TARGET") or "",
                 meta_packages=_list("GOLEM_META_PACKAGES"),
                 meta_timeout_s=_float("GOLEM_META_TIMEOUT_S", 10.0),
+                lexicon_archive_paths=_list("GOLEM_LEXICON_ARCHIVE_PATHS", os.pathsep),
             )
         except ValueError as exc:
             raise ConfigInvalid(str(exc)) from exc

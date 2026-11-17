@@ -23,6 +23,11 @@ exactly as it did before W1c. When the lane is on, its configuration is checked 
 turn — the gateway URL and key, the world, the slice, `check_lane_config` — and a bad one
 exits 2 naming what is wrong (never the key).
 
+**The operator library.** `GOLEM_LEXICON_ARCHIVE_PATHS` names the estate's compiled lexicon
+archives (`os.pathsep`-separated, estate first); the CLI reads their operator library before
+the turn and exits 2 when a named archive cannot be read. Without it, a question naming an
+operator refuses `NO_CAPABLE_PLUGIN`, as it always has.
+
 `--json` prints the envelope rather than the whole outcome. For an answer, that is contracts
 §6 plus the lane's fields: SQL, provenance, rows, `llm_handled`. For a refusal or an ask, it
 is the outcome without the lattice.
@@ -35,11 +40,13 @@ import asyncio
 import json
 import logging
 import sys
+import tarfile
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 import yaml
+import zstandard
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "generated"))
@@ -56,6 +63,7 @@ from golem_py.llm_client import LiveLlmGateway, chat_endpoint  # noqa: E402
 from golem_py.model_slice import LiveModelSlice  # noqa: E402
 from golem_py.outputs import Answer, Ask, RefusalWithGaps, TurnOutput  # noqa: E402
 from golem_py.settings import GolemSettings  # noqa: E402
+from golem_py.skills import LayeredSkillLibrary, SkillError, load_library  # noqa: E402
 from golem_py.state import ResolutionState  # noqa: E402
 
 # Exit code for a configuration that must not run a turn (the `ConfigInvalid` convention).
@@ -89,7 +97,29 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def build_deps(settings: GolemSettings, ladder: LadderConfig, core_target: str) -> Deps:
+def load_operator_library(paths: list[str]) -> LayeredSkillLibrary:
+    """The operator library from `GOLEM_LEXICON_ARCHIVE_PATHS`, estate first (`load_library`'s
+    layering). No path: an empty library, so a question naming an operator keeps refusing
+    NO_CAPABLE_PLUGIN. A configured archive that cannot be read is `ConfigInvalid`, naming
+    it — a typo in a mount must not degrade every turn into that refusal."""
+    layers = []
+    for path in paths:
+        try:
+            layers.extend(load_library(path).layers)
+        except (OSError, SkillError, ValueError, tarfile.TarError, zstandard.ZstdError) as exc:
+            raise ConfigInvalid(
+                f"the operator library {path!r} (GOLEM_LEXICON_ARCHIVE_PATHS): "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+    return LayeredSkillLibrary(layers)
+
+
+def build_deps(
+    settings: GolemSettings,
+    ladder: LadderConfig,
+    core_target: str,
+    skills: LayeredSkillLibrary | None = None,
+) -> Deps:
     """The live ports. A lane leg whose target is empty stays None, and with no gateway or
     no door the lane is off (OL-C11). The model slice is a leg of its own: a lane that is on
     with no slice refuses as `LANE_UNAVAILABLE`, rather than answer without the model."""
@@ -98,6 +128,7 @@ def build_deps(settings: GolemSettings, ladder: LadderConfig, core_target: str) 
         gate=LiveGate(core_target),
         ladder=ladder,
         settings=settings,
+        skills=skills if skills is not None else LayeredSkillLibrary(),
         door=(
             LiveSqlDoor(settings.query_target, timeout_s=settings.query_timeout_s)
             if settings.query_target
@@ -205,7 +236,8 @@ async def _run(args: argparse.Namespace) -> int:
         settings = GolemSettings.from_env()
         ladder = load_ladder(args.ladder)
         profile = args.profile or settings.profile
-        deps = build_deps(settings, ladder, args.core or settings.core_target)
+        skills = load_operator_library(settings.lexicon_archive_paths)
+        deps = build_deps(settings, ladder, args.core or settings.core_target, skills)
         check_startup(deps, profile)
     except ConfigInvalid as exc:
         print(f"golem-py: configuration invalid: {exc}", file=sys.stderr)
