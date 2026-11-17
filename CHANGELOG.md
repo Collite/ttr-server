@@ -16,6 +16,24 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **golem-py: the CLI takes the LLM lane's settings, and four lane-on conversations join the
+  conformance tier (OL W1c·S3).**
+  - `src/main.py` builds the door, the gateway and the model slice from `GOLEM_*`. Before
+    the turn, a lane that is on is checked for a world, a slice, the `capable` clock and the
+    prompt file (`check_lane_config`); a bad configuration exits 2.
+  - `--json` prints the answer's envelope: SQL, provenance, rows, `llm_handled`. A refusal
+    or an ask prints without its lattice.
+  - The image sets `GOLEM_LLM_LANE_ENABLED=true`, `GOLEM_LLM_MODEL_CLASS=capable` and
+    `GOLEM_LLM_MODEL_SLICE_ENTITIES=40`. With no targets set, it answers as before.
+  - The member-literal check now traces a literal against any operand that is not itself a
+    literal: `UPPER(col) = 'X'`, `CAST(… AS …)`, `LOWER('x')`, `'x'::text`, the `IN` list
+    after any expression, simple-`CASE` `WHEN` labels, and `N'…'`/`E'…'` (review-329
+    ✅R329-C). Before, only a bare column counted, so a case-insensitive comparison could
+    carry an invented member past the check.
+  - Conversations: `conformance/conversations/` gains a `lane:` block (recorded slice,
+    gateway replies, door outcomes, reference date) and four fixtures: `ol-lane-covered`,
+    `ol-lane-relative-period`, `ol-lane-door-repair` and `ol-lane-query-not-written`. The
+    five heroes still run with the lane off, unchanged.
 - **golem-py — the LLM lane at `emit` (OL W1c·S2).** With `GOLEM_LLM_LANE_ENABLED` (default on), a gateway
   and a door configured, a question that composed and carries no blocking gap is answered by one `llm.v1`
   call that writes a `SELECT` over the model slice's `er.*` entities (prompt: `config/llm-lane-prompt.md`).
