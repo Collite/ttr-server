@@ -135,6 +135,11 @@ The listener must store the answer as Spin JSON, set `tatrman_status` and
 `tatrman_chyba` on errors, and export the answer's variables: native scalars,
 Spin JSON for lists and objects. No custom Java is needed; Connect, Spin, and
 Groovy are prerequisites. Behavior is the same on Camunda 7.14 and 7.20.
+The listener may use a native Double for a decimal only when the finite Double's
+decimal text round-trips unchanged. Otherwise it must retain the BigDecimal
+exactly using the engine's built-in Java Object serialization
+(`application/x-java-serialized-object`), which the engine must allow. This uses
+the JDK BigDecimal class; the HTTP answer remains JSON with decimal numbers.
 The listener must skip invalid or `tatrman_`-prefixed keys
 from a service answer and log a warning, preserving the actual answer status.
 

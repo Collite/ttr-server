@@ -35,9 +35,14 @@ execution.setVariable('tatrman_chyba', answer.status == 'error' ? answer.error?.
   def typed = value
   if (value instanceof Map || value instanceof List) {
     typed = org.camunda.spin.plugin.variable.SpinValues.jsonValue(groovy.json.JsonOutput.toJson(value)).create()
-  } else if (value instanceof BigDecimal) {
-    // Camunda native number types are Integer, Long and Double, not BigDecimal.
+  } else if (value instanceof BigDecimal &amp;&amp; Double.isFinite(value.doubleValue()) &amp;&amp;
+      new BigDecimal(value.doubleValue().toString()).compareTo(value) == 0) {
+    // Use a native Double only when its decimal text round-trips unchanged.
     typed = value.doubleValue()
+  } else if (value instanceof BigDecimal) {
+    // Spin JSON rounds BigDecimal on readback; built-in Java serialization retains it exactly.
+    typed = org.camunda.bpm.engine.variable.Variables.objectValue(value)
+        .serializationDataFormat('application/x-java-serialized-object').create()
   } else if (value instanceof BigInteger || (value instanceof CharSequence &amp;&amp; value.length() &gt; 4000)) {
     // JSON-serialized Objects retain integers beyond Long and text beyond the native column.
     typed = org.camunda.bpm.engine.variable.Variables.objectValue(value instanceof CharSequence ? value.toString() : value)

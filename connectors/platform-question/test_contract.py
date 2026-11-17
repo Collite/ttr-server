@@ -170,6 +170,23 @@ class TemplateTests(unittest.TestCase):
                     self.assertIn(incident, script)
                     self.assertLess(script.index(guard), script.index(incident))
 
+    def test_decimal_conversion_requires_exact_round_trip_or_java_object(self):
+        # A CI regression guard; actual persistence is proven on the embedded engine.
+        for name in ("tatrman-question", "tatrman-dotaz"):
+            with self.subTest(template=name):
+                script = load(f"camunda7/{name}.json")["properties"][-1]["value"]
+                guard = ("value instanceof BigDecimal && Double.isFinite(value.doubleValue()) &&\n"
+                         "      new BigDecimal(value.doubleValue().toString()).compareTo(value) == 0")
+                self.assertIn(guard, script)
+                self.assertIn(guard + ") {\n"
+                              "    // Use a native Double only when its decimal text round-trips unchanged.\n"
+                              "    typed = value.doubleValue()", script)
+                self.assertEqual(script.count("typed = value.doubleValue()"), 1)
+                fallback = script.split("} else if (value instanceof BigDecimal) {", 1)[1]
+                fallback = fallback.split("} else if", 1)[0]
+                self.assertIn("Variables.objectValue(value)", fallback)
+                self.assertIn(".serializationDataFormat('application/x-java-serialized-object')", fallback)
+
     def test_export_guard_protects_reserved_and_invalid_names(self):
         for name in ("tatrman-question", "tatrman-dotaz"):
             with self.subTest(template=name):

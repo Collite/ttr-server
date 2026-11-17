@@ -56,7 +56,11 @@ interpolated into the configuration.
 The end listener stores the answer as Spin JSON, sets `tatrman_status` and
 `tatrman_chyba`, and exports each derived variable. Lists/objects use Spin JSON;
 scalars use native values, with JSON-serialized objects for text over 4,000
-characters and integers beyond Long. Invalid or `tatrman_`-prefixed
+characters and integers beyond Long. A decimal uses a native Double only when
+the finite Double's decimal text round-trips unchanged. Otherwise it stays an
+exact BigDecimal Object using built-in Java serialization; the engine must allow
+`application/x-java-serialized-object`. This uses the JDK BigDecimal class and
+requires no custom class. The HTTP answer JSON is unchanged. Invalid or `tatrman_`-prefixed
 answer-variable names are skipped with a warning, so service data cannot
 overwrite the answer status. Service JSON errors reach the listener;
 transport failures create an asynchronous job incident for retry in Cockpit.
@@ -98,7 +102,8 @@ is read only for this stage; no source refs or deployment are changed. The
 English localisation translates the display name, labels, description, and
 non-service-response diagnostic; scripts and portable engine property keys
 otherwise retain their source behavior except for the OL R344-A safety repairs:
-both copies reject missing engine properties and guard
+both copies retain non-round-tripping decimals exactly through built-in Java
+serialization, reject missing engine properties, and guard
 exported variable names. No source repository is changed by those repairs.
 
 `platform-question/v0.11.0` identifies a GitHub release with this folder as one

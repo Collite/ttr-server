@@ -21,7 +21,9 @@ outside this repo could notice is in.
   `/automation/check` interface, a configuration JSON Schema with examples, English
   and Czech Camunda 7 element templates, and one generic BPMN sample. CI validates
   both templates against the vendored official Camunda schema and all 11 examples
-  (four valid, seven invalid, with expected failure reasons). Templates fail missing engine properties as incidents and protect
+  (four valid, seven invalid, with expected failure reasons). Templates preserve
+  non-round-tripping BigDecimal values through built-in Java Object serialization
+  (HTTP JSON unchanged), fail missing engine properties as incidents, and protect
   reserved answer variables. Row prefixes and column selections are constrained.
   Tag `platform-question/v0.11.0` runs `platform-question.yml` to build the folder
   archive, test it unpacked, and publish the GitHub release; the image lane excludes it.
