@@ -145,6 +145,13 @@ promise. Failed status carries the stored public error code; execution requests 
 typed refusal. Polling never executes Query, applies an execution budget, retries a journal or mutates the run.
 Preview actions now appear in `actions`; task/delivery projections and close remain later lifecycle work.
 
+Evaluation tolerates trailing whitespace in a route cell when trimming it matches the declared port.
+It records one `route_padded` warning per affected port, with `code`, `port` and the number of padded
+`rows`, in the evaluation response, durable decision protocol and run status, and logs it once at WARN
+with the run id. Warnings default to an empty list for older decisions and never refuse a run; genuine
+route mismatches still fail. Verdict keys and written routes use port names. Core S2.4d removes the
+underlying CHAR padding; the tolerance remains for older producers.
+
 Engine polling contract (D-47):
 1. Open with an idempotency key and retain it with the run id. After a new open, call evaluate.
 2. On `202`, follow Location every 15–30 seconds, respecting Retry-After. Keep the same run id/key while it is

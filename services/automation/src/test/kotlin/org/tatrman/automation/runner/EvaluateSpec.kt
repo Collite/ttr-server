@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.runner
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.*
@@ -73,42 +78,55 @@ class EvaluateSpec :
         }
 
         "a route value padded to the longest literal matches its port and is recorded as a warning" {
-            coroutineScope {
-                val recorded = mutableListOf<EvaluationResult>()
-                PartRunner(
-                    runnerContext(paddingRecipe()),
-                    Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, "to_customer_care     "))) },
-                    Staging(LocalStagingStore(Files.createTempDirectory("au-eval-padding"))) {},
-                    this,
-                    { _, result -> recorded += result },
-                ).use { runner ->
-                    val result = runner.evaluate()
-                    result.verdict.routes.mapValues { it.value.rowCount } shouldBe
-                        mapOf("to_customer_care" to 2L, "replacement_no_return" to 1L)
-                    val warnings = Json.encodeToJsonElement(result).jsonObject["warnings"]
-                    warnings shouldBe
-                        Json.parseToJsonElement(
-                            """[{"code":"route_padded","port":"to_customer_care","rows":2}]""",
-                        )
-                    recorded shouldBe listOf(result)
-                    runner.evaluate() shouldBe result
-                    recorded.size shouldBe 1
-                    result.guards.all { it.status == "passed" } shouldBe true
+            val logger = LoggerFactory.getLogger(PartRunner::class.java) as Logger
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            logger.addAppender(appender)
+            try {
+                coroutineScope {
+                    val recorded = mutableListOf<EvaluationResult>()
+                    val paddedRoute = "to_customer_care     "
+                    PartRunner(
+                        runnerContext(paddingRecipe()),
+                        Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, paddedRoute))) },
+                        Staging(LocalStagingStore(Files.createTempDirectory("au-eval-padding"))) {},
+                        this,
+                        { _, result -> recorded += result },
+                    ).use { runner ->
+                        val result = runner.evaluate()
+                        result.verdict.routes.mapValues { it.value.rowCount } shouldBe
+                            mapOf("to_customer_care" to 2L, "replacement_no_return" to 1L)
+                        val warnings = Json.encodeToJsonElement(result).jsonObject["warnings"]
+                        warnings shouldBe
+                            Json.parseToJsonElement(
+                                """[{"code":"route_padded","port":"to_customer_care","rows":2}]""",
+                            )
+                        recorded shouldBe listOf(result)
+                        runner.evaluate() shouldBe result
+                        recorded.size shouldBe 1
+                        result.guards.all { it.status == "passed" } shouldBe true
+                        appender.list.filter { it.level == Level.WARN }.map { it.formattedMessage } shouldBe
+                            listOf("route_padded port=to_customer_care rows=2 run=${runner.context.id}")
+                    }
                 }
+            } finally {
+                logger.detachAppender(appender)
+                appender.stop()
             }
         }
 
         "a route value that differs after trimming still fails" {
-            supervisorScope {
-                PartRunner(
-                    runnerContext(paddingRecipe()),
-                    Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, "to_customer_car     "))) },
-                    Staging(LocalStagingStore(Files.createTempDirectory("au-eval-mismatch"))) {},
-                    this,
-                    { _, _ -> error("a mismatched route must not be journalled") },
-                ).use { runner ->
-                    shouldThrow<IllegalArgumentException> { runner.evaluate() }.message shouldBe
-                        "route column differs from its port"
+            for (cell in listOf("to_customer_car     ", null, 42)) {
+                supervisorScope {
+                    PartRunner(
+                        runnerContext(paddingRecipe()),
+                        Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, cell))) },
+                        Staging(LocalStagingStore(Files.createTempDirectory("au-eval-mismatch"))) {},
+                        this,
+                        { _, _ -> error("a mismatched route must not be journalled") },
+                    ).use { runner ->
+                        shouldThrow<IllegalArgumentException> { runner.evaluate() }.message shouldBe
+                            "route column differs from its port"
+                    }
                 }
             }
         }
@@ -369,7 +387,7 @@ private fun paddingRecipe(): LoadedRecipe {
 
 private fun paddingRows(
     name: String,
-    careRoute: String,
+    careRoute: Any?,
 ): List<List<Any?>> =
     evaluationRows(name).map { row ->
         when (name) {

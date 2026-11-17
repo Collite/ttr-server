@@ -1743,6 +1743,7 @@ class Ledger(
                 status = row[Runs.status],
                 verdict = result?.verdict,
                 guards = result?.guards.orEmpty(),
+                warnings = result?.warnings.orEmpty(),
                 mode = result?.mode,
                 protocolRef = row[Runs.protocolRef] ?: "/automation/runs/$runId/protocol",
                 recipe = row[Runs.recipe],

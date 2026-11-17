@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import org.slf4j.LoggerFactory
 import org.tatrman.automation.bundle.LoadedRecipe
 import org.tatrman.automation.apply.PreviewMetadata
 import org.tatrman.automation.apply.PreviewPlan
@@ -181,6 +182,15 @@ class PartRunner(
                                     requireNotNull(recordPreview).invoke(context.id, result, plan)
                                 }
                                 evaluationRecorded = true
+                            }
+                            result.warnings.forEach { warning ->
+                                log.warn(
+                                    "{} port={} rows={} run={}",
+                                    warning.code,
+                                    warning.port,
+                                    warning.rows,
+                                    context.id,
+                                )
                             }
                             checks.ensureAllowed()
                             result
@@ -617,6 +627,8 @@ class PartRunner(
     }
 
     companion object {
+        private val log = LoggerFactory.getLogger(PartRunner::class.java)
+
         /** At most 900 bound identity values (entity/kind/key), below the portable 999-parameter ceiling. */
         internal const val MAX_OBLIGATION_IDENTITIES = 300
     }
