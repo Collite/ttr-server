@@ -28,7 +28,7 @@ from typing import Literal
 from pydantic_graph import Graph, GraphBuilder, StepContext, TypeExpression
 
 from golem_py.budgets import Budgets
-from golem_py.compose import ComposeRefused, compose_structured_question, operator_refs
+from golem_py.compose import ComposeRefused, composable_residue, compose_structured_question
 from golem_py.deps import CoreResumePort, Deps
 from golem_py.errors import CoreResumeUnavailable, GateUnavailable, PickRefused, UnknownOption
 from golem_py.gate_client import apply_gate_result
@@ -502,9 +502,7 @@ def build_graph() -> Graph[ResolutionState, Deps, None, TurnOutput]:
                 reason="NO_CAPABLE_PLUGIN",
                 gaps=ctx.state.gaps,
                 lattice=ctx.state,
-                composable_residue=[
-                    op for op in operator_refs(ctx.state) if ctx.deps.skills.has(op)
-                ],
+                composable_residue=composable_residue(ctx.state, ctx.deps.skills),
                 explanation=str(exc),
             )
 
@@ -544,7 +542,7 @@ def build_graph() -> Graph[ResolutionState, Deps, None, TurnOutput]:
             reason="UNRESOLVED_GAPS",
             gaps=ctx.state.open_gaps(),
             lattice=ctx.state,
-            composable_residue=[op for op in operator_refs(ctx.state) if ctx.deps.skills.has(op)],
+            composable_residue=composable_residue(ctx.state, ctx.deps.skills),
         )
         log_node(ctx.state, "refuse", gaps_open=len(ctx.state.open_gaps()))
         log_turn(ctx.state, "refuse")
