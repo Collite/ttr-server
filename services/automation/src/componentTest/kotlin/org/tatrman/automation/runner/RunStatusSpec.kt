@@ -103,6 +103,36 @@ class RunStatusSpec :
                 )
         }
 
+        "evaluation warnings survive the protocol and a fresh status reader" {
+            val id = open()
+            val warning = Json.parseToJsonElement("""[{"code":"route_padded","port":"to_customer_care","rows":2}]""")
+            val payload = JsonObject(Json.encodeToJsonElement(result).jsonObject + ("warnings" to warning))
+            ledger.completeEvaluation(id, Json.decodeFromJsonElement<EvaluationResult>(payload))
+            transaction {
+                RunProtocol.selectAll().single()[RunProtocol.payload].jsonObject["warnings"] shouldBe warning
+            }
+            val status = Ledger(Duration.ofMinutes(30), clock).readRunProgress(id, "subject-1")
+            Json.encodeToJsonElement(status).jsonObject["warnings"] shouldBe warning
+        }
+
+        "an older evaluation entry without warnings decodes to an empty warning list" {
+            val id = open()
+            val legacy = JsonObject(Json.encodeToJsonElement(result).jsonObject - "warnings")
+            transaction {
+                RunProtocol.insert {
+                    it[run] = id
+                    it[section] = ProtocolSection.DECISION.wire
+                    it[seq] = 1
+                    it[payload] = legacy
+                    it[at] = now.atOffset(java.time.ZoneOffset.UTC)
+                }
+                Runs.update({ Runs.id eq id }) { it[status] = RunStatus.EVALUATED.wire }
+            }
+            val status = Ledger(Duration.ofMinutes(30), clock).readRunProgress(id, "subject-1")
+            Json { encodeDefaults = true }.encodeToJsonElement(status).jsonObject["warnings"] shouldBe
+                JsonArray(emptyList())
+        }
+
         "waiting and terminal states retain committed verdicts, timestamps and public failure evidence" {
             for (state in listOf(RunStatus.WAITING, RunStatus.CLOSED, RunStatus.FAILED, RunStatus.ABANDONED)) {
                 val id = open()

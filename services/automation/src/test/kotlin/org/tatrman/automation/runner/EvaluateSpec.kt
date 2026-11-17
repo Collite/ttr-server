@@ -5,6 +5,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.*
@@ -67,6 +68,63 @@ class EvaluateSpec :
                         )
                     result.guards.all { it.status == "passed" } shouldBe true
                     runner.evaluate() shouldBe result
+                }
+            }
+        }
+
+        "a route value padded to the longest literal matches its port and is recorded as a warning" {
+            coroutineScope {
+                val recorded = mutableListOf<EvaluationResult>()
+                PartRunner(
+                    runnerContext(paddingRecipe()),
+                    Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, "to_customer_care     "))) },
+                    Staging(LocalStagingStore(Files.createTempDirectory("au-eval-padding"))) {},
+                    this,
+                    { _, result -> recorded += result },
+                ).use { runner ->
+                    val result = runner.evaluate()
+                    result.verdict.routes.mapValues { it.value.rowCount } shouldBe
+                        mapOf("to_customer_care" to 2L, "replacement_no_return" to 1L)
+                    val warnings = Json.encodeToJsonElement(result).jsonObject["warnings"]
+                    warnings shouldBe
+                        Json.parseToJsonElement(
+                            """[{"code":"route_padded","port":"to_customer_care","rows":2}]""",
+                        )
+                    recorded shouldBe listOf(result)
+                    runner.evaluate() shouldBe result
+                    recorded.size shouldBe 1
+                    result.guards.all { it.status == "passed" } shouldBe true
+                }
+            }
+        }
+
+        "a route value that differs after trimming still fails" {
+            supervisorScope {
+                PartRunner(
+                    runnerContext(paddingRecipe()),
+                    Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, "to_customer_car     "))) },
+                    Staging(LocalStagingStore(Files.createTempDirectory("au-eval-mismatch"))) {},
+                    this,
+                    { _, _ -> error("a mismatched route must not be journalled") },
+                ).use { runner ->
+                    shouldThrow<IllegalArgumentException> { runner.evaluate() }.message shouldBe
+                        "route column differs from its port"
+                }
+            }
+        }
+
+        "an unpadded run records no warning" {
+            coroutineScope {
+                PartRunner(
+                    runnerContext(paddingRecipe()),
+                    Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, "to_customer_care"))) },
+                    Staging(LocalStagingStore(Files.createTempDirectory("au-eval-unpadded"))) {},
+                    this,
+                    { _, _ -> },
+                ).use { runner ->
+                    Json { encodeDefaults = true }
+                        .encodeToJsonElement(runner.evaluate())
+                        .jsonObject["warnings"] shouldBe JsonArray(emptyList())
                 }
             }
         }
@@ -282,4 +340,41 @@ internal fun evaluationRows(name: String): List<List<Any?>> =
         "also" -> listOf(listOf(1L, "a", "also", "another SQL reason"))
         "empty" -> emptyList()
         else -> error("unexpected statement")
+    }
+
+private fun paddingRecipe(): LoadedRecipe {
+    val original = evaluationRecipe()
+    val names = mapOf("yes" to "to_customer_care", "also" to "replacement_no_return")
+    val recipe =
+        original.recipe.copy(
+            roles = original.recipe.roles!!.copy(routes = names.values.map { ManifestRoute(it) }),
+        )
+    val islands =
+        original.manifest.islands.map { island ->
+            if (island.name == "way") {
+                island.copy(
+                    outputs =
+                        island.outputs.filter { it.port in names }.map {
+                            it.copy(
+                                port = names.getValue(it.port),
+                            )
+                        },
+                )
+            } else {
+                island
+            }
+        }
+    return original.copy(recipe = recipe, manifest = original.manifest.copy(recipe = recipe, islands = islands))
+}
+
+private fun paddingRows(
+    name: String,
+    careRoute: String,
+): List<List<Any?>> =
+    evaluationRows(name).map { row ->
+        when (name) {
+            "yes" -> row.toMutableList().also { it[2] = careRoute }
+            "also" -> row.toMutableList().also { it[2] = "replacement_no_return" }
+            else -> row
+        }
     }
