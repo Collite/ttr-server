@@ -62,6 +62,8 @@ on:
       # release lane that always shows one failure is a release lane whose
       # failures nobody reads.
       - '!morph/v*'
+      # A connector folder released as an archive by platform-question.yml, not an image.
+      - '!platform-question/v*'
   workflow_dispatch:
     inputs:
       version:

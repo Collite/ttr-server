@@ -28,6 +28,10 @@ execution.setVariable(resultName, org.camunda.spin.plugin.variable.SpinValues.js
 execution.setVariable('tatrman_status', answer.status)
 execution.setVariable('tatrman_chyba', answer.status == 'error' ? answer.error?.message?.toString() : null)
 (answer.variables ?: [:]).each { name, value -&gt;
+  if (!(name instanceof String) || !(name ==~ /^[A-Za-z_][A-Za-z0-9_]*$/) || name.startsWith('tatrman_')) {
+    java.util.logging.Logger.getLogger('org.tatrman.platform.question').warning('Ignoring invalid or reserved answer variable name: ' + name)
+    return
+  }
   def typed = value
   if (value instanceof Map || value instanceof List) {
     typed = org.camunda.spin.plugin.variable.SpinValues.jsonValue(groovy.json.JsonOutput.toJson(value)).create()
@@ -49,11 +53,19 @@ execution.setVariable('tatrman_chyba', answer.status == 'error' ? answer.error?.
           <camunda:connectorId>http-connector</camunda:connectorId>
           <camunda:inputOutput>
             <camunda:inputParameter name="url">
-              <camunda:script scriptFormat="groovy">System.getProperty('tatrman.url')</camunda:script>
+              <camunda:script scriptFormat="groovy">def url = System.getProperty('tatrman.url')
+if (url == null || url.trim().isEmpty())
+  throw new IllegalStateException('engine property tatrman.url is not set')
+url
+</camunda:script>
             </camunda:inputParameter>
             <camunda:inputParameter name="method">POST</camunda:inputParameter>
             <camunda:inputParameter name="headers">
-              <camunda:script scriptFormat="groovy">['Content-Type':'application/json; charset=UTF-8', 'Accept':'application/json', 'Authorization':'Bearer ' + System.getProperty('tatrman.token')]</camunda:script>
+              <camunda:script scriptFormat="groovy">def token = System.getProperty('tatrman.token')
+if (token == null || token.trim().isEmpty())
+  throw new IllegalStateException('engine property tatrman.token is not set')
+['Content-Type':'application/json; charset=UTF-8', 'Accept':'application/json', 'Authorization':'Bearer ' + token]
+</camunda:script>
             </camunda:inputParameter>
             <camunda:inputParameter name="payload">
               <camunda:script scriptFormat="groovy">// camunda:string is literal model data; an inputParameter would evaluate JUEL.

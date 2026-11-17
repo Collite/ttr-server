@@ -59,7 +59,9 @@
                     "items": {
                       "type": "string",
                       "minLength": 1
-                    }
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
                   }
                 },
                 "required": [
@@ -83,7 +85,9 @@
                     "items": {
                       "type": "string",
                       "minLength": 1
-                    }
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
                   }
                 },
                 "required": [
@@ -247,7 +251,8 @@
                 "minLength": 1
               },
               "prefix": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^(?!tatrman_)([A-Za-z_][A-Za-z0-9_]*)?$"
               }
             },
             "required": [

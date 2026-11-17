@@ -20,8 +20,11 @@ outside this repo could notice is in.
   `connectors/platform-question` publishes the read-only `/automation/query` and
   `/automation/check` interface, a configuration JSON Schema with examples, English
   and Czech Camunda 7 element templates, and one generic BPMN sample. CI validates
-  both templates against the vendored official Camunda schema and all six examples.
-  Release lane `platform-question/v0.11.0` carries the folder as one archive.
+  both templates against the vendored official Camunda schema and all 11 examples
+  (four valid, seven invalid, with expected failure reasons). Templates fail missing engine properties as incidents and protect
+  reserved answer variables. Row prefixes and column selections are constrained.
+  Tag `platform-question/v0.11.0` runs `platform-question.yml` to build the folder
+  archive, test it unpacked, and publish the GitHub release; the image lane excludes it.
   This release contains the contract and template; the bridge follows separately.
 
 - **automation 0.11.41 — the route invariant tolerates CHAR padding and records `route_padded` (ttr-server#428).**

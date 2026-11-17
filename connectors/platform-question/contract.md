@@ -57,6 +57,7 @@ Each entry selects exactly one source:
 A configuration must have either data cores or exactly one Golem core, never a
 mixture. `variables` is optional. Variable names must match ASCII
 `[A-Za-z_][A-Za-z0-9_]*` and must not begin with `tatrman_`.
+When supplied, `columns` must be a nonempty list of distinct column names.
 
 `{name}` in `sql`, `where`, and `question` is a placeholder supplied by `params`.
 A missing parameter must produce `param-missing`. For SQL, the platform's own
@@ -81,6 +82,10 @@ a core's frame; `scalar` runs DuckDB SQL over the frames.
 
 For `row`, an absent prefix and `prefix: ""` both mean no prefix. Zero rows
 produce null for each column; more than one row must produce `variable-invalid`.
+An explicit nonempty prefix must match `[A-Za-z_][A-Za-z0-9_]*` and must not
+begin with `tatrman_`. An implementation must never export a variable named
+`tatrman_*`: it must refuse a row expansion producing such a name with
+`variable-invalid`, including an unprefixed column named `tatrman_…`.
 On an empty frame, aggregates are null, `count` is zero, and `null_is_zero: true`
 turns null into zero. The derivation core's `validation_inconsistent` behavior
 on empty frames is unchanged.
@@ -123,11 +128,15 @@ The endpoint property reads the engine JVM system property `tatrman.url` with
 no default host. Authorization reads `tatrman.token` from the engine JVM, never
 from BPMN or process variables. These are portable engine property keys, not
 deployment credential names.
+If either engine property is missing or blank, the task must fail with an engine
+incident naming that property, before an HTTP call is made.
 
 The listener must store the answer as Spin JSON, set `tatrman_status` and
 `tatrman_chyba` on errors, and export the answer's variables: native scalars,
 Spin JSON for lists and objects. No custom Java is needed; Connect, Spin, and
 Groovy are prerequisites. Behavior is the same on Camunda 7.14 and 7.20.
+The listener must skip invalid or `tatrman_`-prefixed keys
+from a service answer and log a warning, preserving the actual answer status.
 
 A service JSON error body, regardless of HTTP status, reaches the end listener
 and gateway. A transport failure (connection, timeout, TLS) creates an engine

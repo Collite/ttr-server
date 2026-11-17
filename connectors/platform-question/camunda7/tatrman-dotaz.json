@@ -51,7 +51,7 @@
     },
     {
       "type": "Hidden",
-      "value": "def raw = execution.getVariable('tatrman_response')\ndef answer = new groovy.json.JsonSlurperClassic().parseText(raw)\ndef resultName = execution.getVariable('tatrman_result') ?: 'tatrman_vysledek'\nexecution.setVariable(resultName, org.camunda.spin.plugin.variable.SpinValues.jsonValue(raw).create())\nexecution.setVariable('tatrman_status', answer.status)\nexecution.setVariable('tatrman_chyba', answer.status == 'error' ? answer.error?.message?.toString() : null)\n(answer.variables ?: [:]).each { name, value ->\n  def typed = value\n  if (value instanceof Map || value instanceof List) {\n    typed = org.camunda.spin.plugin.variable.SpinValues.jsonValue(groovy.json.JsonOutput.toJson(value)).create()\n  } else if (value instanceof BigDecimal) {\n    // Camunda native number types are Integer, Long and Double, not BigDecimal.\n    typed = value.doubleValue()\n  } else if (value instanceof BigInteger || (value instanceof CharSequence && value.length() > 4000)) {\n    // JSON-serialized Objects retain integers beyond Long and text beyond the native column.\n    typed = org.camunda.bpm.engine.variable.Variables.objectValue(value instanceof CharSequence ? value.toString() : value)\n        .serializationDataFormat('application/json').create()\n  } else if (value instanceof CharSequence) {\n    typed = value.toString()\n  }\n  execution.setVariable(name, typed)\n}\n",
+      "value": "def raw = execution.getVariable('tatrman_response')\ndef answer = new groovy.json.JsonSlurperClassic().parseText(raw)\ndef resultName = execution.getVariable('tatrman_result') ?: 'tatrman_vysledek'\nexecution.setVariable(resultName, org.camunda.spin.plugin.variable.SpinValues.jsonValue(raw).create())\nexecution.setVariable('tatrman_status', answer.status)\nexecution.setVariable('tatrman_chyba', answer.status == 'error' ? answer.error?.message?.toString() : null)\n(answer.variables ?: [:]).each { name, value ->\n  if (!(name instanceof String) || !(name ==~ /^[A-Za-z_][A-Za-z0-9_]*$/) || name.startsWith('tatrman_')) {\n    java.util.logging.Logger.getLogger('org.tatrman.platform.question').warning('Ignoring invalid or reserved answer variable name: ' + name)\n    return\n  }\n  def typed = value\n  if (value instanceof Map || value instanceof List) {\n    typed = org.camunda.spin.plugin.variable.SpinValues.jsonValue(groovy.json.JsonOutput.toJson(value)).create()\n  } else if (value instanceof BigDecimal) {\n    // Camunda native number types are Integer, Long and Double, not BigDecimal.\n    typed = value.doubleValue()\n  } else if (value instanceof BigInteger || (value instanceof CharSequence && value.length() > 4000)) {\n    // JSON-serialized Objects retain integers beyond Long and text beyond the native column.\n    typed = org.camunda.bpm.engine.variable.Variables.objectValue(value instanceof CharSequence ? value.toString() : value)\n        .serializationDataFormat('application/json').create()\n  } else if (value instanceof CharSequence) {\n    typed = value.toString()\n  }\n  execution.setVariable(name, typed)\n}\n",
       "binding": {
         "type": "camunda:executionListener",
         "event": "end",
@@ -73,7 +73,7 @@
         },
         {
           "type": "Hidden",
-          "value": "System.getProperty('tatrman.url')",
+          "value": "def url = System.getProperty('tatrman.url')\nif (url == null || url.trim().isEmpty())\n  throw new IllegalStateException('engine property tatrman.url is not set')\nurl\n",
           "binding": {
             "type": "camunda:inputParameter",
             "name": "url",
@@ -90,7 +90,7 @@
         },
         {
           "type": "Hidden",
-          "value": "['Content-Type':'application/json; charset=UTF-8', 'Accept':'application/json', 'Authorization':'Bearer ' + System.getProperty('tatrman.token')]",
+          "value": "def token = System.getProperty('tatrman.token')\nif (token == null || token.trim().isEmpty())\n  throw new IllegalStateException('engine property tatrman.token is not set')\n['Content-Type':'application/json; charset=UTF-8', 'Accept':'application/json', 'Authorization':'Bearer ' + token]\n",
           "binding": {
             "type": "camunda:inputParameter",
             "name": "headers",
