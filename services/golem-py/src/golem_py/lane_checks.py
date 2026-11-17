@@ -8,11 +8,14 @@ and before the door is called the code checks the rules the prompt states:
   `SELECT`; no data or schema keyword (`INSERT`, `DROP`, `INTO`, …) anywhere;
 * **over `er.*` names from the slice only** — every dotted name starting with `er` names an
   entity of the slice (or one of its attributes), and every table position (after `FROM`,
-  `JOIN`, or a comma in a `FROM` list) holds such a name or a sub-query;
+  `JOIN`, `APPLY`, or a comma in a `FROM` list) holds an entity of the slice or a sub-query;
 * **no parameters** — no `?`, `$1`, `:name` or `@name`;
 * **a literal that restricts a member comes from a binding, a value or the question's own
-  words** — every string literal that is not a date or a typed temporal literal must be found
-  in what the lattice carries (see `literal_sources`);
+  words** — a string literal compared to a column (`=`, `<>`, `!=`, `LIKE`, `ILIKE`, from
+  either side) or listed in a column's `IN ( … )` must be a whole word or a whole run of
+  words of what the lattice carries (see `literal_sources`); `%` at its edges is dropped
+  first, and a date is exempt. Every other string literal — a function's argument, a
+  `CASE` label, a `COALESCE` fallback — restricts no member and is not traced;
 * **`handled_spans` names carried gaps** — a claim on a span no carried gap sits on is not a
   claim the envelope can hold beside `gaps_carried` (OL-C17).
 
@@ -43,7 +46,8 @@ FORBIDDEN_KEYWORDS = frozenset(
         "DELETE",
         "MERGE",
         "UPSERT",
-        "REPLACE",
+        # Not REPLACE: it is also a read-only string function, and `REPLACE INTO` cannot get
+        # through anyway — the statement must start with SELECT and INTO is refused alone.
         "DROP",
         "CREATE",
         "ALTER",
@@ -76,6 +80,11 @@ _FROM_ENDERS = frozenset(
 )
 # A string literal right after one of these is temporal, not a member.
 _TYPED_LITERALS = frozenset({"DATE", "TIME", "TIMESTAMP", "INTERVAL"})
+# The comparisons that restrict a column to a member; the pattern ones only read left to right.
+_EQUALITY = frozenset({"=", "<>", "!="})
+_PATTERN = frozenset({"LIKE", "ILIKE"})
+# Words that can stand where a column would and are not one.
+_NOT_COLUMNS = frozenset({"END", "NULL", "TRUE", "FALSE", "NOT"})
 _TEMPORAL = re.compile(r"^\d{4}-\d{2}(-\d{2})?([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$")
 
 _TOKEN = re.compile(
@@ -178,7 +187,7 @@ def _check_names(toks: list[_Tok], allowed_entities: Sequence[str]) -> None:
             parts, nxt = _name_at(toks, i)
             if expect_table:
                 expect_table = False
-                if parts[0] != "er":
+                if parts[0] != "er" or not _in_slice(parts, allowed):
                     raise LaneReplyRefused(
                         "outside_slice", f"{'.'.join(parts)!r} is not an er.* name of the slice"
                     )
@@ -196,7 +205,7 @@ def _check_names(toks: list[_Tok], allowed_entities: Sequence[str]) -> None:
             elif word == "FROM" and selects[-1] and (i == 0 or toks[i - 1].upper != "DISTINCT"):
                 in_from[-1] = True
                 expect_table = True
-            elif word == "JOIN" and selects[-1]:
+            elif word in ("JOIN", "APPLY") and selects[-1]:
                 expect_table = True
             elif word in _FROM_ENDERS:
                 in_from[-1] = False
@@ -222,38 +231,115 @@ def _literal(tok: _Tok) -> str:
     return tok.text[1:-1].replace("''", "'")
 
 
+def _is_column(tok: _Tok) -> bool:
+    return tok.kind == "qident" or (tok.kind == "ident" and tok.upper not in _NOT_COLUMNS)
+
+
+def _column_ends_at(toks: Sequence[_Tok], k: int, *, negatable: bool) -> bool:
+    """A column reference ends at `k` (a name, not a call: what follows it is the
+    comparison). `NOT LIKE` / `NOT IN` step over the `NOT`."""
+    if negatable and k >= 0 and toks[k].upper == "NOT":
+        k -= 1
+    return k >= 0 and _is_column(toks[k])
+
+
+def _column_starts_at(toks: Sequence[_Tok], k: int) -> bool:
+    """A column reference starts at `k` — a name that is not followed by a call's `(`."""
+    if k >= len(toks) or not _is_column(toks[k]):
+        return False
+    _, nxt = _name_at(toks, k)
+    return nxt >= len(toks) or toks[nxt].text != "("
+
+
+def _in_list(toks: Sequence[_Tok], open_at: int) -> list[int]:
+    """The plain string elements of the `( … )` opening at `open_at`; none for a sub-query."""
+    if open_at + 1 < len(toks) and toks[open_at + 1].upper == "SELECT":
+        return []
+    out: list[int] = []
+    depth = 0
+    for j in range(open_at, len(toks)):
+        text = toks[j].text
+        if text == "(":
+            depth += 1
+        elif text == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        elif (
+            depth == 1
+            and toks[j].kind == "string"
+            and toks[j - 1].text in ("(", ",")
+            and j + 1 < len(toks)
+            and toks[j + 1].text in (",", ")")
+        ):
+            out.append(j)
+    return out
+
+
+def _member_literals(toks: Sequence[_Tok]) -> list[int]:
+    """The string literals that restrict a member: compared to a column, or in its `IN`."""
+    out: list[int] = []
+    for i, tok in enumerate(toks):
+        if tok.kind == "string" and i >= 2:
+            op = toks[i - 1]
+            if (op.text in _EQUALITY or op.upper in _PATTERN) and _column_ends_at(
+                toks, i - 2, negatable=op.upper in _PATTERN
+            ):
+                out.append(i)
+                continue
+        if (
+            tok.kind == "string"
+            and i + 1 < len(toks)
+            and toks[i + 1].text in _EQUALITY
+            and _column_starts_at(toks, i + 2)
+        ):
+            out.append(i)
+        elif (
+            tok.upper == "IN"
+            and i + 1 < len(toks)
+            and toks[i + 1].text == "("
+            and _column_ends_at(toks, i - 1, negatable=True)
+        ):
+            out += _in_list(toks, i + 1)
+    return sorted(set(out))
+
+
+def _whole_words(needle: str) -> re.Pattern[str]:
+    """`needle` as a whole word or run of words — `\\w` is Unicode, so `tr` is no word of
+    `tržby`, nor `sales` of `store_sales`."""
+    return re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)")
+
+
 def _check_literals(toks: list[_Tok], sources: Iterable[str]) -> None:
     haystack = [s.casefold() for s in sources if s]
-    for i, tok in enumerate(toks):
-        if tok.kind != "string":
+    for i in _member_literals(toks):
+        if toks[i - 1].upper in _TYPED_LITERALS:
             continue
-        if i > 0 and toks[i - 1].upper in _TYPED_LITERALS:
-            continue
-        value = _literal(tok).strip()
+        value = _literal(toks[i]).strip()
         if _TEMPORAL.match(value):
             continue
-        needle = value.strip("%").casefold()
+        needle = value.strip("%").strip().casefold()
         if not needle:
             continue
-        if not any(needle in s for s in haystack):
+        word = _whole_words(needle)
+        if not any(word.search(s) for s in haystack):
             raise LaneReplyRefused(
                 "literal_unsourced",
-                f"the literal {value!r} comes from no binding, value or word of the question",
+                f"the literal {value!r} is no whole word of a binding, a value or the question",
             )
 
 
 def literal_sources(state: ResolutionState) -> list[str]:
-    """Where a member literal may come from (OL-C15): the question's own words, the bindings
-    (their refs and a member ref's key after `#`), the values (span, VERBATIM text,
-    normalised grounding, attributions). The mentions' lemmas count as the question's words —
-    a member named in an inflected form is still named."""
+    """Where a member literal may come from (OL-C15): the question's own words, the
+    mentions' span texts and lemmas, a member ref's key after `#` (of a binding, a grounding
+    or an attribution), the values' span, VERBATIM and normalised texts. The lemmas count as
+    the question's words — a member named in an inflected form is still named. A ref path
+    itself is no source: a member is never spelled `er.entity.store_sales`."""
     out = [state.question]
 
     def _ref(ref: str) -> None:
-        if ref:
-            out.append(ref)
-            if "#" in ref:
-                out.append(ref.split("#", 1)[1])
+        if "#" in ref:
+            out.append(ref.split("#", 1)[1])
 
     for m in state.mentions:
         out += [m.span.text, m.lemma]

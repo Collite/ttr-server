@@ -29,7 +29,8 @@ Rules — a query that breaks any of them is refused and never run:
    listed.
 3. No parameters or placeholders (`?`, `:name`, `$1`, `@name`). Write values as literals.
 4. A literal that restricts a member (a name, a code, a category) must come from a binding, a
-   value, or the question's own words. Never invent a member. Dates and periods are written as
+   value, or the question's own words, written whole as it appears there — `LIKE '%Ostrava%'`,
+   never a cut-off word like `'%Ostrav%'`. Never invent a member. Dates and periods are written as
    ISO dates (`DATE '2026-10-01'`), computed from a grounded value or, for a relative period
    ("last month"), from the reference date.
 5. `handled_spans` lists the carried gaps your query expresses, each as `[start, end]` exactly

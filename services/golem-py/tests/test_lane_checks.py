@@ -30,7 +30,7 @@ CARRIED = (Span(start=22, end=34, text="minulý měsíc"),)
 SOURCES = (
     "Zobraz tržby v Praze za minulý měsíc",
     "Praha",
-    "md.member.city#Brno",
+    "Brno",
     "2025-01-01/2025-12-31",
 )
 
@@ -62,7 +62,9 @@ PASSES = [
         "SELECT 1 FROM er.entity.store st WHERE st.city = 'Praze'",
     ),
     ("member literal from a value", "SELECT 1 FROM er.entity.store st WHERE st.city = 'praha'"),
-    ("like pattern", "SELECT 1 FROM er.entity.store st WHERE st.city LIKE 'Pra%'"),
+    ("like pattern", "SELECT 1 FROM er.entity.store st WHERE st.city LIKE 'Praha%'"),
+    ("a member on the right", "SELECT 1 FROM er.entity.store st WHERE 'Brno' = st.city"),
+    ("REPLACE is a string function", "SELECT REPLACE(st.city,'a','b') FROM er.entity.store st"),
     (
         "a relative period as dates",
         "SELECT 1 FROM er.entity.store_sales s "
@@ -137,6 +139,18 @@ REFUSALS = [
     ("at parameter", reply("SELECT 1 FROM er.entity.store st WHERE st.id = @id"), "parameter"),
     ("an er name outside the slice", reply("SELECT 1 FROM er.entity.customer"), "outside_slice"),
     ("a bare table", reply("SELECT 1 FROM store_sales"), "outside_slice"),
+    ("a bare er", reply("SELECT * FROM er s"), "outside_slice"),
+    (
+        "cross apply",
+        reply("SELECT 1 FROM er.entity.store_sales s CROSS APPLY other.fn(s.x) f"),
+        "outside_slice",
+    ),
+    ("lateral", reply("SELECT 1 FROM er.entity.store s, LATERAL other.fn(s.x) f"), "outside_slice"),
+    (
+        "replace into",
+        reply("REPLACE INTO er.entity.store_sales SELECT * FROM er.entity.store_sales"),
+        "not_select",
+    ),
     ("a db name", reply("SELECT 1 FROM db.public.store_sales"), "outside_slice"),
     ("a bare table after a comma", reply("SELECT 1 FROM er.entity.store, sales"), "outside_slice"),
     (
@@ -155,6 +169,21 @@ REFUSALS = [
         "literal_unsourced",
     ),
     (
+        "a cut-off word in a like",
+        reply("SELECT 1 FROM er.entity.store st WHERE st.city LIKE 'Pra%'"),
+        "literal_unsourced",
+    ),
+    (
+        "a member from nowhere on the right",
+        reply("SELECT 1 FROM er.entity.store st WHERE 'Ostrava' <> st.city"),
+        "literal_unsourced",
+    ),
+    (
+        "a member from nowhere in NOT IN",
+        reply("SELECT 1 FROM er.entity.store st WHERE st.city NOT IN ('Praha', 'Ostrava')"),
+        "literal_unsourced",
+    ),
+    (
         "an unterminated quote",
         reply("SELECT 1 FROM er.entity.store st WHERE st.city = 'Praha"),
         "invalid_sql",
@@ -167,6 +196,108 @@ def test_a_reply_that_breaks_a_rule_is_refused_naming_it(case: str, text: str, r
     with pytest.raises(LaneReplyRefused) as exc:
         check(text)
     assert exc.value.rule == rule, exc.value.detail
+
+
+# review-329 F1 (✅R329-A): only a literal that restricts a member is traced, and it must be a
+# whole word or run of words of a source. Sources as the review probed them: the question and
+# two ref paths (which `literal_sources` no longer yields — they show a path is no word store).
+PROBE = ("Zobraz tržby za minulý měsíc", "er.entity.store_sales", "er.attribute.store_sales.region")
+OSTRAVA = ("Tržby prodejny Ostrava za minulý měsíc",)
+MEMBER_ROWS = [
+    (
+        "a function's unit argument",
+        "SELECT DATE_TRUNC('month', DATE '2026-11-16') - INTERVAL '1' MONTH "
+        "FROM er.entity.store_sales s",
+        PROBE,
+        None,
+    ),
+    (
+        "a COALESCE fallback",
+        "SELECT COALESCE(s.region,'unknown') FROM er.entity.store_sales s",
+        PROBE,
+        None,
+    ),
+    ("a format string", "SELECT to_char(s.d,'YYYY-MM') FROM er.entity.store_sales s", PROBE, None),
+    (
+        "a CASE label",
+        "SELECT CASE WHEN s.amount > 0 THEN 'up' ELSE 'down' END FROM er.entity.store_sales s",
+        PROBE,
+        None,
+    ),
+    (
+        "a letter of the question",
+        "SELECT 1 FROM er.entity.store_sales s WHERE s.region = 'a'",
+        PROBE,
+        "a",
+    ),
+    (
+        "a word of a ref path",
+        "SELECT 1 FROM er.entity.store_sales s WHERE s.region = 'sales'",
+        PROBE,
+        "sales",
+    ),
+    ("a cut-off word", "SELECT 1 FROM er.entity.store_sales s WHERE s.region = 'tr'", PROBE, "tr"),
+    ("a whole word", "SELECT 1 FROM er.entity.store st WHERE st.name = 'Ostrava'", OSTRAVA, None),
+    (
+        "an IN with one member from nowhere",
+        "SELECT 1 FROM er.entity.store st WHERE st.name IN ('Ostrava','Brno')",
+        OSTRAVA,
+        "Brno",
+    ),
+    (
+        "a LIKE on a cut-off word",
+        "SELECT 1 FROM er.entity.store st WHERE st.name LIKE '%Ostrav%'",
+        OSTRAVA,
+        "%Ostrav%",
+    ),
+    (
+        "a LIKE on a whole word",
+        "SELECT 1 FROM er.entity.store st WHERE st.name LIKE '%Ostrava%'",
+        OSTRAVA,
+        None,
+    ),
+    (
+        "a sub-query IN is no member list",
+        "SELECT 1 FROM er.entity.store st "
+        "WHERE st.id IN (SELECT s.id FROM er.entity.store_sales s)",
+        OSTRAVA,
+        None,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("case", "sql", "sources", "refused"), MEMBER_ROWS, ids=[r[0] for r in MEMBER_ROWS]
+)
+def test_only_a_member_restriction_is_traced_and_only_as_whole_words(
+    case: str, sql: str, sources: tuple[str, ...], refused: str | None
+) -> None:
+    def run() -> object:
+        return check_reply(
+            reply(sql), allowed_entities=SLICE, carried=CARRIED, literal_sources=sources
+        )
+
+    if refused is None:
+        run()
+        return
+    with pytest.raises(LaneReplyRefused) as exc:
+        run()
+    assert exc.value.rule == "literal_unsourced"
+    assert repr(refused) in exc.value.detail
+
+
+def test_a_member_said_in_an_inflected_form_is_named_by_its_lemma() -> None:
+    state = ResolutionState(
+        question="Tržby v Ostravě",
+        mentions=[Mention(id="m1", span=Span(start=8, end=15, text="Ostravě"), lemma="Ostrava")],
+    )
+    q = check_reply(
+        reply("SELECT 1 FROM er.entity.store st WHERE st.name = 'Ostrava'"),
+        allowed_entities=SLICE,
+        carried=CARRIED,
+        literal_sources=literal_sources(state),
+    )
+    assert "'Ostrava'" in q.sql
 
 
 def test_handled_spans_default_to_none_and_repeat_once() -> None:
@@ -201,9 +332,10 @@ def test_the_literal_sources_are_what_the_lattice_carries() -> None:
     for expected in (
         "Tržby za účet 501001 v Praze",
         "Praha",
-        "md.member.city#Praha",
         "220",
         "2025-01-01/2025-12-31",
         "Hartland Prime",
     ):
         assert expected in sources
+    # A ref path is no source; only a member ref's key is.
+    assert not any("." in s and "#" in s for s in sources)
