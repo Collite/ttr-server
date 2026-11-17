@@ -16,6 +16,16 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **`ttr-nlp` and `nlp` — pipeline stages through the `ttrnlp.stages` group (OL W1b·S1).** New
+  module `ttrnlp.stages`: the `Stage` protocol, `StageTrace`, `installed_stages()`. The loader, `validate_sources`,
+  the `ttr-nlp validate` CLI and the `nlp` runner reach stages through the group only; the rule engine is
+  registered there by this wheel (`rules = "ttrnlp.rules.stage:RulesStage"`). `LoadedState.stages` and
+  `.stage_status` are new; `LoadedState.packs` / `Gathered.packs` are read-only views of the `rules` stage until
+  the rule engine moves out; `loader.PACK_SUFFIX` is gone (`ttrnlp.rules.stage.PACK_SUFFIX`). New code
+  **`NLS-PACK-006`**: a pipeline naming a stage that is not installed (ERROR, fail-all), or a typed source file
+  no installed stage owns (INFO, not read). `nlp` pipelines take `stages: [{stage: <name>, …}]`; `rules:` stays
+  as an alias. Two entries naming one stage are a boot error. No proto change; rule behaviour unchanged.
+
 - **`server-libs` — the grounding kernel published (OL W3·S1).** `org.tatrman:grounding-core` (plan.v1
   recipe scaffolding: `PlanExpr`, `SqlRenderer`) and `org.tatrman:grounding-lexicon` (the `ground:<kind>`
   trigger slice: `GroundingSlice`, `GroundingSliceSource`) join the set, which is now sixteen libraries. Same
