@@ -17,15 +17,25 @@ wrong, and the DFP model-validator wraps this rather than reimplementing it.
 ``validate.py`` is the collect-don't-raise face of the same code, and it collects
 by *not* raising rather than by walking a second path.
 
+**Stages (OL-C6…C9).** Lists and the gazetteer are this module's own. Everything
+else a source holds belongs to a stage of the ``ttrnlp.stages`` group: each
+file goes to the stage owning its suffix, the stage's ``load`` returns an
+opaque state, and the snapshot keeps it in ``LoadedState.stages``. This module
+never imports a stage — it reaches them through ``ttrnlp.stages`` only (the
+OL-C10 fence). A file whose double suffix (``x.<kind>.yaml``) no installed
+stage owns is one INFO and is not read further; a pipeline naming a stage that
+is not installed is ``NLS-PACK-006``.
+
 **Reading is separated from judging.** ``gather_sources`` reads and compiles,
 returning diagnostics alongside whatever it did manage to build; the two callers
 then decide what to do about them. This is what lets the CLI report all six typos
 in one run while the service refuses the whole snapshot on the first.
 
-**What a source is.** A directory (globbed for ``**/*.pack.yaml`` and
-``**/*.list.yaml``), a single file of either kind, or an ``http(s)`` URL naming
-one file. The URL lane keeps ``httpx`` in the ``[http]`` extra and imports it
-lazily, so the mandatory dependency set stays as small as ⚑NLS-D3 needs.
+**What a source is.** A directory (globbed for ``**/*.list.yaml`` and for every
+suffix an installed stage owns), a single file of one of those kinds, or an
+``http(s)`` URL naming one file. The URL lane keeps ``httpx`` in the ``[http]``
+extra and imports it lazily, so the mandatory dependency set stays as small as
+⚑NLS-D3 needs.
 
 **Unreadable sources are diagnostics, not exceptions.** A packs directory that is
 not there is nearly always a volume that failed to mount, and the service must
@@ -37,12 +47,14 @@ that does not exist (contracts §9); everything this module reports is exit 1.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Any
 
 from ttrnlp.gazetteer.annotate import Gazetteer, build_gazetteer
 from ttrnlp.gazetteer.lists import GazetteerList, load_list
@@ -50,17 +62,30 @@ from ttrnlp.packs.diag import (
     NLS_PACK_001,
     NLS_PACK_003,
     NLS_PACK_004,
+    NLS_PACK_006,
     Diagnostic,
     PackError,
     error,
+    info,
 )
-from ttrnlp.rules import build_pack
-from ttrnlp.rules.compiler import CompiledPack
+from ttrnlp.stages import Stage, installed_stages
 
-PACK_SUFFIX = ".pack.yaml"
 LIST_SUFFIX = ".list.yaml"
 
-FileKind = Literal["pack", "list"]
+#: `"list"`, or the name of the stage that owns the file.
+FileKind = str
+KIND_LIST = "list"
+
+#: The stage name the pipeline key `rules:` aliases (OL-C7), and whose state the
+#: transitional `packs` views read (Bora 2026-11-17: until W4, when the specs
+#: reading them leave with `rules/`).
+RULES_STAGE = "rules"
+
+#: `name.<kind>.yaml` — the shape of a typed source file. One whose suffix no
+#: installed stage owns is an INFO rather than silence (OL-C8).
+_TYPED_FILE = re.compile(r"[^/]\.[A-Za-z][A-Za-z0-9_-]*\.yaml$")
+
+_NO_STATE: Mapping[str, Any] = MappingProxyType({})
 
 
 class LoadError(Exception):
@@ -114,17 +139,27 @@ class LoadedState:
     which clock it wants (the service's, or a fixed one in a test).
     """
 
-    packs: Mapping[str, CompiledPack]
     lists: Mapping[str, GazetteerList]
     gazetteer: Gazetteer
     state_id: str
     loaded_at: str = ""
     files: tuple[SourceFile, ...] = ()
     diagnostics: tuple[Diagnostic, ...] = ()
+    #: stage name -> the state its `load` returned (OL-C9).
+    stages: Mapping[str, object] = _NO_STATE
+    #: stage name -> its `status(state)`, read once at load (the state is immutable).
+    stage_status: Mapping[str, Mapping[str, int]] = _NO_STATE
+
+    @property
+    def packs(self) -> Mapping[str, Any]:
+        """Transitional read-only view of the `rules` stage's packs (until W4)."""
+        return _rules_view(self.stages)
 
     @property
     def packs_loaded(self) -> int:
-        return len(self.packs)
+        """The installed stages' `packs_loaded`, summed — 0 with none (OL-C9)."""
+        statuses = self.stage_status.values()
+        return sum(status.get("packs_loaded", 0) for status in statuses)
 
     @property
     def lists_loaded(self) -> int:
@@ -144,34 +179,72 @@ class Gathered:
     service wants the material only if there are no complaints at all.
     """
 
-    packs: dict[str, CompiledPack] = field(default_factory=dict)
     lists: dict[str, GazetteerList] = field(default_factory=dict)
     files: list[SourceFile] = field(default_factory=list)
     diagnostics: list[Diagnostic] = field(default_factory=list)
     #: (kind, id) -> the file that declared it, so a duplicate names both sides.
     origins: dict[tuple[FileKind, str], str] = field(default_factory=dict)
+    #: The stages this gathering ran against, by name.
+    installed: Mapping[str, Stage] = _NO_STATE  # type: ignore[assignment]
+    #: stage name -> the state its `load` returned.
+    stages: dict[str, object] = field(default_factory=dict)
+
+    @property
+    def packs(self) -> Mapping[str, Any]:
+        """Transitional read-only view of the `rules` stage's packs (until W4)."""
+        return _rules_view(self.stages)
 
     @property
     def has_errors(self) -> bool:
         return any(d.severity == "ERROR" for d in self.diagnostics)
 
 
+def _rules_view(stages: Mapping[str, object]) -> Mapping[str, Any]:
+    state = stages.get(RULES_STAGE)
+    if not isinstance(state, Mapping):
+        return _NO_STATE
+    if isinstance(state, MappingProxyType):
+        return state
+    return MappingProxyType(dict(state))
+
+
 # ── reading ──────────────────────────────────────────────────────────────────
 
 
-def _kind_of(name: str) -> FileKind | None:
-    if name.endswith(PACK_SUFFIX):
-        return "pack"
-    if name.endswith(LIST_SUFFIX):
-        return "list"
-    return None
+def _owners(stages: Mapping[str, Stage]) -> dict[str, FileKind]:
+    """suffix -> kind, in reading order: each stage's suffixes, then lists."""
+    owners: dict[str, FileKind] = {}
+    for name, stage in stages.items():
+        for suffix in stage.source_suffixes:
+            owners[suffix] = name
+    owners[LIST_SUFFIX] = KIND_LIST
+    return owners
+
+
+def _kind_of(name: str, owners: Mapping[str, FileKind]) -> FileKind | None:
+    matches = (kind for suffix, kind in owners.items() if name.endswith(suffix))
+    return next(matches, None)
+
+
+def _unowned(name: str, source: str) -> Diagnostic:
+    return info(
+        NLS_PACK_006,
+        f"{name}: no stage installed in this image owns this file — not read",
+        source=source,
+    )
+
+
+def _known(owners: Mapping[str, FileKind]) -> str:
+    return " or ".join(f"`{suffix}`" for suffix in owners)
 
 
 def _is_url(source: str) -> bool:
     return source.startswith(("http://", "https://"))
 
 
-def _read_url(source: str) -> tuple[list[SourceFile], list[Diagnostic]]:
+def _read_url(
+    source: str, owners: Mapping[str, FileKind]
+) -> tuple[list[SourceFile], list[Diagnostic]]:
     """Fetch one file over HTTP. ``httpx`` comes from the ``[http]`` extra."""
     try:
         import httpx
@@ -185,12 +258,15 @@ def _read_url(source: str) -> tuple[list[SourceFile], list[Diagnostic]]:
             )
         ]
 
-    kind = _kind_of(source.split("?")[0])
+    name = source.split("?")[0]
+    kind = _kind_of(name, owners)
     if kind is None:
+        if _TYPED_FILE.search(name):
+            return [], [_unowned(name, source)]
         return [], [
             error(
                 NLS_PACK_001,
-                f"a URL source must name a `{PACK_SUFFIX}` or `{LIST_SUFFIX}` file "
+                f"a URL source must name a {_known(owners)} file "
                 "— one URL is one file, and the suffix is how its kind is known",
                 source=source,
             )
@@ -240,10 +316,12 @@ def _in_tree(root: Path, path: Path) -> bool:
     return not any(part.startswith(".") for part in path.relative_to(root).parts[:-1])
 
 
-def _read_dir(source: str, root: Path) -> tuple[list[SourceFile], list[Diagnostic]]:
+def _read_dir(
+    source: str, root: Path, owners: Mapping[str, FileKind]
+) -> tuple[list[SourceFile], list[Diagnostic]]:
     files: list[SourceFile] = []
     problems: list[Diagnostic] = []
-    for suffix, kind in ((PACK_SUFFIX, "pack"), (LIST_SUFFIX, "list")):
+    for suffix, kind in owners.items():
         for path in sorted(p for p in root.rglob(f"*{suffix}") if _in_tree(root, p)):
             try:
                 text = _read_file(path)
@@ -261,34 +339,43 @@ def _read_dir(source: str, root: Path) -> tuple[list[SourceFile], list[Diagnosti
             files.append(
                 SourceFile(source=source, path=str(path), kind=kind, text=text)
             )
+    for path in sorted(p for p in root.rglob("*.yaml") if _in_tree(root, p)):
+        if _kind_of(path.name, owners) is None and _TYPED_FILE.search(path.name):
+            problems.append(_unowned(str(path), source))
     return files, problems
 
 
-def read_sources(sources: Iterable[str]) -> tuple[list[SourceFile], list[Diagnostic]]:
+def read_sources(
+    sources: Iterable[str], *, stages: Mapping[str, Stage] | None = None
+) -> tuple[list[SourceFile], list[Diagnostic]]:
     """Read every file every source names, in a stable order.
+
+    ``stages`` defaults to the installed ones; their suffixes say what is read.
 
     Sorted per source and sources in the order given, so the state id and the
     diagnostic order are both deterministic — a reload that changed nothing must
     produce the same id, or `ReloadPacks` reports a new snapshot every time.
     """
+    owners = _owners(installed_stages() if stages is None else stages)
     files: list[SourceFile] = []
     diagnostics: list[Diagnostic] = []
 
     for source in sources:
         if _is_url(source):
-            found, problems = _read_url(source)
+            found, problems = _read_url(source, owners)
         else:
             path = Path(source)
             if path.is_dir():
-                found, problems = _read_dir(source, path)
+                found, problems = _read_dir(source, path, owners)
             elif path.is_file():
-                kind = _kind_of(path.name)
-                if kind is None:
+                kind = _kind_of(path.name, owners)
+                if kind is None and _TYPED_FILE.search(path.name):
+                    found, problems = [], [_unowned(path.name, source)]
+                elif kind is None:
                     found, problems = [], [
                         error(
                             NLS_PACK_001,
-                            f"{path.name} is neither a `{PACK_SUFFIX}` nor a "
-                            f"`{LIST_SUFFIX}` file",
+                            f"{path.name} is neither a {_known(owners)} file",
                             source=source,
                         )
                     ]
@@ -345,52 +432,33 @@ def state_id_for(files: Iterable[SourceFile]) -> str:
 # ── compiling ────────────────────────────────────────────────────────────────
 
 
-def gather_sources(sources: Iterable[str]) -> Gathered:
+def gather_sources(
+    sources: Iterable[str], *, stages: Mapping[str, Stage] | None = None
+) -> Gathered:
     """Read, parse, cross-check and compile everything — collecting complaints.
 
     This is the single code path. It does not decide anything: a caller that
     wants a snapshot raises on ``has_errors``, and a caller that wants a report
-    prints ``diagnostics``.
+    prints ``diagnostics``. ``stages`` defaults to the installed ones.
     """
-    gathered = Gathered()
-    files, read_problems = read_sources(sources)
+    installed = installed_stages() if stages is None else stages
+    gathered = Gathered(installed=installed)
+    files, read_problems = read_sources(sources, stages=installed)
     gathered.files = files
     gathered.diagnostics.extend(read_problems)
 
+    # Each stage gets its own files, in reading order; every installed stage
+    # loads, with no files too, so its state is always there to be asked.
+    for name, stage in installed.items():
+        state, problems = stage.load([f for f in files if f.kind == name])
+        gathered.stages[name] = state
+        gathered.diagnostics.extend(problems)
+
     for file in files:
-        if file.kind == "pack":
-            _gather_pack(gathered, file)
-        else:
+        if file.kind == KIND_LIST:
             _gather_list(gathered, file)
 
     return gathered
-
-
-def _gather_pack(gathered: Gathered, file: SourceFile) -> None:
-    try:
-        compiled = build_pack(file.text, source=file.path)
-    except PackError as exc:
-        gathered.diagnostics.extend(exc.diagnostics)
-        return
-
-    if compiled.pack in gathered.packs:
-        # T5. Two packs claiming one id: pipelines name packs by id, so which of
-        # the two a `rules: [{pack: …}]` ref meant is unanswerable — and the
-        # second would have silently replaced the first in the dict.
-        gathered.diagnostics.append(
-            error(
-                NLS_PACK_001,
-                f"duplicate pack id {compiled.pack!r}: also declared by "
-                f"{gathered.origins[('pack', compiled.pack)]} — pipelines "
-                "reference packs by id",
-                source=file.path,
-                pack=compiled.pack,
-            )
-        )
-        return
-
-    gathered.packs[compiled.pack] = compiled
-    gathered.origins["pack", compiled.pack] = file.path
 
 
 def _gather_list(gathered: Gathered, file: SourceFile) -> None:
@@ -446,7 +514,7 @@ def check_pipelines(
             diagnostics.append(
                 error(
                     NLS_PACK_004,
-                    f"{where}: expected a mapping of ops/gazetteer/rules, "
+                    f"{where}: expected a mapping of ops/gazetteer/stages, "
                     f"found {type(spec).__name__}",
                 )
             )
@@ -463,41 +531,61 @@ def check_pipelines(
                     )
                 )
 
-        for index, ref in enumerate(spec.get("rules") or []):
-            at = f"{where}.rules[{index}]"
-            if not isinstance(ref, Mapping):
-                diagnostics.append(
-                    error(
-                        NLS_PACK_004,
-                        f"{at}: expected {{pack, phase}}, found "
-                        f"{type(ref).__name__}",
+        missing: set[str] = set()
+        for at, stage_name, ref in _stage_refs(where, spec, diagnostics):
+            stage = gathered.installed.get(stage_name)
+            if stage is None:
+                if stage_name not in missing:
+                    missing.add(stage_name)
+                    diagnostics.append(
+                        error(
+                            NLS_PACK_006,
+                            f"pipeline `{name}` names stage `{stage_name}`, which "
+                            "is not installed in this image",
+                        )
                     )
-                )
                 continue
-            pack_id = ref.get("pack")
-            phase = ref.get("phase")
-            compiled = gathered.packs.get(pack_id)
-            if compiled is None:
-                known = ", ".join(sorted(gathered.packs)) or "none loaded"
+            for found in stage.check_refs(gathered.stages.get(stage_name), [ref]):
                 diagnostics.append(
-                    error(
-                        NLS_PACK_004,
-                        f"{at}: no pack {pack_id!r} (loaded: {known})",
-                    )
-                )
-                continue
-            phases = [p.phase for p in compiled.phases]
-            if phase not in phases:
-                diagnostics.append(
-                    error(
-                        NLS_PACK_004,
-                        f"{at}: pack {pack_id!r} has no phase {phase!r} "
-                        f"(it has: {', '.join(phases)})",
-                        pack=pack_id,
-                    )
+                    dataclasses.replace(found, message=f"{at}: {found.message}")
                 )
 
     return diagnostics
+
+
+def _stage_refs(
+    where: str, spec: Mapping[str, Any], diagnostics: list[Diagnostic]
+) -> list[tuple[str, str, Mapping[str, Any]]]:
+    """`(location, stage, the stage's own keys)` for every stage step (OL-C7).
+
+    ``stages: [{stage: <name>, …}]`` first, then the ``rules: [{pack, phase}]``
+    alias — the same entries with ``stage: rules``.
+    """
+    refs: list[tuple[str, str, Mapping[str, Any]]] = []
+    for index, entry in enumerate(spec.get("stages") or []):
+        at = f"{where}.stages[{index}]"
+        stage_name = entry.get("stage") if isinstance(entry, Mapping) else None
+        if not isinstance(stage_name, str) or not stage_name:
+            diagnostics.append(
+                error(
+                    NLS_PACK_004,
+                    f"{at}: expected {{stage: <name>, …}}, found {entry!r}",
+                )
+            )
+            continue
+        refs.append((at, stage_name, {k: v for k, v in entry.items() if k != "stage"}))
+    for index, ref in enumerate(spec.get("rules") or []):
+        at = f"{where}.rules[{index}]"
+        if not isinstance(ref, Mapping):
+            diagnostics.append(
+                error(
+                    NLS_PACK_004,
+                    f"{at}: expected {{pack, phase}}, found {type(ref).__name__}",
+                )
+            )
+            continue
+        refs.append((at, RULES_STAGE, ref))
+    return refs
 
 
 # ── the two faces ────────────────────────────────────────────────────────────
@@ -508,6 +596,7 @@ def load_sources(
     *,
     pipelines: Mapping[str, Any] | None = None,
     loaded_at: str = "",
+    stages: Mapping[str, Stage] | None = None,
 ) -> LoadedState:
     """Load everything, or nothing.
 
@@ -516,6 +605,7 @@ def load_sources(
         pipelines: The service's pipeline table (contracts §7), if there is one.
             Its references are validated against what loaded.
         loaded_at: A timestamp for the snapshot, from the caller's clock.
+        stages: The stages to load through; defaults to the installed ones.
 
     Returns:
         An immutable ``LoadedState``.
@@ -525,14 +615,20 @@ def load_sources(
             Nothing is loaded — see the module docstring on why partial loading
             is the worse failure.
     """
-    gathered = gather_sources(sources)
+    gathered = gather_sources(sources, stages=stages)
     gathered.diagnostics.extend(check_pipelines(gathered, pipelines))
 
     if gathered.has_errors:
         raise LoadError(gathered.diagnostics)
 
     return LoadedState(
-        packs=MappingProxyType(dict(gathered.packs)),
+        stages=MappingProxyType(dict(gathered.stages)),
+        stage_status=MappingProxyType(
+            {
+                name: MappingProxyType(dict(stage.status(gathered.stages[name])))
+                for name, stage in gathered.installed.items()
+            }
+        ),
         lists=MappingProxyType(dict(gathered.lists)),
         gazetteer=build_gazetteer(gathered.lists.values()),
         state_id=state_id_for(gathered.files),
@@ -544,7 +640,7 @@ def load_sources(
 
 __all__ = [
     "LIST_SUFFIX",
-    "PACK_SUFFIX",
+    "RULES_STAGE",
     "Gathered",
     "LoadError",
     "LoadedState",
