@@ -29,6 +29,7 @@ Full detail in the effort's `architecture.md` §2.
 | `ttrnlp.rules` | The rule engine — YAML DSL → PAMPAC; the JAPE-exact executor |
 | `ttrnlp.gazetteer` | List interchange + `Lookup` annotation (lemma / ci / fold-diacritics / exact) |
 | `ttrnlp.packs` | Pack + list loading (fail-all) and **the** validation code path |
+| `ttrnlp.stages` | The `ttrnlp.stages` entry-point group — the `Stage` protocol a pipeline stage implements |
 | `ttrnlp.client` | `NlpClient` (gRPC, `[grpc]`) + the HTTP engine-adapter clients (`[http]`) |
 | `ttrnlp.cli` | `ttr-nlp validate` |
 
@@ -124,8 +125,42 @@ state = load_sources(["packs/", "lists/"], pipelines=config.pipelines)
 state.state_id       # same bytes ⇒ same id; what ReloadPacks reports
 ```
 
-A source is a directory (globbed for `**/*.pack.yaml` and `**/*.list.yaml`), a
-single file, or an `http(s)` URL naming one file (needs the `[http]` extra).
+A source is a directory (globbed for `**/*.list.yaml` and every suffix an
+installed stage owns — `**/*.pack.yaml` for the rule engine), a single file, or an
+`http(s)` URL naming one file (needs the `[http]` extra).
+
+## Pipeline stages — the `ttrnlp.stages` group
+
+A pipeline runs engines → morphology → gazetteer → its **stages**, in the order
+written. A stage is whatever an installed distribution registers in the
+`ttrnlp.stages` entry-point group; the loader, the CLI and the `nlp` runner reach
+stages through that group only. The rule engine is one: until it moves to its own
+distribution, this wheel registers it itself —
+
+```toml
+[project.entry-points."ttrnlp.stages"]
+rules = "ttrnlp.rules.stage:RulesStage"
+```
+
+**What a distribution must provide:** one entry whose value is a zero-argument
+factory returning an object with
+
+| Member | What it is |
+|---|---|
+| `name: str` | the id pipelines use (`stages: [{stage: <name>, …}]`) and the trace `kind` |
+| `source_suffixes: tuple[str, ...]` | the source files it owns, e.g. `(".pack.yaml",)`; never `.list.yaml` |
+| `load(files) -> (state, diagnostics)` | build an **immutable** state from its files; diagnostics as everywhere else |
+| `check_refs(state, refs) -> diagnostics` | judge a pipeline's entries for this stage (the keys besides `stage`) |
+| `run(doc, state, ref) -> StageTrace` | run one entry over a document; `LookupError` if the ref no longer resolves |
+| `status(state) -> {str: int}` | counters; `packs_loaded` is summed into `GetStatus.pack_state.packs_loaded` |
+
+Two entries naming one stage, two stages owning one suffix, or a stage claiming
+`.list.yaml` is a boot error (`StageError`). A pipeline naming a stage that is not
+installed fails validation with **`NLS-PACK-006`** — fail-all, the previous
+snapshot keeps serving. A source file whose `x.<kind>.yaml` suffix no installed
+stage owns is one INFO `NLS-PACK-006` and is not read. `LoadedState.stages` holds
+each stage's state; `LoadedState.packs` is a read-only view of the `rules` stage's
+packs, kept until the rule engine moves out.
 
 ## Talking to the `nlp` service
 
