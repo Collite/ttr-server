@@ -12,6 +12,7 @@ import dataclasses
 import json
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -19,7 +20,7 @@ import main
 from golem_py.door_client import LiveSqlDoor
 from golem_py.errors import ConfigInvalid
 from golem_py.graph import run_turn
-from golem_py.ladder import LadderConfig, load_default
+from golem_py.ladder import load_default
 from golem_py.lane import lane_on
 from golem_py.llm_client import LiveLlmGateway
 from golem_py.model_slice import LiveModelSlice
@@ -51,7 +52,7 @@ LANE_ENV = {
 
 
 def _settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> GolemSettings:
-    for name in list(LANE_ENV) + ["GOLEM_LLM_LANE_ENABLED"]:
+    for name in list(LANE_ENV) + ["GOLEM_LLM_LANE_ENABLED", "GOLEM_PROFILE", "GOLEM_LADDER_CONFIG"]:
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
@@ -63,7 +64,7 @@ def test_with_no_lane_settings_the_cli_builds_no_lane(monkeypatch: pytest.Monkey
 
     assert deps.door is None and deps.llm is None and deps.model_slice is None
     assert not lane_on(deps)
-    main.check_startup(deps)  # a lane that is off has nothing to check
+    main.check_startup(deps, "CHAT_QUICK")  # a lane that is off has nothing to check
 
 
 def test_the_lane_settings_reach_the_three_live_legs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -75,7 +76,7 @@ def test_the_lane_settings_reach_the_three_live_legs(monkeypatch: pytest.MonkeyP
     assert isinstance(deps.model_slice, LiveModelSlice)
     assert deps.settings.query_world == "hartland_cz"
     assert lane_on(deps)
-    main.check_startup(deps)
+    main.check_startup(deps, "CHAT_QUICK")
 
 
 def test_the_switch_turns_a_configured_lane_off(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -100,16 +101,17 @@ def test_a_lane_that_is_on_without_what_it_needs_is_refused_before_the_turn(
     deps = main.build_deps(_settings(monkeypatch, **env), load_default(), "resolver:7276")
 
     with pytest.raises(ConfigInvalid, match=message):
-        main.check_startup(deps)
+        main.check_startup(deps, "CHAT_QUICK")
 
 
 def test_the_startup_check_runs_check_lane_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """review-329 F3/F4: `check_lane_config` existed with no call site; the CLI is it."""
-    no_clock = LadderConfig.model_validate({"rung_timeouts_ms": {}})
+    # The shipped ladder (its profiles intact) with no clock for the `capable` rung.
+    no_clock = load_default().model_copy(update={"rungs": {}, "rung_timeouts_ms": {}})
     deps = main.build_deps(_settings(monkeypatch, **LANE_ENV), no_clock, "resolver:7276")
 
     with pytest.raises(ConfigInvalid, match=r"rungs\.capable\.timeout_ms"):
-        main.check_startup(deps)
+        main.check_startup(deps, "CHAT_QUICK")
 
 
 def test_a_bad_configuration_exits_2_before_any_turn(
@@ -171,3 +173,76 @@ def test_the_subject_flag_is_the_callers_subject() -> None:
     persona's; there is no default identity."""
     args = main._parse_args(["--question", "q", "--subject", SUBJECT, "--json"])
     assert args.subject == SUBJECT and args.json
+
+
+# review-343 C1 — a ladder file that cannot be read is a configuration error: exit 2.
+@pytest.mark.parametrize("problem", ["missing", "not yaml", "not a ladder"])
+def test_a_bad_ladder_file_exits_2_naming_it(
+    problem: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _settings(monkeypatch)
+    path = tmp_path / "ladder.yaml"
+    if problem == "not yaml":
+        path.write_text("rungs: [unclosed\n")
+    elif problem == "not a ladder":
+        path.write_text("schema: something/else\n")
+
+    async def no_turn(*_: object, **__: object) -> None:
+        raise AssertionError("a turn ran on an invalid configuration")
+
+    monkeypatch.setattr(main, "run_turn", no_turn)
+
+    assert main.main(["--question", "q", "--ladder", str(path)]) == main.EXIT_CONFIG
+    assert "the ladder file" in capsys.readouterr().err
+
+
+def test_a_missing_default_ladder_file_exits_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _settings(monkeypatch)
+    monkeypatch.setenv("GOLEM_LADDER_CONFIG", str(tmp_path / "nonexistent.yaml"))
+
+    assert main.main(["--question", "q"]) == main.EXIT_CONFIG
+    assert "nonexistent.yaml" in capsys.readouterr().err
+
+
+# review-343 C2 — an unknown profile is refused before any port is called, lane on or off.
+@pytest.mark.parametrize("lane", [False, True])
+def test_an_unknown_profile_exits_2_before_any_port_is_called(
+    lane: bool, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _settings(monkeypatch, **(LANE_ENV if lane else {}))
+
+    class FailingCore:
+        """Stands in for the resolver: any call fails the test."""
+
+        def __init__(self, *_: object, **__: object) -> None:
+            pass
+
+        async def resolve(self, **_: object) -> None:
+            raise AssertionError("the core was called for a profile that does not exist")
+
+    monkeypatch.setattr(main, "LiveCore", FailingCore)
+
+    code = main.main(["--question", "q", "--profile", "CHAT_FAST"])
+
+    err = capsys.readouterr().err
+    assert code == main.EXIT_CONFIG
+    assert "CHAT_FAST" in err and "CHAT_QUICK" in err
+
+
+def test_the_profile_comes_from_the_environment_when_no_flag_is_given(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _settings(monkeypatch, GOLEM_PROFILE="NO_SUCH_PROFILE")
+
+    async def no_turn(*_: object, **__: object) -> None:
+        raise AssertionError("a turn ran on an unknown profile")
+
+    monkeypatch.setattr(main, "run_turn", no_turn)
+
+    assert main.main(["--question", "q"]) == main.EXIT_CONFIG
+    assert "NO_SUCH_PROFILE" in capsys.readouterr().err

@@ -37,6 +37,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "generated"))
 
@@ -46,7 +48,7 @@ from golem_py.door_client import LiveSqlDoor  # noqa: E402
 from golem_py.errors import ConfigInvalid  # noqa: E402
 from golem_py.gate_client import LiveGate  # noqa: E402
 from golem_py.graph import run_turn  # noqa: E402
-from golem_py.ladder import LadderConfig, load_default  # noqa: E402
+from golem_py.ladder import ConfigError, LadderConfig, load_default  # noqa: E402
 from golem_py.lane import check_lane_config, lane_on  # noqa: E402
 from golem_py.llm_client import LiveLlmGateway  # noqa: E402
 from golem_py.model_slice import LiveModelSlice  # noqa: E402
@@ -118,11 +120,29 @@ def build_deps(settings: GolemSettings, ladder: LadderConfig, core_target: str) 
     )
 
 
-def check_startup(deps: Deps) -> None:
-    """What must hold before the first turn, or `ConfigInvalid`. A lane that is on needs a
-    world for its queries, a model slice, and the config `check_lane_config` reads
+def load_ladder(path: str | None) -> LadderConfig:
+    """The ladder file — `--ladder`, else `GOLEM_LADDER_CONFIG`, else the shipped one. A file
+    that is missing, unreadable, not YAML or not a valid ladder is `ConfigInvalid`, so the CLI
+    exits 2 naming it rather than with a traceback (review-343 C1)."""
+    try:
+        return LadderConfig.load(path) if path else load_default()
+    except (ConfigError, OSError, yaml.YAMLError) as exc:
+        raise ConfigInvalid(f"the ladder file: {exc}") from exc
+
+
+def check_startup(deps: Deps, profile: str) -> None:
+    """What must hold before the first turn, or `ConfigInvalid`.
+
+    Always: the budget profile the turn will run under is one the ladder defines, so a typo
+    fails here and not mid-turn after the core call (review-343 C2). A lane that is on also
+    needs a world for its queries, a model slice, and the config `check_lane_config` reads
     (review-329 F3/F4). Without any of these, every lane turn would refuse in the same way,
     and nothing would say why."""
+    try:
+        deps.ladder.profile(profile)
+    except ConfigError as exc:
+        known = ", ".join(sorted(deps.ladder.profiles)) or "none"
+        raise ConfigInvalid(f"{exc}; the ladder defines: {known}") from exc
     if not lane_on(deps):
         return
     if not deps.settings.query_world:
@@ -174,9 +194,10 @@ def _default(value: Any) -> Any:
 async def _run(args: argparse.Namespace) -> int:
     try:
         settings = GolemSettings.from_env()
-        ladder = LadderConfig.load(args.ladder) if args.ladder else load_default()
+        ladder = load_ladder(args.ladder)
+        profile = args.profile or settings.profile
         deps = build_deps(settings, ladder, args.core or settings.core_target)
-        check_startup(deps)
+        check_startup(deps, profile)
     except ConfigInvalid as exc:
         print(f"golem-py: configuration invalid: {exc}", file=sys.stderr)
         return EXIT_CONFIG
@@ -184,7 +205,7 @@ async def _run(args: argparse.Namespace) -> int:
         question=args.question,
         locale=args.locale,
         conversation_id=args.conversation_id,
-        profile=args.profile or settings.profile,
+        profile=profile,
         caller_subject=args.subject,
     )
     output = await run_turn(state, deps)
