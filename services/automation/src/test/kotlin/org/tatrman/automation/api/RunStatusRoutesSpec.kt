@@ -107,6 +107,21 @@ class RunStatusRoutesSpec :
             confirmVerified(ledger)
         }
 
+        "GET run status echoes the stored additive evaluation warning" {
+            progress =
+                Json.decodeFromString<RunProgress>(
+                    """{"runId":"$id","status":"evaluated","protocolRef":"/automation/runs/$id/protocol",
+                       "warnings":[{"code":"route_padded","port":"to_customer_care","rows":2}]}""",
+                )
+            api {
+                val response = client.get("/automation/runs/$id") { bearerAuth(token) }
+                response.status shouldBe HttpStatusCode.OK
+                Json.parseToJsonElement(response.bodyAsText()).jsonObject["warnings"] shouldBe
+                    Json.parseToJsonElement("""[{"code":"route_padded","port":"to_customer_care","rows":2}]""")
+            }
+            verify { sessions wasNot Called }
+        }
+
         "authentication and UUID validation run before reading the ledger" {
             api {
                 client.get("/automation/runs/$id").status shouldBe HttpStatusCode.Unauthorized
