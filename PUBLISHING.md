@@ -285,3 +285,42 @@ answered:
 ```
 
 The probe container was removed afterwards. No deployed workload changed.
+
+## OL W3·S1 internal release — the grounding kernel, `server-libs` 0.12.6, 2026-11-17
+
+The tag `server-libs/v0.12.6` points to merge `906c9ef45c6ff55b32e3731aa1ffed4ade866eff`
+of [#426](https://github.com/Collite/ttr-server/pull/426) (review-326 PASS; PR CI
+[43920455982](https://github.com/Collite/ttr-server/actions/runs/43920455982) green on head `13648419`).
+The 0.12 line is deliberate (D-42): `server-libs/v0.12.5` already exists and `ttr-platform`'s engine line
+pins `tatrman-server-engine = 0.12.5` (OL-C44), so a 0.11.x cut would be numbered below the version its
+consumer reads. 0.12.6 was the next free patch, checked against the remote tags and GitHub Packages before
+the cut. Bare tag: GitHub Packages only, no Maven Central.
+
+| Tag | Published artifacts | Release CI |
+|---|---|---|
+| `server-libs/v0.12.6` | the 16-library set at `0.12.6`, GitHub Packages `Collite/ttr-server`, including the first `org.tatrman:grounding-core:0.12.6` and `org.tatrman:grounding-lexicon:0.12.6` | [44023204274](https://github.com/Collite/ttr-server/actions/runs/44023204274), `gate` + `publish` green on `906c9ef4` |
+
+The grounding kernel's POMs depend on `server-proto` and `text` at 0.12.6, and `grounding-lexicon` also on
+ttr-core's `ttr-lexicon` / `ttr-snapshot` 0.22.3. No code, API or pin changed, and no image was released.
+
+### Consumer-resolution check
+
+[`scripts/verify-grounding-kernel`](./scripts/verify-grounding-kernel/) on the `packages` lane, where the
+set's modules are exclusive to GitHub Packages `Collite/ttr-server` and Maven Local is not asked:
+
+```bash
+./gradlew -p scripts/verify-grounding-kernel -PkernelLane=packages -PkernelVersion=0.12.6 \
+  dependencies --configuration compileClasspath --refresh-dependencies
+```
+
+```
++--- org.tatrman:grounding-core:0.12.6
+|    +--- org.tatrman:server-proto:0.12.6
+|    |    +--- org.tatrman:ttr-plan-proto:0.14.1
+|    +--- org.tatrman:text:0.12.6
+\--- org.tatrman:grounding-lexicon:0.12.6
+     +--- org.tatrman:ttr-lexicon:0.22.3
+     +--- org.tatrman:text:0.12.6 (*)
+```
+
+(`org.tatrman` lines only.) `clean build` on the same lane compiled both consumer classes.
