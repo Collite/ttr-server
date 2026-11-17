@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.runner
 
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonPrimitive
 import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.bundle.*
 import org.tatrman.automation.identity.AuthorMap
@@ -27,7 +25,8 @@ internal fun wetQuery(text: String): List<List<String?>> =
         }
     }
 
-internal fun dropWetRuntime() = wetSql("DROP SCHEMA IF EXISTS wet_runtime CASCADE; DROP TABLE IF EXISTS public.sales_order")
+internal fun dropWetRuntime() =
+    wetSql("DROP SCHEMA IF EXISTS wet_runtime CASCADE; DROP TABLE IF EXISTS public.sales_order")
 
 /**
  * The default H-1 fixture (route `release` → `release`, a transition placed/held → released, with history) plus

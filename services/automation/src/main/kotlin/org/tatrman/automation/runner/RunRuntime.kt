@@ -199,6 +199,7 @@ class RunRuntime(
                 clock,
                 closer::authorizeExecution,
                 EngineRuns(engineHistory, config.engine.clientId),
+                AnswerRuns(policy, ledger, held),
             )
         workers =
             RunWorkers(

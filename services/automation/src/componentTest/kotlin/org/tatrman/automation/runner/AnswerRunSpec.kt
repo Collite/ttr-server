@@ -51,7 +51,9 @@ class AnswerRunSpec :
                         listOf(HistoricTask(taskId, instance, assignee, "2026-11-17T10:00:00Z", "completed"))
                     }.orEmpty()
             }
-        val tokens = ServiceTokens(mapOf("AUTOMATION_DECIDER" to "svc-hartland-automation:s"), { "svc-token" })
+        // The door decodes what the IdP returns: an unsigned JWT stands for the decider's client-credentials token
+        // (`client_id` = the identity's principal).
+        val tokens = ServiceTokens(mapOf("AUTOMATION_DECIDER" to "svc-hartland-automation:s"), { DECIDER_TOKEN })
 
         fun fixture(): Pair<DurableRuntimeFixture, org.tatrman.automation.writer.RowWritesQueryFake> {
             val (f, fake, _) =
@@ -114,7 +116,7 @@ class AnswerRunSpec :
         fun refusal(block: suspend () -> Unit): AutomationException =
             shouldThrow<AutomationException> { kotlinx.coroutines.runBlocking { block() } }
 
-        "(a)(b)(c) an answer decides its key's held rows at Open and is closed; the other key stays held; a retry replays" {
+        "(a)(b)(c) an answer decides its key's held rows at Open and closes; other keys stay held; a retry replays" {
             val (f, fake) = fixture()
             val runtime = f.start()
             try {
@@ -171,6 +173,18 @@ class AnswerRunSpec :
                 writes["decision"] shouldBe JsonPrimitive("commit")
                 writes["by"] shouldBe JsonPrimitive("alice")
                 writes["applied"] shouldBe JsonPrimitive(1)
+                // D-159: who answered — asserted and verified against the engine's task history.
+                runtime.protocol
+                    .read(answerId, engine)
+                    .sections
+                    .getValue("people")
+                    .single()
+                    .payload.jsonObject
+                    .let {
+                        it["asserted"] shouldBe JsonPrimitive("alice")
+                        it["verified"] shouldBe JsonPrimitive(true)
+                        it["taskId"] shouldBe JsonPrimitive("task-1")
+                    }
                 // The original's `held-commit` entry names the answer.
                 runtime.protocol
                     .read(original, f.caller)
@@ -219,14 +233,15 @@ class AnswerRunSpec :
             }
         }
 
-        "(d)(e) an answer nobody holds, or for an instance with no waiting run, is 409 answer-unmatched; nothing applies" {
+        "(d)(e) an unheld key, or an instance with no waiting run, is 409 answer-unmatched; nothing applies" {
             val (f, fake) = fixture()
             val runtime = f.start()
             try {
                 val original = waiting(f, runtime)
                 val sent = fake.writes.size
                 val k9999 = buildJsonObject { put("order_number", "9999") }
-                val unheld = refusal { runtime.sessions.open("release_order", answer(k9999, "task-1", "alice"), engine) }
+                val unheld =
+                    refusal { runtime.sessions.open("release_order", answer(k9999, "task-1", "alice"), engine) }
                 unheld.code shouldBe ErrorCode.ANSWER_UNMATCHED
                 unheld.detail!!.jsonObject.let {
                     it["reason"] shouldBe JsonPrimitive("no-held-key")
@@ -235,7 +250,11 @@ class AnswerRunSpec :
                 }
                 val other =
                     refusal {
-                        runtime.sessions.open("release_order", answer(k4711, "task-5", "alice", instance = "pi-2"), engine)
+                        runtime.sessions.open(
+                            "release_order",
+                            answer(k4711, "task-5", "alice", instance = "pi-2"),
+                            engine,
+                        )
                     }
                 other.code shouldBe ErrorCode.ANSWER_UNMATCHED
                 other.detail!!.jsonObject.let {
@@ -274,7 +293,8 @@ class AnswerRunSpec :
                 fake.writes.size shouldBe sent
                 state("4711") shouldBe "placed"
                 val batch = f.ledger.readRunBatch(original, f.caller.sub)
-                batch.statuses.single { it.seq == batch.rows.single { r -> r.group == k4711 }.seq }.decided shouldBe null
+                batch.statuses.single { it.seq == batch.rows.single { r -> r.group == k4711 }.seq }.decided shouldBe
+                    null
                 // The refused answer's run failed and freed its key: the engine's retry of the same task decides.
                 f.refreshed = null
                 val retried = runtime.sessions.open("release_order", answer(k4711, "task-1", "alice"), engine)
@@ -332,7 +352,7 @@ class AnswerRunSpec :
             }
         }
 
-        "(i)(j) reject is reserved (400 engine), a bare key is 400 port, an unverified answer is 403 — nothing claimed" {
+        "(i)(j) reject is reserved (400 engine), a bare key is 400 port, an unverified answer 403 — none claimed" {
             val (f, fake) = fixture()
             val runtime = f.start()
             try {
@@ -342,7 +362,11 @@ class AnswerRunSpec :
                 // (i) ⚑AU-S35-2: v1 is approve-only.
                 val reject =
                     refusal {
-                        runtime.sessions.open("release_order", answer(k4711, "task-1", "alice", decision = "reject"), engine)
+                        runtime.sessions.open(
+                            "release_order",
+                            answer(k4711, "task-1", "alice", decision = "reject"),
+                            engine,
+                        )
                     }
                 reject.code shouldBe ErrorCode.ENGINE
                 reject.detail!!.jsonObject["reason"] shouldBe JsonPrimitive("decision-unsupported")
@@ -372,3 +396,8 @@ class AnswerRunSpec :
             }
         }
     })
+
+/** `{"alg":"none"}.{"sub":"svc-sub","client_id":"svc-hartland-automation"}.` */
+private const val DECIDER_TOKEN =
+    "eyJhbGciOiJub25lIn0." +
+        "eyJzdWIiOiJzdmMtc3ViIiwiY2xpZW50X2lkIjoic3ZjLWhhcnRsYW5kLWF1dG9tYXRpb24ifQ."

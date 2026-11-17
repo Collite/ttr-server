@@ -27,9 +27,9 @@ import org.tatrman.automation.identity.TokenKind
 import org.tatrman.automation.ledger.HeldDecision
 import org.tatrman.automation.ledger.HeldGroup
 import org.tatrman.automation.ledger.Ledger
-import org.tatrman.automation.ledger.RunFingerprints
 import org.tatrman.automation.ledger.RunNames
 import org.tatrman.automation.ledger.RunStatus
+import org.tatrman.automation.runner.RunFingerprints
 import java.time.Duration
 import java.util.UUID
 
@@ -50,7 +50,13 @@ class HeldKeySpec :
         val k4712 = buildJsonObject { put("order_number", "4712") }
         val engine = Caller("sub-engine", "process-engine", emptySet(), TokenKind.SERVICE, "engine-token")
         val names =
-            RunNames("release_order", "release_on_placement", "release_native_event", bundle.id, "svc-hartland-automation")
+            RunNames(
+                "release_order",
+                "release_on_placement",
+                "release_native_event",
+                bundle.id,
+                "svc-hartland-automation",
+            )
         val fingerprints =
             RunFingerprints(
                 recipe.fingerprints.text,
@@ -79,7 +85,14 @@ class HeldKeySpec :
         val rows =
             listOf(
                 ApplyRow(1, "er.entity.release_order_verdict", "insert", row = k4711),
-                ApplyRow(2, "er.entity.sales_order", "update", k4711, set = buildJsonObject { put("held_for", "AR") }, group = k4711),
+                ApplyRow(
+                    2,
+                    "er.entity.sales_order",
+                    "update",
+                    k4711,
+                    set = buildJsonObject { put("held_for", "AR") },
+                    group = k4711,
+                ),
                 transition(3, k4711),
                 transition(4, k4712),
             )
@@ -126,7 +139,12 @@ class HeldKeySpec :
         val context =
             ApplyContext(
                 "demo",
-                RunIdentity(engine, RunAsRef.Named("automation_decider"), "svc-hartland-automation", "AUTOMATION_DECIDER"),
+                RunIdentity(
+                    engine,
+                    RunAsRef.Named("automation_decider"),
+                    "svc-hartland-automation",
+                    "AUTOMATION_DECIDER",
+                ),
                 bundle.modelFp,
                 PlanSource(null, emptyMap(), "automation_db"),
                 emptyList(),
@@ -135,7 +153,7 @@ class HeldKeySpec :
 
         fun decision(applied: Int) = HeldDecision(batch.toString(), k4711, "commit", applied, 0, "waiting")
 
-        "(k)(l) only the answered key's rows are sent, in one ApplyInput with its partner rows; the decision names the answer" {
+        "(k)(l) only the answered key's rows go, in one ApplyInput with their partners; the decision names the answer" {
             val ledger = mockk<Ledger>()
             every { ledger.heldGroup(run, k4711) } returns group(k4711)
             every { ledger.decideHeld(run, k4711, "commit", "alice", answer) } returns decision(2)
@@ -154,7 +172,9 @@ class HeldKeySpec :
             // (k) The key's seqs only — never 4712's row, nor the auto verdict row.
             sent.captured.rows.map { it.seq } shouldBe listOf(2, 3)
             // (l) The set + transition of 4711's action go to the writer together: its action evidence pairs them.
-            sent.captured.actions.single { it.key == k4711 }.batchRows shouldBe listOf(2, 3)
+            sent.captured.actions
+                .single { it.key == k4711 }
+                .batchRows shouldBe listOf(2, 3)
             verify(exactly = 1) { ledger.decideHeld(run, k4711, "commit", "alice", answer) }
             verify(exactly = 0) { ledger.heldGroup(run, k4712) }
         }
@@ -171,7 +191,8 @@ class HeldKeySpec :
             every { ledger.heldGroup(run, k4711) } returns group(k4711, decided = true)
             every { ledger.decideHeld(run, k4711, "commit", "-") } returns decision(2)
             val apply = mockk<Apply>()
-            val held = Held(ledger, apply, { _, _, _ -> error("no context for a replay") }, { bundle }, BundleFixture.clock)
+            val held =
+                Held(ledger, apply, { _, _, _ -> error("no context for a replay") }, { bundle }, BundleFixture.clock)
 
             val replayed = held.commitKey(run, k4711, engine, "alice", answer)
 

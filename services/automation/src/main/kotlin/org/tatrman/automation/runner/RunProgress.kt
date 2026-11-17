@@ -29,6 +29,10 @@ data class RunProgress(
     val batch: RunBatch? = null,
     val actions: List<org.tatrman.automation.apply.DryRunAction> = emptyList(),
     val warnings: List<EvaluationWarning> = emptyList(),
+    /** S3.5: `recipe · query · perform · answer`. */
+    val kind: String? = null,
+    /** S3.5 (contract 3): an answer run's decision. */
+    val answer: AnswerOutcome? = null,
 )
 
 @Serializable
@@ -45,6 +49,8 @@ data class RunBatch(
     val id: String,
     val state: String,
     val rows: Int,
+    /** S3.5 (contract 4): the batch's held rows no decision has reached yet; null when the batch holds none. */
+    val held: Int? = null,
 )
 
 @Serializable

@@ -87,6 +87,9 @@ enum class ErrorCode(
     ENGINE("engine", HttpStatusCode.BadRequest, "S3.2"),
     ENGINE_UNREACHABLE("engine-unreachable", HttpStatusCode.ServiceUnavailable, "S3.2"),
 
+    // S3.5 (D-230, ⚑AU-S35-1): an answer run whose engine instance has no waiting run, or whose run holds no such key.
+    ANSWER_UNMATCHED("answer-unmatched", HttpStatusCode.Conflict, "S3.5"),
+
     // S3.1 — `POST /automation/query` (D-146): the request, its variables and the Golem lane.
     STATEMENT("statement", HttpStatusCode.BadRequest, "S3.1"),
     QUERY("query", HttpStatusCode.NotFound, "S3.1"),

@@ -565,8 +565,10 @@ class EngineSeamOpenSpec :
         }
 
         "an engine open stores the six columns and names them in the protocol" {
-            val ref = EngineRef("pi-1", "4711", "dep-7", taskId = "task-3", answeredBy = "maya")
-            val history = EngineHistory { _, _ -> listOf(HistoricTask("task-3", "pi-1", "maya", null, null)) }
+            // S3.5: an answer (a verified `answeredBy`) decides at Open through AnswerRuns (AnswerRunSpec); a task the
+            // engine names without an answer is still an ordinary engine run of the recipe.
+            val ref = EngineRef("pi-1", "4711", "dep-7", taskId = "task-3")
+            val history = EngineHistory { _, _ -> error("nothing is asserted, so no history is read") }
             val verified = runBlocking { engineSeam(history).verify(ref, engine) }
             val opened = open(named).open(recipe, OpenRequest(deployment, keyPort(), engine = ref), engine, verified)
             val id = UUID.fromString(opened.response.runId)
@@ -578,10 +580,10 @@ class EngineSeamOpenSpec :
                     row[Runs.engineDeploymentId],
                     row[Runs.engineTaskId],
                     row[Runs.assertedPerson],
-                ) shouldBe listOf("pi-1", "4711", "dep-7", "task-3", "maya")
-                row[Runs.personVerified] shouldBe true
+                ) shouldBe listOf("pi-1", "4711", "dep-7", "task-3", null)
+                row[Runs.personVerified] shouldBe null
             }
-            ledger.findRun(id)!!.open.engine shouldBe EngineColumns("pi-1", "4711", "dep-7", "task-3", "maya", true)
+            ledger.findRun(id)!!.open.engine shouldBe EngineColumns("pi-1", "4711", "dep-7", "task-3", null, null)
             val protocol = ledger.readProtocol(id, engine.sub).sections
             protocol
                 .getValue("automation")
@@ -592,13 +594,18 @@ class EngineSeamOpenSpec :
                     put("businessKey", "4711")
                     put("deploymentId", "dep-7")
                     put("taskId", "task-3")
-                    put("answeredBy", "maya")
-                    put("personVerified", true)
                 }
-            protocol.getValue("people").single().payload.jsonObject.let {
-                it["event"] shouldBe JsonPrimitive("identity")
-                it["asserted"] shouldBe JsonPrimitive("maya")
-                it["verified"] shouldBe JsonPrimitive(true)
+            protocol["people"] shouldBe emptyList()
+            // A verified answer never reaches Open.open: it is a decision, not a run of the recipe (D-230).
+            val answer = ref.copy(answeredBy = "maya")
+            val answered =
+                runBlocking {
+                    engineSeam(
+                        { _, _ -> listOf(HistoricTask("task-3", "pi-1", "maya", null, null)) },
+                    ).verify(answer, engine)
+                }
+            shouldThrow<IllegalStateException> {
+                open(named).open(recipe, OpenRequest(deployment, keyPort(), engine = answer), engine, answered)
             }
             // A run the engine starts without an answer records the instance and nothing asserted.
             val started =
@@ -641,7 +648,7 @@ class EngineSeamOpenSpec :
             transaction { Runs.selectAll().count() } shouldBe 0L
         }
 
-        "a matching answer proceeds to the D-99 fingerprint check; the engine's bearer is the caller's" {
+        "a matching answer is verified with the engine's bearer; Open.open never runs it (S3.5: AnswerRuns decides)" {
             val ref = EngineRef("pi-1", "4711", "dep-7", taskId = "task-3", answeredBy = "maya")
             var bearer: String? = null
             val verified =
@@ -652,12 +659,13 @@ class EngineSeamOpenSpec :
                     }).verify(ref, engine)
                 }
             bearer shouldBe "engine-token"
-            shouldThrow<AutomationException> {
+            verified!!.personVerified shouldBe true
+            shouldThrow<IllegalStateException> {
                 open(
                     named,
                     approved = false,
                 ).open(recipe, OpenRequest(deployment, keyPort(), engine = ref), engine, verified)
-            }.code shouldBe ErrorCode.RECIPE_STALE
+            }
             transaction { Runs.selectAll().count() } shouldBe 0L
         }
 

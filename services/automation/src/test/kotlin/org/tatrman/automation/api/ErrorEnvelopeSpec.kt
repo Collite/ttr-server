@@ -42,7 +42,7 @@ class ErrorEnvelopeSpec :
         "every code is kebab-case, unique, and names a plan stage" {
             ErrorCode.entries.forEach {
                 it.code shouldMatch Regex("[a-z]+(-[a-z]+)*")
-                it.stage shouldMatch Regex("S[0-4]\\.[1-4]")
+                it.stage shouldMatch Regex("S[0-4]\\.[1-9]")
             }
             ErrorCode.entries
                 .map { it.code }
@@ -186,7 +186,7 @@ class ErrorEnvelopeSpec :
                 ErrorCode.ENGINE,
                 ErrorCode.ENGINE_UNREACHABLE,
             )
-        val DELIVERED = setOf("S0.1", "S0.2", "S0.3", "S2.3", "S3.4")
+        val DELIVERED = setOf("S0.1", "S0.2", "S0.3", "S2.3", "S3.4", "S3.5")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")
     }
 }

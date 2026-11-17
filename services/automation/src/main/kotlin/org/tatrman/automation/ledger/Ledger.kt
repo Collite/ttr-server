@@ -16,6 +16,7 @@ import org.jetbrains.exposed.v1.core.LongColumnType
 import org.jetbrains.exposed.v1.core.TextColumnType
 import org.jetbrains.exposed.v1.core.statements.StatementType
 import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.isNull
 import org.jetbrains.exposed.v1.core.greater
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.or
@@ -119,6 +120,20 @@ data class EngineColumns(
 const val RUN_KIND_RECIPE = "recipe"
 const val RUN_KIND_QUERY = "query"
 const val RUN_KIND_PERFORM = "perform"
+
+/**
+ * S3.5 (D-230, ⚑AU-S35-1): an engine answer run — it decides the answered key's held rows of the instance's waiting run
+ * at Open and is closed there; it evaluates nothing and has no batch of its own.
+ */
+const val RUN_KIND_ANSWER = "answer"
+
+/** S3.5 (contract 4): `evaluate`, a part read or `close` of an answer run — `409 close-not-ready · answer-run`. */
+fun answerRun(runId: UUID): org.tatrman.automation.api.AutomationException =
+    org.tatrman.automation.api.AutomationException(
+        org.tatrman.automation.api.ErrorCode.CLOSE_NOT_READY,
+        "run $runId is an answer run: it decided at Open and has nothing to evaluate, read or close",
+        JsonObject(mapOf("reason" to JsonPrimitive("answer-run"))),
+    )
 
 /** One row of `GET /automation/runs` (S3.1 T4). [subject] is the recipe, the query's subject or the action. */
 data class RunListing(
@@ -229,6 +244,11 @@ data class HeldDecision(
     val applied: Int,
     val discarded: Int,
     val runStatus: String,
+    /** S3.5: the group's rows `failed`, and those still `staged` (no known outcome). */
+    val failed: Int = 0,
+    val unknown: Int = 0,
+    /** S3.5: the group was decided before; this is its recorded decision, nothing was applied again. */
+    val replayed: Boolean = false,
 )
 
 /**
@@ -815,6 +835,8 @@ class Ledger(
                     .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
                     .forUpdate()
                     .firstOrNull() ?: throw NoSuchRun(runId)
+            // S3.5 (contract 4): an answer run decided at Open; it has nothing to close.
+            if (row[Runs.kind] == RUN_KIND_ANSWER) throw answerRun(runId)
             val from = RunStatus.of(row[Runs.status])
             // S2.3: a waiting run is a wet run whose close already committed its `auto` rows and held the rest.
             if (from == RunStatus.WAITING) throw WetRunClose(runId)
@@ -1289,6 +1311,8 @@ class Ledger(
         group: JsonObject,
         decision: String,
         by: String,
+        /** S3.5: the answer run that decided the group; recorded in each row's `decided` and the `held-commit` entry. */
+        answer: UUID? = null,
     ): HeldDecision {
         require(decision == "commit" || decision == "reject")
         require(by.isNotBlank())
@@ -1314,6 +1338,9 @@ class Ledger(
                     mine.count { it[BatchRows.status] == "applied" },
                     mine.count { it[BatchRows.status] == "skipped" },
                     RunStatus.of(run[Runs.status]).wire,
+                    failed = mine.count { it[BatchRows.status] == "failed" },
+                    unknown = mine.count { it[BatchRows.status] == "staged" },
+                    replayed = true,
                 )
             }
             val now = clock.instant().utc()
@@ -1322,6 +1349,7 @@ class Ledger(
                     put("decision", JsonPrimitive(decision))
                     put("by", JsonPrimitive(by))
                     put("at", JsonPrimitive(now.toInstant().toString()))
+                    answer?.let { put("answer", JsonPrimitive(it.toString())) }
                 }
             for (r in mine) {
                 BatchRows.update({ (BatchRows.batch eq batchId) and (BatchRows.seq eq r[BatchRows.seq]) }) {
@@ -1349,6 +1377,7 @@ class Ledger(
                         put("batch", JsonPrimitive(batchId.toString()))
                         put("group", group)
                         put("by", JsonPrimitive(by))
+                        answer?.let { put("answer", JsonPrimitive(it.toString())) }
                         put("rows", JsonPrimitive(decided.size))
                         for (name in listOf("applied", "failed", "skipped", "unknown")) {
                             put(name, JsonPrimitive(counts[name] ?: 0))
@@ -1376,9 +1405,78 @@ class Ledger(
                 decided.count { it[BatchRows.status] == "applied" },
                 decided.count { it[BatchRows.status] == "skipped" },
                 if (last) RunStatus.CLOSED.wire else RunStatus.of(run[Runs.status]).wire,
+                failed = counts["failed"] ?: 0,
+                unknown = counts["unknown"] ?: 0,
             )
         }
     }
+
+    /**
+     * S3.5 (D-230 contract 1): the run an answer of engine instance [instanceId] decides — the newest run of [recipe]
+     * through [deployment] the engine opened in that instance (`engine_instance_id`, no task: an original engine Open
+     * names none), of kind `recipe`, still `waiting`. Null when there is none.
+     */
+    fun originalRun(
+        instanceId: String,
+        recipe: String,
+        deployment: String,
+    ): UUID? =
+        transaction {
+            Runs
+                .select(Runs.id)
+                .where {
+                    (Runs.engineInstanceId eq instanceId) and Runs.engineTaskId.isNull() and
+                        (Runs.recipe eq recipe) and (Runs.deployment eq deployment) and
+                        (Runs.kind eq RUN_KIND_RECIPE) and (Runs.status eq RunStatus.WAITING.wire)
+                }.orderBy(Runs.startedAt to SortOrder.DESC, Runs.id to SortOrder.DESC)
+                .limit(1)
+                .firstOrNull()
+                ?.get(Runs.id)
+        }
+
+    /**
+     * S3.5 (contract 3, Found 2): an answer run's completion, in one transaction — its one `writes` entry ([outcome]:
+     * `{ answer: true, original, batch, key, decision, by, applied, skipped, unknown, replayed }`) and `open → closed`.
+     * A run already closed answers its recorded entry (a retried completion appends nothing).
+     */
+    fun finishAnswer(
+        runId: UUID,
+        outcome: JsonObject,
+    ): JsonObject {
+        require(outcome["answer"] == JsonPrimitive(true))
+        outermost("finishAnswer")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(runId)
+            val row = Runs.selectAll().where { Runs.id eq runId }.single()
+            check(row[Runs.kind] == RUN_KIND_ANSWER) { "run $runId is not an answer run" }
+            answerEntry(runId)?.let { return@transaction it }
+            val from = RunStatus.of(row[Runs.status])
+            if (from != RunStatus.OPEN) throw IllegalRunTransition(runId, from, RunStatus.CLOSED)
+            val now = clock.instant().utc()
+            RunProtocol.insert {
+                it[run] = runId
+                it[section] = ProtocolSection.WRITES.wire
+                it[seq] = nextSeq(runId, ProtocolSection.WRITES)
+                it[payload] = outcome
+                it[at] = now
+            }
+            Runs.update({ Runs.id eq runId }) {
+                it[status] = RunStatus.CLOSED.wire
+                it[endedAt] = now
+            }
+            outcome
+        }
+    }
+
+    /** S3.5: an answer run's recorded outcome (its `writes` entry with `answer: true`); null for any other run. */
+    fun answerOf(runId: UUID): JsonObject? = transaction { answerEntry(runId) }
+
+    private fun answerEntry(runId: UUID): JsonObject? =
+        RunProtocol
+            .select(RunProtocol.payload)
+            .where { (RunProtocol.run eq runId) and (RunProtocol.section eq ProtocolSection.WRITES.wire) }
+            .map { it[RunProtocol.payload] as? JsonObject }
+            .firstOrNull { it?.get("answer") == JsonPrimitive(true) }
 
     /**
      * S2.3 `-rev`: what a revert reads — the run's batch (it must be `committed`: `409 batch-not-committed`; a batch
@@ -1540,9 +1638,11 @@ class Ledger(
         transaction(transactionIsolation = Connection.TRANSACTION_REPEATABLE_READ) {
             val row =
                 Runs
-                    .select(Runs.status)
+                    .select(Runs.status, Runs.kind)
                     .where { (Runs.id eq runId) and (Runs.callerSubject eq subject) }
                     .firstOrNull() ?: throw NoSuchRun(runId)
+            // S3.5 (contract 4): an answer run decided at Open; there is nothing to evaluate or read.
+            if (row[Runs.kind] == RUN_KIND_ANSWER) throw answerRun(runId)
             if (row[Runs.status] == RunStatus.CLOSED.wire || isSealed(runId)) throw ProtocolSealed(runId)
             if (row[Runs.status] == RunStatus.ABANDONED.wire) {
                 throw AutomationException(ErrorCode.RUN_ABANDONED, "the run was abandoned")
@@ -1733,14 +1833,39 @@ class Ledger(
                 decisions.singleOrNull()?.let {
                     DECISION_JSON.decodeFromJsonElement<EvaluationResult>(it[RunProtocol.payload])
                 }
+            // S3.5 (contract 4): per held row, its decision; the batch's undecided held rows.
+            val stored =
+                row[Runs.batchId]
+                    ?.let { id ->
+                        BatchRows.selectAll().where { BatchRows.batch eq id }.toList()
+                    }.orEmpty()
+            val decided =
+                stored
+                    .mapNotNull { r ->
+                        ((r[BatchRows.row] as? JsonObject)?.get(DECIDED) as? JsonObject)?.let { r[BatchRows.seq] to it }
+                    }.toMap()
             val batch =
                 row[Runs.batchId]?.let { id ->
                     val b = Batches.selectAll().where { (Batches.id eq id) and (Batches.run eq runId) }.single()
-                    RunBatch(id.toString(), b[Batches.state], b[Batches.rows])
+                    RunBatch(
+                        id.toString(),
+                        b[Batches.state],
+                        b[Batches.rows],
+                        held =
+                            stored
+                                .takeIf { rows ->
+                                    rows.any { it[BatchRows.groupKey] != null }
+                                }?.count(::undecidedHeld),
+                    )
                 }
             RunProgress(
                 runId = runId.toString(),
                 status = row[Runs.status],
+                kind = row[Runs.kind],
+                answer =
+                    answerEntry(runId)?.let {
+                        DECISION_JSON.decodeFromJsonElement<org.tatrman.automation.runner.AnswerOutcome>(it)
+                    },
                 verdict = result?.verdict,
                 guards = result?.guards.orEmpty(),
                 warnings = result?.warnings.orEmpty(),
@@ -1767,7 +1892,10 @@ class Ledger(
                 endedAt = row[Runs.endedAt]?.toInstant()?.toString(),
                 error = row[Runs.error],
                 batch = batch,
-                actions = previewActions(runId),
+                actions =
+                    previewActions(runId).map { action ->
+                        action.copy(decided = action.batchRows.firstNotNullOfOrNull { decided[it] })
+                    },
             )
         }
     }

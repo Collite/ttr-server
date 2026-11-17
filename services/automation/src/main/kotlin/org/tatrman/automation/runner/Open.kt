@@ -43,6 +43,8 @@ data class OpenResponse(
     val protocolRef: String? = null,
     /** The dryRun the ledger stored (a deployment can force it true): ⚑AU-EXP-5 on `201`, D-195 (D) on `200`/`202`. */
     val dryRun: Boolean? = null,
+    /** S3.5 (contract 3): an answer run's decision, on its `201` and on every replay. */
+    val answer: AnswerOutcome? = null,
 )
 
 data class OpenResult(
@@ -84,6 +86,8 @@ class Open(
         verified: EngineRun? = null,
     ): OpenResult {
         val engine = engineRun(request.engine, verified)
+        // S3.5 (D-230): a verified answer decides at Open through [AnswerRuns]; it is never an ordinary run of the recipe.
+        check(engine?.ref?.answeredBy == null) { "an answer run decides at Open (AnswerRuns), never through Open.open" }
         refuseIfPaused()
         // Preview opens arrive with P4; silently running a preview request on served would mislabel the evidence.
         if (request.bundle != null) throw AutomationException(ErrorCode.BUNDLE, "preview opens are not supported yet")
@@ -406,6 +410,49 @@ class Open(
                 )
         }
     }
+
+    /**
+     * S3.5 (contract 1, 6): what an answer Open checks before it looks for the run it answers — the same served bundle,
+     * recipe and deployment refusals as [open] (no program, grant or fingerprint resolution: the original run passed
+     * them, and D-99 is checked at the decision), `engine.decision` approve-only, and `port.key` the key object.
+     */
+    fun answerTarget(
+        recipeName: String,
+        request: OpenRequest,
+        verified: EngineRun,
+    ): AnswerTarget {
+        val ref = engineRun(request.engine, verified)?.ref
+        checkNotNull(ref?.answeredBy) { "not an answer" }
+        refuseIfPaused()
+        if (request.bundle != null) throw AutomationException(ErrorCode.BUNDLE, "preview opens are not supported yet")
+        val bundle = served()
+        bundle?.recipes?.get(recipeName)
+            ?: throw AutomationException(ErrorCode.RECIPE, "no recipe $recipeName is served")
+        val d =
+            bundle.deployments[request.deployment]
+                ?: throw AutomationException(ErrorCode.DEPLOYMENT, "no deployment ${request.deployment} is served")
+        if (!d.enabled) throw AutomationException(ErrorCode.DISABLED, "deployment ${request.deployment} is disabled")
+        if (ref.decision != null && ref.decision != AnswerRuns.APPROVE) {
+            throw AutomationException(
+                ErrorCode.ENGINE,
+                "engine.decision ${ref.decision} is not supported: an answer approves (⚑AU-S35-2)",
+                buildJsonObject { put("reason", "decision-unsupported") },
+            )
+        }
+        val key =
+            when (val value = request.port["key"]) {
+                null -> keyRefused("key-missing", "an answer names the key it answers (port.key)")
+                is JsonObject -> value.takeIf { it.isNotEmpty() } ?: keyRefused("key-not-object", "port.key is empty")
+                else -> keyRefused("key-not-object", "port.key is the key object { keyColumn: value, … }, not $value")
+            }
+        if (request.idempotencyKey?.isBlank() == true) portRefused("idempotencyKey cannot be blank")
+        return AnswerTarget(ref, key)
+    }
+
+    private fun keyRefused(
+        reason: String,
+        message: String,
+    ): Nothing = throw AutomationException(ErrorCode.PORT, message, buildJsonObject { put("reason", reason) })
 
     /** `503 paused`; also asked by [RunSessions] before an answer's engine round-trip (review-280 F4). */
     fun refuseIfPaused() {

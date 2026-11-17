@@ -40,6 +40,8 @@ class RunSessions(
     private val authorizeExecution: suspend (UUID, Caller) -> Unit = { _, _ -> },
     /** S3.2 (D-159): an answer run's engine check, done before the claim lock so a slow engine blocks no other open. */
     private val engineRuns: EngineRuns,
+    /** S3.5 (D-230): a verified answer decides at Open — no executor, never under the registry lock. */
+    private val answers: AnswerRuns? = null,
 ) {
     private class Session(
         val runner: PartRunner,
@@ -75,6 +77,10 @@ class RunSessions(
         policy.refuseIfPaused()
         if (stopped) unavailable()
         val verified = engineRuns.verify(request.engine, caller)
+        if (verified?.ref?.answeredBy != null) {
+            // S3.5: a decision, not a run of the recipe — it creates no session, so it never takes the registry lock.
+            return checkNotNull(answers) { "this registry has no answer path" }.open(recipe, request, caller, verified)
+        }
         return lock.withLock {
             parent.ensureActive()
             if (stopped) unavailable()

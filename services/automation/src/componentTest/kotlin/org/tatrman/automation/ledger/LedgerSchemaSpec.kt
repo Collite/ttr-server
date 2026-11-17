@@ -17,7 +17,7 @@ import org.tatrman.automation.migrateLedger
 import java.time.Duration
 
 /**
- * AU contracts §2 against a real Postgres: Flyway migrates a clean database (V1–V13; V12 is D-142's removals), every
+ * AU contracts §2 against a real Postgres: Flyway migrates a clean database (V1–V14; V12 is D-142's removals, V14 S3.5's answer runs), every
  * table carries its columns, the Exposed objects map them, the D-46 index and the dispatch claim's index exist, the
  * removed tables and the queue schema are gone, and `run_protocol` refuses every change but an INSERT (D-110).
  */
@@ -33,13 +33,13 @@ class LedgerSchemaSpec :
                 exec(sql) { rs -> buildList { while (rs.next()) add(read(rs)) } } ?: emptyList()
             }
 
-        "Flyway applies V1–V13 on a clean database; a second migrate applies nothing" {
-            LedgerTestDb.firstMigration shouldBe 13
+        "Flyway applies V1–V14 on a clean database; a second migrate applies nothing" {
+            LedgerTestDb.firstMigration shouldBe 14
             rows(
                 "SELECT version, success FROM automation.flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank",
             ) {
                 it.getString(1) to it.getBoolean(2)
-            } shouldContainExactly (1..13).map { it.toString() to true }
+            } shouldContainExactly (1..14).map { it.toString() to true }
             migrateLedger(db) shouldBe 0
         }
 
@@ -83,6 +83,8 @@ class LedgerSchemaSpec :
             indexes.keys shouldContainAll listOf("runs_abandoned", "program_windows_pkey")
             // D-202 (F2, V13): the re-read's settlement reads batches by run.
             indexes.getValue("batches_run") shouldContain "(run)"
+            // S3.5 (V14): an answer finds its instance's waiting original run.
+            indexes.getValue("runs_engine_waiting") shouldContain "(engine_instance_id, recipe, started_at)"
         }
 
         "D-142 (V12): tasks, windows, window_events, deliveries, callbacks and the queue schema are gone" {
