@@ -87,6 +87,6 @@ otherwise retain their behavior. The Czech JSON content is unchanged.
 
 `platform-question/v0.11.0` identifies a GitHub release with this folder as one
 archive. It contains no bridge, engine distribution, customer process, or model.
-See the repository's [`LICENSE`](../../LICENSE) and [`NOTICE`](../../NOTICE).
+See the repository's [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 The vendored Camunda schema retains its own MIT licence; see
 [`vendor/README.md`](vendor/README.md).

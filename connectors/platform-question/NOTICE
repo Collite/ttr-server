@@ -1,0 +1,14 @@
+Platform question
+Copyright 2026 Collite
+
+Licensed under the Apache License, Version 2.0; see LICENSE.
+
+The platform-question contract and Camunda 7 template in `connectors/platform-question`
+were published by Collite as contract owner under OL D-38. The template was copied once
+from ai-platform commit `4d0242eefbc0df292be2bd9fb96e6d47b71f8f3b`, file
+`services/aip-camunda/camunda/tatrman-dotaz.c7.json`, with an English localisation added.
+The source repository was read only for this publication.
+
+The folder also includes the Camunda element-template JSON schema, version 0.22.1:
+Copyright (c) 2020 camunda Services GmbH, MIT License.
+See `connectors/platform-question/vendor/LICENSE-camunda` and its README.
