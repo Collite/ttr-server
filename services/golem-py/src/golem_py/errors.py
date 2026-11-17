@@ -136,3 +136,19 @@ class DoorRejected(GolemError):
         self.code = code
         self.message = message
         super().__init__(f"the query door refused the query ({code}): {message}")
+
+
+class LaneReplyRefused(GolemError):
+    """The LLM's reply broke a rule of OL-C15 before the door was called — an invalid
+    object, a statement that is not one `SELECT`, a name outside the slice, a parameter, a
+    member literal from nowhere, a handled span that is no carried gap. The lane refuses
+    with ``QUERY_NOT_WRITTEN`` (OL-C16); the query is never sent.
+
+    ``rule`` is the machine token (``invalid_object`` · ``invalid_sql`` · ``not_select`` ·
+    ``parameter`` · ``outside_slice`` · ``literal_unsourced`` · ``handled_span_not_carried``)
+    and ``detail`` says what broke it."""
+
+    def __init__(self, rule: str, detail: str):
+        self.rule = rule
+        self.detail = detail
+        super().__init__(f"the LLM's reply broke a rule ({rule}): {detail}")

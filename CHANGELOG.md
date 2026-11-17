@@ -25,6 +25,24 @@ outside this repo could notice is in.
   **`NLS-PACK-006`**: a pipeline naming a stage that is not installed (ERROR, fail-all), or a typed source file
   no installed stage owns (INFO, not read). `nlp` pipelines take `stages: [{stage: <name>, …}]`; `rules:` stays
   as an alias. Two entries naming one stage are a boot error. No proto change; rule behaviour unchanged.
+- **golem-py — the LLM lane at `emit` (OL W1c·S2).** With `GOLEM_LLM_LANE_ENABLED` (default on), a gateway
+  and a door configured, a question that composed and carries no blocking gap is answered by one `llm.v1`
+  call that writes a `SELECT` over the model slice's `er.*` entities (prompt: `config/llm-lane-prompt.md`).
+  Before the door, the code checks a strict JSON object, one `SELECT`, slice names only, no parameters, a
+  member literal (compared to a column, or in its `IN` list) found as whole words in the lattice, and
+  `handled_spans` naming carried gaps. The door runs it under the caller's subject; one rejection buys one
+  repair. Each call counts against `max_llm_invocations`. New refusal reasons `QUERY_NOT_WRITTEN` (budget,
+  second rejection, invalid object, broken rule) and `LANE_UNAVAILABLE` (meta.v1, llm.v1 or query.v1
+  unreachable). The answer envelope gains `sql`, `llm_handled` and `provenance.lane` / `llm_model` /
+  `sql_sha256`; `gaps_carried` is unchanged. With the lane off, answers are exactly as before.
+  `golem_py.lane.check_lane_config` fails a lane that is on at startup when the `capable` rung has no
+  timeout or the prompt file does not parse.
+- **translate · validate · chrono · geo · money · metadata — translator/plan-proto 0.14.1 → 0.14.3 (ttr-core#407).** A
+  parameter the SQL author CASTs (e.g. `CAST(:p AS VARCHAR)` inside `||`) now survives Query's SQL → ER → REL_NODE → DB
+  re-entry. A REL_NODE decode failure keeps the code `rel_node_schema_resolution_failed`, and its text now names the
+  failing plan node (the exception class goes only to translate's WARN log). From 0.14.2: T-SQL `[name]` identifiers are
+  rewritten to quoted identifiers before parsing, schema detection and saved-query reference extraction. That rewrite also
+  catches `ARRAY[…]` and `c[1]` (ttr-core#412). The published `translate-snapshot` and `server-proto` POMs now name 0.14.3.
 
 - **`server-libs` — the grounding kernel published (OL W3·S1).** `org.tatrman:grounding-core` (plan.v1
   recipe scaffolding: `PlanExpr`, `SqlRenderer`) and `org.tatrman:grounding-lexicon` (the `ground:<kind>`

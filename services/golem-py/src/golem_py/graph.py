@@ -28,11 +28,12 @@ from typing import Literal
 from pydantic_graph import Graph, GraphBuilder, StepContext, TypeExpression
 
 from golem_py.budgets import Budgets
-from golem_py.compose import ComposeRefused, compose_structured_question, operator_refs
+from golem_py.compose import ComposeRefused, composable_residue, compose_structured_question
 from golem_py.deps import CoreResumePort, Deps
 from golem_py.errors import CoreResumeUnavailable, GateUnavailable, PickRefused, UnknownOption
 from golem_py.gate_client import apply_gate_result
 from golem_py.ladder import DETERMINISTIC_RUNGS
+from golem_py.lane import lane_applies, run_lane
 from golem_py.observability import log_node, log_turn
 from golem_py.outputs import Answer, Ask, AskOption, RefusalWithGaps, TurnOutput
 from golem_py.query_client import build_envelope
@@ -475,6 +476,11 @@ def build_graph() -> Graph[ResolutionState, Deps, None, TurnOutput]:
         is deliberately made of things the LATTICE can say, because the OS Golem has no
         intent classifier (that is Themis machinery, platform side) and inventing one
         here would be the single biggest thing this design says not to do.
+
+        OL W1c: with the LLM lane on (`lane.lane_on`), a question that composed and carries
+        no blocking gap is answered by the lane — one LLM call writes SQL over the model
+        slice and the door runs it under the caller's row rules — or refused with
+        `QUERY_NOT_WRITTEN` / `LANE_UNAVAILABLE`. A compose refusal stays today's (OL-C18).
         """
         if ctx.state.open_gaps():
             _record_ladder_noop(ctx.state, "emitted with carryable gaps and no rung climbed")
@@ -496,11 +502,17 @@ def build_graph() -> Graph[ResolutionState, Deps, None, TurnOutput]:
                 reason="NO_CAPABLE_PLUGIN",
                 gaps=ctx.state.gaps,
                 lattice=ctx.state,
-                composable_residue=[
-                    op for op in operator_refs(ctx.state) if ctx.deps.skills.has(op)
-                ],
+                composable_residue=composable_residue(ctx.state, ctx.deps.skills),
                 explanation=str(exc),
             )
+
+        if lane_applies(ctx.state, ctx.deps):
+            # OL W1c — the LLM lane writes the query (OL-C11). The verdict that led here is
+            # unchanged; only HOW a composed, unblocked question is answered differs.
+            lane_out = await run_lane(ctx.state, ctx.deps, question=question, carried=carried)
+            log_node(ctx.state, "emit", lane="llm", carried=len(carried))
+            log_turn(ctx.state, "emit" if isinstance(lane_out, Answer) else "refuse")
+            return lane_out
 
         result = None
         if ctx.deps.query is not None:
@@ -530,7 +542,7 @@ def build_graph() -> Graph[ResolutionState, Deps, None, TurnOutput]:
             reason="UNRESOLVED_GAPS",
             gaps=ctx.state.open_gaps(),
             lattice=ctx.state,
-            composable_residue=[op for op in operator_refs(ctx.state) if ctx.deps.skills.has(op)],
+            composable_residue=composable_residue(ctx.state, ctx.deps.skills),
         )
         log_node(ctx.state, "refuse", gaps_open=len(ctx.state.open_gaps()))
         log_turn(ctx.state, "refuse")
