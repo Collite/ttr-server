@@ -80,7 +80,8 @@ class AnswerRunSpec :
         }
 
         /** An operator of the world's `def role ops` (hartland-ops): the dev held routes' decider. */
-        fun ops(name: String) = Caller("sub-$name", name, emptySet(), TokenKind.PERSON, "t", groups = setOf("hartland-ops"))
+        fun ops(name: String) =
+            Caller("sub-$name", name, emptySet(), TokenKind.PERSON, "t", groups = setOf("hartland-ops"))
 
         fun answer(
             key: JsonElement,
@@ -267,7 +268,8 @@ class AnswerRunSpec :
                 // review-354 F5 (✅R354-C): `port.key` is verbatim — a number for the text key held as "4711" matches
                 // nothing, and the refusal lists the run's held keys so the type mismatch shows.
                 val numeric = buildJsonObject { put("order_number", 4711) }
-                val typed = refusal { runtime.sessions.open("release_order", answer(numeric, "task-1", "alice"), engine) }
+                val typed =
+                    refusal { runtime.sessions.open("release_order", answer(numeric, "task-1", "alice"), engine) }
                 typed.code shouldBe ErrorCode.ANSWER_UNMATCHED
                 typed.detail!!.jsonObject["held"] shouldBe JsonArray(listOf(k4711, k4712))
                 val other =

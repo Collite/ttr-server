@@ -29,6 +29,8 @@ import java.util.UUID
 data class AnswerTarget(
     val ref: EngineRef,
     val key: JsonObject,
+    val recipe: String,
+    val deployment: String,
 )
 
 /**
@@ -83,8 +85,9 @@ class AnswerRuns(
     ): OpenResult {
         val target = io { policy.answerTarget(recipe, request, verified) }
         val ref = target.ref
-        // Contract 1: read before the claim, so a refused answer names it; a same-key retry still replays (the claim).
-        val original = io { ledger.originalRun(ref.instanceId, recipe, request.deployment) }
+        // Contract 1 (✅R354-A): the run that held the key, whatever its status — read before the claim, so the opening
+        // protocol names it; a same-key retry still replays through the claim.
+        val original = io { ledger.originalRunHolding(ref.instanceId, recipe, request.deployment, target.key) }
         val pinned = original?.let { io { ledger.findRun(it) } }?.open
         val claim =
             io {
@@ -167,54 +170,43 @@ class AnswerRuns(
     ): OpenResult =
         withContext(NonCancellable) {
             val by = requireNotNull(target.ref.answeredBy)
-            val outcome =
+            // review-354 F2: the completion is inside the failure path — a failed completion leaves the run `failed`
+            // (its key freed, so the engine's retry replays the recorded decision), never `open`.
+            val recorded =
                 try {
-                    original ?: throw unmatched(
-                        "engine instance ${target.ref.instanceId} has no waiting run of this recipe to answer",
-                        buildJsonObject {
-                            put("reason", "no-waiting-run")
-                            put("instanceId", target.ref.instanceId)
-                        },
-                    )
+                    original ?: throw io { unheld(target) }
                     val decision =
                         try {
                             held.commitKey(original, target.key, caller, by, id)
                         } catch (_: NoHeldGroup) {
-                            throw unmatched(
-                                "run $original holds no rows of key ${target.key}",
-                                buildJsonObject {
-                                    put("reason", "no-held-key")
-                                    put("run", original.toString())
-                                    put("key", target.key)
-                                },
-                            )
+                            throw io { noHeldKey(original, target.key) }
                         }
-                    AnswerOutcome(
-                        original.toString(),
-                        decision.batch,
-                        target.key,
-                        decision.decision,
-                        // This answer's verified person; a replayed decision's own decider stays in the rows' `decided`.
-                        by,
-                        decision.applied,
-                        decision.discarded,
-                        decision.failed,
-                        decision.unknown,
-                        decision.replayed,
-                    )
+                    val outcome =
+                        AnswerOutcome(
+                            original.toString(),
+                            decision.batch,
+                            target.key,
+                            decision.decision,
+                            // review-354 F4: a replay names the recorded decider, not this answer's person.
+                            if (decision.replayed) decision.by ?: by else by,
+                            decision.applied,
+                            decision.discarded,
+                            decision.failed,
+                            decision.unknown,
+                            decision.replayed,
+                        )
+                    io {
+                        ledger.finishAnswer(
+                            id,
+                            JsonObject(
+                                mapOf("answer" to JsonPrimitive(true)) +
+                                    Json.encodeToJsonElement(outcome) as JsonObject,
+                            ),
+                        )
+                    }
                 } catch (e: Exception) {
                     withContext(Dispatchers.IO) { ledger.failExecution(id, e) }
                     throw e
-                }
-            val recorded =
-                io {
-                    ledger.finishAnswer(
-                        id,
-                        JsonObject(
-                            mapOf("answer" to JsonPrimitive(true)) +
-                                Json.encodeToJsonElement(outcome) as JsonObject,
-                        ),
-                    )
                 }
             val answer = json.decodeFromJsonElement<AnswerOutcome>(recorded)
             val location = "/automation/runs/$id"
@@ -237,6 +229,37 @@ class AnswerRuns(
         message: String,
         detail: JsonObject,
     ) = AutomationException(ErrorCode.ANSWER_UNMATCHED, message, detail)
+
+    /**
+     * No run of the instance ever held the key: `no-held-key` against its newest waiting run (with that run's held keys,
+     * ✅R354-C), else `no-waiting-run`.
+     */
+    private fun unheld(target: AnswerTarget): AutomationException {
+        val waiting =
+            ledger.waitingRun(target.ref.instanceId, target.recipe, target.deployment)
+                ?: return unmatched(
+                    "engine instance ${target.ref.instanceId} has no run of this recipe that held key ${target.key}",
+                    buildJsonObject {
+                        put("reason", "no-waiting-run")
+                        put("instanceId", target.ref.instanceId)
+                    },
+                )
+        return noHeldKey(waiting, target.key)
+    }
+
+    /** ✅R354-C: `port.key` is matched verbatim; the run's undecided held keys show what it holds. */
+    private fun noHeldKey(
+        run: UUID,
+        key: JsonObject,
+    ) = unmatched(
+        "run $run holds no rows of key $key (port.key is matched verbatim, JSON types included)",
+        buildJsonObject {
+            put("reason", "no-held-key")
+            put("run", run.toString())
+            put("key", key)
+            put("held", JsonArray(ledger.heldKeys(run)))
+        },
+    )
 
     /** The caller's key, else the engine task the answer closes (and the key it answers), namespaced like [Open]'s. */
     private fun idempotency(

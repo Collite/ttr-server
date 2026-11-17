@@ -1042,7 +1042,8 @@ class EngineSeamOpenSpec :
             val held =
                 org.tatrman.automation.writer.Held(
                     ledger,
-                    org.tatrman.automation.writer.Apply(Door { error("no door read") }, clock),
+                    org.tatrman.automation.writer
+                        .Apply(Door { error("no door read") }, clock),
                     { _, _, _ -> error("no decision") },
                     { named },
                     clock,
@@ -1068,7 +1069,11 @@ class EngineSeamOpenSpec :
                     runBlocking {
                         sessions.open(
                             recipe,
-                            OpenRequest(deployment, buildJsonObject { put("key", buildJsonObject { put("order_number", "4711") }) }, engine = ref),
+                            OpenRequest(
+                                deployment,
+                                buildJsonObject { put("key", buildJsonObject { put("order_number", "4711") }) },
+                                engine = ref,
+                            ),
                             engine,
                         )
                     }
@@ -1083,7 +1088,12 @@ class EngineSeamOpenSpec :
             ledger.completeEvaluation(
                 id,
                 EvaluationResult(VerdictSummary(emptyMap(), 0), emptyList()),
-                PreviewPlan(UUID.randomUUID().toString(), id.toString(), (0 until 5_000).map { row(it, "insert") }, emptyList()),
+                PreviewPlan(
+                    UUID.randomUUID().toString(),
+                    id.toString(),
+                    (0 until 5_000).map { row(it, "insert") },
+                    emptyList(),
+                ),
             )
             ledger.readRunProgress(id, maya.sub).batch!!.let {
                 it.rows shouldBe 5_000
@@ -1111,8 +1121,24 @@ class EngineSeamOpenSpec :
             val rows = listOf(row(0, "transition", k1), row(1, "insert", k1), row(2, "transition", k2))
             val actions =
                 listOf(
-                    DryRunAction(k1, "release", "release_confirmed", "transition", buildJsonObject {}, listOf(1, 2), dryRun = false),
-                    DryRunAction(k2, "release", "release_confirmed", "transition", buildJsonObject {}, listOf(3, 2), dryRun = false),
+                    DryRunAction(
+                        k1,
+                        "release",
+                        "release_confirmed",
+                        "transition",
+                        buildJsonObject {},
+                        listOf(1, 2),
+                        dryRun = false,
+                    ),
+                    DryRunAction(
+                        k2,
+                        "release",
+                        "release_confirmed",
+                        "transition",
+                        buildJsonObject {},
+                        listOf(3, 2),
+                        dryRun = false,
+                    ),
                 )
             ledger.completeEvaluation(
                 id,

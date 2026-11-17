@@ -446,7 +446,7 @@ class Open(
                 else -> keyRefused("key-not-object", "port.key is the key object { keyColumn: value, … }, not $value")
             }
         if (request.idempotencyKey?.isBlank() == true) portRefused("idempotencyKey cannot be blank")
-        return AnswerTarget(ref, key)
+        return AnswerTarget(ref, key, recipeName, request.deployment)
     }
 
     private fun keyRefused(

@@ -83,8 +83,9 @@ class LedgerSchemaSpec :
             indexes.keys shouldContainAll listOf("runs_abandoned", "program_windows_pkey")
             // D-202 (F2, V13): the re-read's settlement reads batches by run.
             indexes.getValue("batches_run") shouldContain "(run)"
-            // S3.5 (V14): an answer finds its instance's waiting original run.
-            indexes.getValue("runs_engine_waiting") shouldContain "(engine_instance_id, recipe, started_at)"
+            // S3.5 (V14): an answer finds its instance's original run by the key it held (✅R354-A, review-354 F7).
+            indexes.getValue("runs_engine_original") shouldContain "(engine_instance_id, recipe, started_at)"
+            indexes.getValue("batch_rows_held") shouldContain "WHERE (group_key IS NOT NULL)"
         }
 
         "D-142 (V12): tasks, windows, window_events, deliveries, callbacks and the queue schema are gone" {

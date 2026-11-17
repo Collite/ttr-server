@@ -78,6 +78,8 @@ class RunSessions(
         if (stopped) unavailable()
         val verified = engineRuns.verify(request.engine, caller)
         if (verified?.ref?.answeredBy != null) {
+            // review-354 F6: shutdown may have begun during the engine round-trip; a decision claims nothing then.
+            if (stopped) unavailable()
             // S3.5: a decision, not a run of the recipe — it creates no session, so it never takes the registry lock.
             return checkNotNull(answers) { "this registry has no answer path" }.open(recipe, request, caller, verified)
         }
