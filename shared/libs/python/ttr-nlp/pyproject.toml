@@ -36,6 +36,12 @@ http = ["httpx>=0.27"]
 [project.scripts]
 ttr-nlp = "ttrnlp.cli:main"
 
+# The pipeline stages this distribution provides (OL-C6, OL-C10). The rule engine
+# is registered here, through the group, until it leaves for `ttr-nlp-rules` at
+# W4; the loader and the runner reach it through `ttrnlp.stages` only.
+[project.entry-points."ttrnlp.stages"]
+rules = "ttrnlp.rules.stage:RulesStage"
+
 [project.urls]
 Homepage = "https://github.com/Collite/ttr-server"
 Source = "https://github.com/Collite/ttr-server/tree/master/shared/libs/python/ttr-nlp"

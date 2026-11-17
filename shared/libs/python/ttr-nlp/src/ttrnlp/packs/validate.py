@@ -29,13 +29,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from ttrnlp.packs.diag import NLS_PACK_005, Diagnostic, error, info
 from ttrnlp.packs.loader import Gathered, check_pipelines, gather_sources
-from ttrnlp.rules.compiler import CompiledPack
+
+if TYPE_CHECKING:  # pragma: no cover — the model lane is the pack half (OL-C32)
+    from ttrnlp.rules.compiler import CompiledPack
+    from ttrnlp.stages import Stage
 
 #: The annotation type contracts §5 gives a query contract to. Other `add:` types
 #: are the pack author's own vocabulary and are not model-checked.
@@ -52,8 +55,11 @@ def validate_sources(
     *,
     model: str | Path | None = None,
     pipelines: Mapping[str, Any] | None = None,
+    stages: Mapping[str, Stage] | None = None,
 ) -> list[Diagnostic]:
     """Validate sources and return every diagnostic, raising nothing.
+
+    Goes through the installed stages exactly as ``load_sources`` does (OL-C10).
 
     Args:
         sources: Directories, single files, or ``http(s)`` URLs — exactly what
@@ -61,12 +67,13 @@ def validate_sources(
         model: A directory of TTR-M model files. Enables the contracts §5
             cross-checks (``NLS-PACK-005``). CLI lane only.
         pipelines: A pipeline table to check references against (§7).
+        stages: The stages to validate through; defaults to the installed ones.
 
     Returns:
         Every diagnostic found, in source order. Empty means the sources would
         load.
     """
-    gathered = gather_sources(sources)
+    gathered = gather_sources(sources, stages=stages)
     diagnostics = list(gathered.diagnostics)
     diagnostics.extend(check_pipelines(gathered, pipelines))
     if model is not None:

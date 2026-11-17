@@ -35,6 +35,7 @@ from pathlib import Path
 from ttrnlp import __version__
 from ttrnlp.packs.diag import SEVERITY_ERROR, Diagnostic
 from ttrnlp.packs.validate import validate_sources
+from ttrnlp.stages import StageError
 
 EXIT_OK = 0
 EXIT_VALIDATION_ERRORS = 1
@@ -53,10 +54,11 @@ def _parser() -> argparse.ArgumentParser:
         "validate",
         help="validate rule packs and gazetteer lists",
         description=(
-            "Validate each PATH (a pack file, a pack directory, or a list "
-            "directory) against the pack schema and the cross-checks. This runs "
-            "the same code path as the nlp service's boot-time load and its "
-            "ReloadPacks RPC, so a pack that passes here passes there."
+            "Validate each PATH (a list or stage source file, or a directory of "
+            "them) through the stages installed in the `ttrnlp.stages` group — "
+            "the rule engine owns `*.pack.yaml`. This runs the same code path as "
+            "the nlp service's boot-time load and its ReloadPacks RPC, so a "
+            "source that passes here passes there."
         ),
     )
     validate.add_argument("paths", nargs="+", metavar="PATH")
@@ -149,7 +151,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return EXIT_USAGE
 
-    diagnostics = validate_sources(args.paths, model=args.model)
+    try:
+        diagnostics = validate_sources(args.paths, model=args.model)
+    except StageError as exc:
+        # The environment, not the sources: two installed stages clash.
+        print(f"ttr-nlp validate: {exc}", file=sys.stderr)
+        return EXIT_USAGE
 
     if args.as_json:
         print(_as_json(diagnostics))

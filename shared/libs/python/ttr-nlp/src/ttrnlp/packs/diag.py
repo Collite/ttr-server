@@ -20,6 +20,8 @@ Codes are contracts §8:
 ``NLS-PACK-004``     a pipeline references a pack, phase or list that is not there
 ``NLS-PACK-005``     CLI ``--model`` only: a query id or parameter name the model
                      does not declare
+``NLS-PACK-006``     a pipeline names a stage that is not installed in this image
+                     (OL-C8)
 ``NLS-PACK-010``     a reload was refused; the previous snapshot still serves
 ===================  ===========================================================
 
@@ -46,6 +48,7 @@ NLS_PACK_002 = "NLS-PACK-002"  # compile-time cross-checks
 NLS_PACK_003 = "NLS-PACK-003"  # list file invalid
 NLS_PACK_004 = "NLS-PACK-004"  # pipeline reference unresolved
 NLS_PACK_005 = "NLS-PACK-005"  # model cross-check (CLI lane)
+NLS_PACK_006 = "NLS-PACK-006"  # pipeline names a stage that is not installed
 NLS_PACK_010 = "NLS-PACK-010"  # reload refused
 
 
@@ -193,6 +196,7 @@ __all__ = [
     "NLS_PACK_003",
     "NLS_PACK_004",
     "NLS_PACK_005",
+    "NLS_PACK_006",
     "NLS_PACK_010",
     "SEVERITY_ERROR",
     "SEVERITY_INFO",
