@@ -23,13 +23,17 @@ outside this repo could notice is in.
     prompt file (`check_lane_config`); a bad configuration exits 2.
   - `--json` prints the answer's envelope: SQL, provenance, rows, `llm_handled`. A refusal
     or an ask prints without its lattice.
-  - The image sets `GOLEM_LLM_LANE_ENABLED=true`, `GOLEM_LLM_MODEL_CLASS=capable` and
-    `GOLEM_LLM_MODEL_SLICE_ENTITIES=40`. With no targets set, it answers as before.
-  - The member-literal check now traces a literal against any operand that is not itself a
-    literal: `UPPER(col) = 'X'`, `CAST(… AS …)`, `LOWER('x')`, `'x'::text`, the `IN` list
-    after any expression, simple-`CASE` `WHEN` labels, and `N'…'`/`E'…'` (review-329
-    ✅R329-C). Before, only a bare column counted, so a case-insensitive comparison could
-    carry an invented member past the check.
+  - The image sets no `GOLEM_*` default of its own (they live in `GolemSettings`). Five
+    variables name the estate; without `GOLEM_QUERY_TARGET` or `GOLEM_LLM_TARGET` it answers as
+    before. A missing or invalid ladder file, or an unknown profile, also exits 2.
+  - The member-literal check traces a string literal by where it sits (review-343
+    ✅R343-A): in `WHERE`/`HAVING`/`ON`/`QUALIFY` at any depth, between `WHEN` and `THEN`, in a
+    sub-query's select list or a `VALUES` list, or compared to any non-literal operand
+    (`UPPER(col) = 'X'`). Dates are exempt by name: typed and temporal-cast literals, ISO
+    dates, a date function's arguments, and period labels compared to a date function
+    (`TO_CHAR(d,'YYYYMM') = '202610'`). Before, only a few comparison shapes were traced, and
+    concatenation, literal-only operands, other operators or a sub-query could carry an
+    invented member past the check. Nesting deeper than 64 parentheses refuses `invalid_sql`.
   - Conversations: `conformance/conversations/` gains a `lane:` block (recorded slice,
     gateway replies, door outcomes, reference date) and four fixtures: `ol-lane-covered`,
     `ol-lane-relative-period`, `ol-lane-door-repair` and `ol-lane-query-not-written`. The

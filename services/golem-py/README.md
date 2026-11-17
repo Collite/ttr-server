@@ -99,7 +99,8 @@ reference date — today in UTC unless `Deps.reference_date` is injected.
 The image is the CLI: one turn per run, the outcome on stdout. `--json` prints the envelope
 for an answer (`sql`, `provenance.lane` / `llm_model` / `sql_sha256`, `row_count`, `rows`,
 `llm_handled`, `gaps_carried`), and for a refusal or an ask, the outcome without its
-lattice. The five `GOLEM_*` targets name the estate's services; `--subject` is the
+lattice. Five variables name the estate: `GOLEM_QUERY_TARGET`, `GOLEM_QUERY_WORLD`,
+`GOLEM_LLM_TARGET`, `GOLEM_META_TARGET` and `GOLEM_META_PACKAGES`. `--subject` is the
 caller, and the door applies that caller's row rules to the query the lane wrote.
 
 ```bash
@@ -112,8 +113,8 @@ docker run --rm \
 ```
 
 On a cluster, run it as a one-off Job in a throwaway namespace with the same environment and
-arguments. Leave out the three lane targets, and the same command answers structurally, as
-before W1c.
+arguments. Leave out `GOLEM_QUERY_TARGET` or `GOLEM_LLM_TARGET`, and the same command answers
+structurally, as before W1c.
 
 ⚑ **Two gaps, checked live on bp-dsk on 2026-11-17** (OL W1c·S3 "Found while doing", for the
 planner):

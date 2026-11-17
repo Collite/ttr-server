@@ -57,22 +57,21 @@ ENV PYTHONPATH=/app/src:/app/generated
 ENV GOLEM_LADDER_CONFIG=/app/config/golem-ladder.yaml
 
 # ===== the LLM lane (OL W1c, contracts §C) =====
-# The lane is ON only when the switch is on AND a gateway AND a door are configured
-# (OL-C11). The image sets the switch and the two numbers. The three targets stay unset, so
-# an image run with no estate configuration answers structurally, as it did before W1c. An
-# estate sets the targets:
+# Every GOLEM_* default lives in one place, `golem_py.settings.GolemSettings` (the switch is on,
+# the model class is `capable`, the slice cap is 40), and the image sets none of them. Five
+# variables name the estate:
 #   GOLEM_QUERY_TARGET    the query door, `query.v1` (host:port)
 #   GOLEM_QUERY_WORLD     the world every lane query runs in
 #   GOLEM_LLM_TARGET      the open LLM gateway, `llm.v1` (host:port)
-#   GOLEM_LLM_MODEL       optional: pin a model (empty: the gateway picks within the class)
 #   GOLEM_META_TARGET     `meta.v1` (host:port), for the model slice
 #   GOLEM_META_PACKAGES   the packages the slice reads, comma-separated
-# The CLI checks a lane that is on BEFORE the turn: the world, the slice, the `capable`
-# rung's clock and the prompt file (/app/config/llm-lane-prompt.md). A bad configuration
-# exits 2 and names what is wrong.
-ENV GOLEM_LLM_LANE_ENABLED=true \
-    GOLEM_LLM_MODEL_CLASS=capable \
-    GOLEM_LLM_MODEL_SLICE_ENTITIES=40
+# The lane is ON only when the switch is on AND GOLEM_QUERY_TARGET AND GOLEM_LLM_TARGET are set
+# (OL-C11). Leave either out and the image answers structurally, as it did before W1c.
+# GOLEM_LLM_MODEL optionally pins a model (empty: the gateway picks within the class).
+# The CLI checks the startup configuration BEFORE the turn: the ladder file and the profile
+# always; for a lane that is on, also the world, the slice, the `capable` rung's clock and the
+# prompt file (/app/config/llm-lane-prompt.md). A bad configuration exits 2 and names what is
+# wrong.
 
 ENTRYPOINT ["python", "src/main.py"]
 CMD ["--help"]
