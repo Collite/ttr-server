@@ -11,16 +11,26 @@ and before the door is called the code checks the rules the prompt states:
   `JOIN`, `APPLY`, or a comma in a `FROM` list) holds an entity of the slice or a sub-query;
 * **no parameters** — no `?`, `$1`, `:name` or `@name`;
 * **a literal that restricts a member comes from a binding, a value or the question's own
-  words** — a string literal that is an operand of `=`, `<>`, `!=`, `LIKE` or `ILIKE` (with
-  `NOT`, from either side) whose OTHER operand is not itself a literal — a column, `f(column)`,
-  `CAST(… AS …)`, a `CASE … END`, a sub-query — or an element of an `IN ( … )` after any such
-  expression, or a label after `WHEN` in a simple `CASE <expr> WHEN '…'`, must be a whole word
-  or a whole run of words of what the lattice carries (see `literal_sources`). A literal wrapped
-  on its own side (`LOWER('Brno')`, `CAST('Brno' AS …)`, `'Brno'::text`) is still that literal;
-  a prefixed one (`N'…'`, `E'…'`) is a literal like any other. `%` at its edges is dropped
-  first, and a date is exempt. Every other string literal — a function's argument, a searched
-  `CASE`'s labels, a `COALESCE` fallback — restricts no member and is not traced (review-329
-  ✅R329-C: comparing `UPPER(s.region)` hid an invented member from the column-only rule);
+  words** (review-343 ✅R343-A). A string literal (plain or `N'…'`/`E'…'`) is TRACED by where it
+  sits:
+  (a) in a condition clause, at any depth, from its keyword to the clause's end on that level:
+      `WHERE` (including `FILTER (WHERE …)`), `HAVING`, `ON`, `QUALIFY`;
+  (b) between `WHEN` and `THEN` of any `CASE`, anywhere (a simple `CASE <expr> WHEN '…'` label
+      included; a `THEN`/`ELSE` result is not part of this position);
+  (c) in the select list of any SELECT that is not outermost, and in any `VALUES ( … )` list —
+      a derived table or a scalar sub-query feeds a comparison;
+  (d) anywhere, as an operand of `=`, `<>`, `!=`, `LIKE` or `ILIKE` (with `NOT`) whose other
+      operand is not itself a literal (`UPPER(s.region) = 'BRNO' AS is_brno`).
+  Only the outermost select list (outside b and d), `GROUP BY` and `ORDER BY` are not traced.
+  A traced literal must be a whole word or a whole run of words of what the lattice carries
+  (see `literal_sources`), unless it is EXEMPT by name: (i) a typed temporal literal
+  (`DATE '…'`, `INTERVAL '…'`) or one cast to a temporal type (`'1 month'::interval`,
+  `CAST('…' AS DATE)`); (ii) an ISO date; (iii) a direct argument of a date function
+  (`_DATE_FUNCTIONS`: `TO_CHAR(s.d,'YYYYMM')`, `DATE_TRUNC('month', …)`); (iv) a period label —
+  digits, optionally followed by separated groups (`202610`, `10/2026`, `2026-Q3`) — compared by
+  any operator, `BETWEEN` or `IN` to a call of such a function; (v) `%` at its edges is dropped
+  first, and an empty needle is no member. A digit-only literal compared to a COLUMN is a member
+  code and stays traced;
 * **`handled_spans` names carried gaps** — a claim on a span no carried gap sits on is not a
   claim the envelope can hold beside `gaps_carried` (OL-C17).
 
@@ -83,7 +93,7 @@ _FROM_ENDERS = frozenset(
         "QUALIFY",
     }
 )
-# A string literal right after one of these is temporal, not a member.
+# A string literal right after one of these is temporal, not a member (exemption i).
 _TYPED_LITERALS = frozenset({"DATE", "TIME", "TIMESTAMP", "INTERVAL"})
 # The comparisons that restrict an expression to a member.
 _EQUALITY = frozenset({"=", "<>", "!="})
@@ -159,7 +169,26 @@ def _in_slice(parts: list[str], allowed: Sequence[list[str]]) -> bool:
     return any(parts[: len(a)] == a for a in allowed)
 
 
+# The deepest parenthesis nesting a reply may use. Checked before anything else, so no later
+# step can be driven into a recursion it was not written for (review-343 L2).
+MAX_DEPTH = 64
+
+
+def _check_depth(toks: Sequence[_Tok]) -> None:
+    depth = 0
+    for tok in toks:
+        if tok.text == "(":
+            depth += 1
+            if depth > MAX_DEPTH:
+                raise LaneReplyRefused(
+                    "invalid_sql", f"parentheses nest deeper than {MAX_DEPTH} levels"
+                )
+        elif tok.text == ")":
+            depth -= 1
+
+
 def _check_statement(toks: list[_Tok]) -> list[_Tok]:
+    _check_depth(toks)
     while toks and toks[-1].text == ";":
         toks = toks[:-1]
     if not toks:
@@ -349,68 +378,253 @@ def _comparison_literals(toks: Sequence[_Tok]) -> list[int]:
     return out
 
 
-def _in_list(toks: Sequence[_Tok], open_at: int) -> list[int]:
-    """The string elements of the `( … )` opening at `open_at` — each a literal operand of its
-    own (`'Brno'`, `N'Brno'`, `UPPER('Brno')`); none for a sub-query."""
-    if open_at + 1 < len(toks) and toks[open_at + 1].upper == "SELECT":
-        return []
-    close = _close_of(toks, open_at)
+# Keywords that open a condition clause (position a).
+_CONDITIONS = frozenset({"WHERE", "HAVING", "ON", "QUALIFY"})
+# Keywords that end a condition clause or a select list on their own level.
+_CLAUSE_ENDERS = frozenset(
+    {
+        "WHERE",
+        "GROUP",
+        "ORDER",
+        "HAVING",
+        "WINDOW",
+        "QUALIFY",
+        "LIMIT",
+        "OFFSET",
+        "FETCH",
+        "UNION",
+        "EXCEPT",
+        "INTERSECT",
+        "JOIN",
+        "INNER",
+        "LEFT",
+        "RIGHT",
+        "FULL",
+        "CROSS",
+        "NATURAL",
+    }
+)
+# Date functions: every literal argument is a unit or a format (exemption iii), and a period
+# label compared to one of their calls is a period, not a member (exemption iv).
+_DATE_FUNCTIONS = frozenset(
+    {
+        "DATE_TRUNC",
+        "DATE_PART",
+        "DATEADD",
+        "DATEDIFF",
+        "DATENAME",
+        "DATEPART",
+        "TO_CHAR",
+        "TO_DATE",
+        "TO_TIMESTAMP",
+        "FORMAT",
+        "DATE_FORMAT",
+        "STRFTIME",
+    }
+)
+_TEMPORAL_TYPES = frozenset(
+    {"DATE", "TIME", "TIMESTAMP", "TIMESTAMPTZ", "INTERVAL", "DATETIME", "DATETIME2"}
+)
+_PERIOD_LABEL = re.compile(r"^[0-9]+([-/. :][0-9A-Za-z]+)*$")
+# Operators a period label may be compared with (exemption iv).
+_ORDERING = frozenset({"=", "<>", "!=", "<", ">", "<=", ">=", "LIKE", "ILIKE"})
+
+
+def _depths(toks: Sequence[_Tok]) -> list[int]:
+    """Each token's parenthesis depth; a `(` and its `)` sit on the outer level."""
     out: list[int] = []
-    j = open_at + 1
-    while 0 < j < close:
-        found = _literal_from(toks, j)
-        if found is not None and toks[found[1] + 1].text in (",", ")"):
-            if found[0] is not None:
-                out.append(found[0])
-            j = found[1] + 2
-            continue
-        # Not a literal element: skip to the next comma at this level.
-        depth = 0
-        while j < close and not (depth == 0 and toks[j].text == ","):
-            depth += {"(": 1, ")": -1}.get(toks[j].text, 0)
-            j += 1
+    depth = 0
+    for tok in toks:
+        if tok.text == ")":
+            depth -= 1
+        out.append(depth)
+        if tok.text == "(":
+            depth += 1
+    return out
+
+
+def _span_end(toks: Sequence[_Tok], start: int, enders: frozenset[str]) -> int:
+    """The index just past the run that starts at `start` and ends at an `enders` keyword on
+    its own level, at the `)` closing that level, or at the end."""
+    depth = 0
+    j = start
+    while j < len(toks):
+        tok = toks[j]
+        if tok.text == "(":
+            depth += 1
+        elif tok.text == ")":
+            depth -= 1
+            if depth < 0:
+                return j
+        elif depth == 0 and tok.upper in enders and toks[j - 1].text != ".":
+            return j
         j += 1
+    return j
+
+
+def _condition_positions(toks: Sequence[_Tok]) -> set[int]:
+    """Position (a): inside a WHERE / HAVING / ON / QUALIFY clause, at any depth."""
+    out: set[int] = set()
+    for i, tok in enumerate(toks):
+        if tok.upper in _CONDITIONS and (i == 0 or toks[i - 1].text != "."):
+            out.update(range(i + 1, _span_end(toks, i + 1, _CLAUSE_ENDERS)))
     return out
 
 
-def _in_literals(toks: Sequence[_Tok]) -> list[int]:
-    """The elements of an `IN ( … )` whose left side is any non-literal expression."""
-    out: list[int] = []
+def _case_condition_positions(toks: Sequence[_Tok]) -> set[int]:
+    """Position (b): between `WHEN` and its `THEN`, in any CASE."""
+    out: set[int] = set()
     for i, tok in enumerate(toks):
-        if tok.upper != "IN" or i + 1 >= len(toks) or toks[i + 1].text != "(":
+        if tok.upper != "WHEN":
             continue
-        left_end = i - 2 if i >= 2 and toks[i - 1].upper == "NOT" else i - 1
-        if left_end < 0 or toks[left_end].text in ("(", ","):
-            continue
-        if _literal_ending_at(toks, left_end) is None:
-            out += _in_list(toks, i + 1)
+        depth = cases = 0
+        j = i + 1
+        while j < len(toks):
+            t = toks[j]
+            if t.text == "(":
+                depth += 1
+            elif t.text == ")":
+                depth -= 1
+                if depth < 0:
+                    break
+            elif t.upper == "CASE":
+                cases += 1
+            elif t.upper == "END":
+                cases -= 1
+            elif t.upper == "THEN" and depth == 0 and cases == 0:
+                break
+            j += 1
+        out.update(range(i + 1, j))
     return out
 
 
-def _simple_case_literals(toks: Sequence[_Tok]) -> list[int]:
-    """The labels after `WHEN` in a simple `CASE <expr> WHEN '…'` — each compared to `<expr>`.
-    A searched `CASE WHEN <condition>` holds its comparisons inside the condition."""
-    out: list[int] = []
-    simple: list[bool] = []  # one entry per open CASE
+def _inner_select_positions(toks: Sequence[_Tok], depths: Sequence[int]) -> set[int]:
+    """Position (c): the select list of every SELECT that is not outermost, and VALUES lists."""
+    out: set[int] = set()
+    select_enders = _CLAUSE_ENDERS | {"FROM"}
     for i, tok in enumerate(toks):
-        if tok.upper == "CASE":
-            simple.append(i + 1 < len(toks) and toks[i + 1].upper != "WHEN")
-        elif tok.upper == "END" and simple:
-            simple.pop()
-        elif tok.upper == "WHEN" and simple and simple[-1]:
-            found = _literal_from(toks, i + 1)
-            if found is not None and found[0] is not None:
-                out.append(found[0])
+        if tok.upper == "SELECT" and depths[i] > 0:
+            j = i + 1
+            while True:
+                j = _span_end(toks, j, select_enders)
+                # `IS DISTINCT FROM` is no FROM clause: keep going past it.
+                if j < len(toks) and toks[j].upper == "FROM" and toks[j - 1].upper == "DISTINCT":
+                    j += 1
+                    continue
+                break
+            out.update(range(i + 1, j))
+        elif tok.upper == "VALUES":
+            j = i + 1
+            while j < len(toks) and toks[j].text == "(":
+                close = _close_of(toks, j)
+                if close < 0:
+                    close = len(toks) - 1
+                out.update(range(j, close + 1))
+                j = close + 1
+                if j < len(toks) and toks[j].text == ",":
+                    j += 1
     return out
 
 
 def _member_literals(toks: Sequence[_Tok]) -> list[int]:
-    """The string literals that restrict a member (review-329 ✅R329-C): compared to anything
-    that is not itself a literal, listed in such an expression's `IN`, or a simple `CASE`'s
-    `WHEN` label."""
-    return sorted(
-        set(_comparison_literals(toks) + _in_literals(toks) + _simple_case_literals(toks))
+    """The string literals that are TRACED: by position (a–c), or as a comparison operand (d)."""
+    depths = _depths(toks)
+    traced = (
+        _condition_positions(toks)
+        | _case_condition_positions(toks)
+        | _inner_select_positions(toks, depths)
     )
+    found = {i for i in traced if toks[i].kind == "string"}
+    found.update(_comparison_literals(toks))
+    return sorted(found)
+
+
+def _enclosing_open(toks: Sequence[_Tok], i: int) -> int:
+    """The `(` whose parentheses directly hold token `i`, or -1."""
+    depth = 0
+    for j in range(i - 1, -1, -1):
+        if toks[j].text == ")":
+            depth += 1
+        elif toks[j].text == "(":
+            if depth == 0:
+                return j
+            depth -= 1
+    return -1
+
+
+def _is_date_call_ending_at(toks: Sequence[_Tok], end: int) -> bool:
+    if end < 0 or toks[end].text != ")":
+        return False
+    start = _operand_start(toks, end)
+    return toks[start].upper in _DATE_FUNCTIONS and toks[start + 1].text == "("
+
+
+def _compared_to_date_call(toks: Sequence[_Tok], i: int) -> bool:
+    """Is literal `i` compared — by an ordering operator, `BETWEEN` or `IN` — to a call of a
+    date function?"""
+    prev = toks[i - 1] if i > 0 else None
+    # `F(…) op 'x'`
+    if prev is not None and (prev.text in _ORDERING or prev.upper in _ORDERING):
+        left = i - 2
+        if left >= 0 and toks[left].upper == "NOT":
+            left -= 1
+        if _is_date_call_ending_at(toks, left):
+            return True
+    # `'x' op F(…)`
+    if i + 2 < len(toks) and (toks[i + 1].text in _ORDERING or toks[i + 1].upper in _ORDERING):
+        k = i + 2
+        if toks[k].upper in _DATE_FUNCTIONS and k + 1 < len(toks) and toks[k + 1].text == "(":
+            return True
+    # `F(…) [NOT] BETWEEN 'a' AND 'b'`
+    between = -1
+    if prev is not None and prev.upper == "BETWEEN":
+        between = i - 1
+    elif prev is not None and prev.upper == "AND" and i >= 3 and toks[i - 3].upper == "BETWEEN":
+        between = i - 3
+    if between >= 0:
+        left = between - 1
+        if left >= 0 and toks[left].upper == "NOT":
+            left -= 1
+        if _is_date_call_ending_at(toks, left):
+            return True
+    # `F(…) [NOT] IN ('a', 'b')`
+    open_at = _enclosing_open(toks, i)
+    if open_at > 0 and toks[open_at - 1].upper == "IN":
+        left = open_at - 2
+        if left >= 0 and toks[left].upper == "NOT":
+            left -= 1
+        if _is_date_call_ending_at(toks, left):
+            return True
+    return False
+
+
+def _exempt(toks: Sequence[_Tok], i: int, value: str) -> bool:
+    """The exemptions by NAME (i–iv); (v) is applied to the needle by the caller."""
+    prev = toks[i - 1] if i > 0 else None
+    # (i) a typed temporal literal, or one cast to a temporal type
+    if prev is not None and prev.upper in _TYPED_LITERALS:
+        return True
+    if i + 2 < len(toks) and toks[i + 1].text == "::" and toks[i + 2].upper in _TEMPORAL_TYPES:
+        return True
+    if (
+        prev is not None
+        and prev.text == "("
+        and i >= 2
+        and toks[i - 2].upper in _CASTS
+        and i + 2 < len(toks)
+        and toks[i + 1].upper == "AS"
+        and toks[i + 2].upper in _TEMPORAL_TYPES
+    ):
+        return True
+    # (ii) an ISO date
+    if _TEMPORAL.match(value):
+        return True
+    # (iii) a direct argument of a date function
+    open_at = _enclosing_open(toks, i)
+    if open_at > 0 and toks[open_at - 1].upper in _DATE_FUNCTIONS:
+        return True
+    # (iv) a period label compared to a date function's call
+    return bool(_PERIOD_LABEL.match(value)) and _compared_to_date_call(toks, i)
 
 
 def _whole_words(needle: str) -> re.Pattern[str]:
@@ -422,10 +636,8 @@ def _whole_words(needle: str) -> re.Pattern[str]:
 def _check_literals(toks: list[_Tok], sources: Iterable[str]) -> None:
     haystack = [s.casefold() for s in sources if s]
     for i in _member_literals(toks):
-        if toks[i - 1].upper in _TYPED_LITERALS:
-            continue
         value = _literal(toks[i]).strip()
-        if _TEMPORAL.match(value):
+        if _exempt(toks, i, value):
             continue
         needle = value.strip("%").strip().casefold()
         if not needle:
