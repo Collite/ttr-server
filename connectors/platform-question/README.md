@@ -58,9 +58,13 @@ The end listener stores the answer as Spin JSON, sets `tatrman_status` and
 scalars use native values, with JSON-serialized objects for text over 4,000
 characters and integers beyond Long. A decimal uses a native Double only when
 the finite Double's decimal text round-trips unchanged. Otherwise it stays an
-exact BigDecimal Object using built-in Java serialization; the engine must allow
-`application/x-java-serialized-object`. This uses the JDK BigDecimal class and
-requires no custom class. The HTTP answer JSON is unchanged. Invalid or `tatrman_`-prefixed
+exact BigDecimal Object using built-in Java serialization
+(`application/x-java-serialized-object`). This uses the JDK BigDecimal class and
+requires no custom class. In Camunda 7.20, `javaSerializationFormatEnabled`
+defaults to `false` and restricts pre-serialized Java values supplied through the
+API; it does not block the engine from serializing a BigDecimal object stored by
+the template. No change to that setting is needed. The HTTP answer JSON is
+unchanged. Invalid or `tatrman_`-prefixed
 answer-variable names are skipped with a warning, so service data cannot
 overwrite the answer status. Service JSON errors reach the listener;
 transport failures create an asynchronous job incident for retry in Cockpit.
