@@ -24,6 +24,18 @@ Written in **Pydantic AI / pydantic-graph** (RV-43), from specification only —
 * It is **not** a service with a door. There is no HTTP or gRPC front here and that is
   deliberate — the conversation surface is the platform's. golem-py is driven by its
   CLI (`src/main.py`) and by the conformance runner.
+* It **answers through an LLM lane when one is configured** (OL W1c, contracts §C of the
+  open/paid line). The verdicts do not change: at `emit`, a question that composed and
+  carries no blocking gap is answered by ONE LLM call that writes a `SELECT` over the
+  model slice's `er.*` entities; the code checks it (`lane_checks.py`) and the query door
+  runs it under the CALLER's row rules. A door rejection buys one repair; anything else
+  refuses with the lattice — `QUERY_NOT_WRITTEN` or `LANE_UNAVAILABLE`, never a structural
+  answer dressed as data. The envelope says so: `provenance.lane = "llm"`, the model, the
+  SQL and its SHA-256, and `llm_handled` — the carried gaps the LLM claims, beside the
+  core's own `gaps_carried`, which it never edits.
+* It is **not** an intent classifier and not a second query dialect. Compose refusals and
+  blocking gaps keep the refusal and the one question, lane or no lane; with the lane off
+  (the default when no gateway or no door is configured) `emit` answers structurally.
 * It **never binds anything**. Every binding arrives from `resolve.bind:v1` or
   `resolve.gate:v1` (RV-7 proposer-not-binder), and
   `tests/test_single_binder_fence.py` enforces that structurally.
@@ -41,6 +53,9 @@ Written in **Pydantic AI / pydantic-graph** (RV-43), from specification only —
 | `src/golem_py/gate_client.py` | `resolve.gate:v1` — the only route from a hypothesis to a binding |
 | `src/golem_py/door_client.py` | the SQL door (`query.v1 Run`, SQL over `ER`, the allow-list as `allowed_er_reads`): `LiveSqlDoor` + the `ResultBatch` decoding (OL-C12) |
 | `src/golem_py/llm_client.py` | the `llm.v1` gateway client: a JSON object at temperature 0, model class `capable` (OL-C13) |
+| `src/golem_py/lane.py` | the LLM lane at `emit`: slice → prompt → call → checks → door, one repair, the two refusals (OL-C11, C16, C18) |
+| `src/golem_py/lane_checks.py` | the checks before the door, one pure function (OL-C15) |
+| `src/golem_py/lane_prompt.py` + `config/llm-lane-prompt.md` | the lane's prompt: OL-C14's inputs, OL-C15's rules and answer shape, the repair part |
 | `src/golem_py/model_slice.py` | the `meta.v1` model slice — bound refs' entities first, capped; its names are the ER allow-list (OL-C14) |
 | `generated/` | proto stubs, regenerated from `shared/proto` + `shared/proto-llm`; `plan.v1` comes from the `ttr-plan-proto` wheel (gitignored) |
 
@@ -57,6 +72,25 @@ uv run python src/main.py --question "Zobraz tržby za rok 2025" --core localhos
 The versions in `pyproject.toml` are **pinned exactly** (pydantic-ai / pydantic-graph
 2.22.0). The builder API is young; the pin is load-bearing, and the structural tests in
 `tests/test_graph_shape.py` are what will tell you when a bump changes edge semantics.
+
+## The LLM lane's settings
+
+The lane is **on** when `GOLEM_LLM_LANE_ENABLED` is true (the default) **and** a gateway
+**and** a door are configured; with either target empty it is off. On, it also needs the
+model slice — a lane that cannot read the model refuses as `LANE_UNAVAILABLE`.
+
+| Variable | Default | What |
+|---|---|---|
+| `GOLEM_LLM_LANE_ENABLED` | `true` | the switch (OL-C11) |
+| `GOLEM_LLM_TARGET` | — | `llm.v1`, the open LLM gateway |
+| `GOLEM_LLM_MODEL_CLASS` / `GOLEM_LLM_MODEL` | `capable` / — | the model class asked for; a pinned model, if any |
+| `GOLEM_QUERY_TARGET` / `GOLEM_QUERY_WORLD` / `GOLEM_QUERY_TIMEOUT_S` | — / — / `30` | `query.v1`, the door; the world every lane query runs in |
+| `GOLEM_META_TARGET` / `GOLEM_META_PACKAGES` / `GOLEM_META_TIMEOUT_S` | — / — / `10` | `meta.v1`, and the packages the slice is read from |
+| `GOLEM_LLM_MODEL_SLICE_ENTITIES` | `40` | the slice's cap; its entity names are the ER read allow-list |
+
+The call runs under the ladder's `capable` timeout and counts against the profile's
+`max_llm_invocations` (`CHAT_QUICK`: 2 — the write and the one repair). The prompt states a
+reference date — today in UTC unless `Deps.reference_date` is injected.
 
 ## Two traps worth knowing before you edit the graph
 

@@ -40,11 +40,12 @@ filled with a fake that would have to be unbuilt.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from golem_py.compose import Filter, StructuredQuestion
-from golem_py.state import GapRecord, ResolutionState
+from golem_py.state import GapRecord, ResolutionState, Span
 
 
 @dataclass
@@ -117,7 +118,11 @@ def render_content(question: StructuredQuestion, result: QueryResult | None) -> 
 
 @dataclass
 class AnswerEnvelope:
-    """contracts §6. `gaps_carried` is the honest half: what the answer did NOT do."""
+    """contracts §6. `gaps_carried` is the honest half: what the answer did NOT do.
+
+    An answer through the LLM lane (OL-C17) adds `sql` — the query the door ran — and
+    `llm_handled`, the carried gaps the LLM CLAIMS its query expresses. The claim sits
+    beside `gaps_carried` and never edits it: that list stays the core's account."""
 
     content: str
     formatting_directives: dict[str, str] = field(default_factory=dict)
@@ -125,6 +130,8 @@ class AnswerEnvelope:
     gaps_carried: list[GapRecord] = field(default_factory=list)
     question: StructuredQuestion | None = None
     result: QueryResult | None = None
+    sql: str = ""
+    llm_handled: list[Span] = field(default_factory=list)
 
 
 def build_envelope(
@@ -142,3 +149,37 @@ def build_envelope(
         question=question,
         result=result,
     )
+
+
+LANE_LLM = "llm"
+
+
+def sql_sha256(sql: str) -> str:
+    return hashlib.sha256(sql.encode("utf-8")).hexdigest()
+
+
+def build_lane_envelope(
+    *,
+    state: ResolutionState,
+    question: StructuredQuestion,
+    result: QueryResult,
+    gaps_carried: list[GapRecord],
+    sql: str,
+    llm_model: str,
+    llm_handled: list[Span],
+) -> AnswerEnvelope:
+    """The envelope of an answer the LLM lane wrote (OL-C17): §6's, plus `provenance.lane`,
+    `provenance.llm_model`, `provenance.sql_sha256`, the SQL and `llm_handled`."""
+    envelope = build_envelope(
+        state=state, question=question, result=result, gaps_carried=gaps_carried
+    )
+    envelope.provenance |= {
+        "lane": LANE_LLM,
+        "llm_model": llm_model,
+        "sql_sha256": sql_sha256(sql),
+    }
+    if llm_handled:
+        envelope.content += " · llm handled: " + ", ".join(s.text for s in llm_handled)
+    envelope.sql = sql
+    envelope.llm_handled = llm_handled
+    return envelope
