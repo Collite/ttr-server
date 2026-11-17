@@ -16,6 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **platform-question 0.11.0 — the external workflow task contract (OL W6·S3).**
+  `connectors/platform-question` publishes the read-only `/automation/query` and
+  `/automation/check` interface, a configuration JSON Schema with examples, English
+  and Czech Camunda 7 element templates, and one generic BPMN sample. CI validates
+  both templates against the vendored official Camunda schema and all six examples.
+  Release lane `platform-question/v0.11.0` carries the folder as one archive.
+  This release contains the contract and template; the bridge follows separately.
+
 - **automation 0.11.41 — the route invariant tolerates CHAR padding and records `route_padded` (ttr-server#428).**
   Evaluation accepts trailing plain spaces only when the trimmed route or detail-route stamp matches its route port.
   Other whitespace and detail context stamps remain strict. One non-refusing warning
