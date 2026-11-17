@@ -22,7 +22,7 @@ stubs import `org.tatrman.plan.v1.*_pb2` from it at run time. For that import to
 
 Run:  uv run python scripts/gen_proto.py
 Output: services/golem-py/generated/org/tatrman/{resolver,nlp,common,meta,worker,
-        validate,translate,query,llm}/v1/*.py(i)
+        validate,translate,query}/v1/*.py(i)
 """
 
 from __future__ import annotations
@@ -40,9 +40,9 @@ SERVICE_DIR = Path(__file__).resolve().parent.parent
 # services/golem-py -> repo root (tatrman-server)
 REPO_ROOT = SERVICE_DIR.parent.parent
 PROTO_ROOT = REPO_ROOT / "shared" / "proto" / "src" / "main" / "proto"
-# `llm.v1` lives in its own Gradle module (`:shared:proto-llm`), so its own root.
-LLM_PROTO_ROOT = REPO_ROOT / "shared" / "proto-llm" / "src" / "main" / "proto"
-# `google/protobuf/struct.proto` (imported by llm_gateway.proto) ships with grpcio-tools.
+# The well-known `google/protobuf/*.proto` ship with grpcio-tools.
+# ⚑ OL W1c·S3a (D-43): no `llm.v1` stubs. Gateway 2.0 serves HTTP only, and the lane's client
+# speaks it (`golem_py.llm_client`); the shared `proto-llm` module stays for its producers.
 WELL_KNOWN_ROOT = Path(grpc_tools.__file__).resolve().parent / "_proto"
 OUT_DIR = SERVICE_DIR / "generated"
 
@@ -52,7 +52,7 @@ OUT_DIR = SERVICE_DIR / "generated"
 #
 # OL W1c·S1: `query.v1` (the SQL door, OL-C12) with what it imports — `worker.v1` (the
 # `ResultBatch` it streams) + `validate.v1`, `translate.v1`'s `translate.proto` — then
-# `meta.v1` (the model slice, OL-C14) and `llm.v1` (the gateway, OL-C13).
+# `meta.v1` (the model slice, OL-C14).
 # `translate/v1/translator.proto` (`Language`) is the wheel's, like `plan.v1`.
 PROTOS = [
     "org/tatrman/resolver/v1/resolver.proto",
@@ -63,7 +63,6 @@ PROTOS = [
     "org/tatrman/worker/v1/worker.proto",
     "org/tatrman/translate/v1/translate.proto",
     "org/tatrman/query/v1/query.proto",
-    "org/tatrman/llm/v1/llm_gateway.proto",
 ]
 
 # The wheel's modules, dependencies before dependants (protoc reads the set in order).
@@ -119,10 +118,9 @@ def _plan_descriptor_set() -> bytes:
 
 
 def main() -> int:
-    for root in (PROTO_ROOT, LLM_PROTO_ROOT):
-        if not root.exists():
-            print(f"proto root not found: {root}", file=sys.stderr)
-            return 2
+    if not PROTO_ROOT.exists():
+        print(f"proto root not found: {PROTO_ROOT}", file=sys.stderr)
+        return 2
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _clear_namespace_inits(OUT_DIR)
 
@@ -141,7 +139,6 @@ def main() -> int:
         args = [
             "grpc_tools.protoc",
             f"-I{PROTO_ROOT}",
-            f"-I{LLM_PROTO_ROOT}",
             f"-I{WELL_KNOWN_ROOT}",
             f"--descriptor_set_in={plan_set_path}",
             f"--python_out={OUT_DIR}",

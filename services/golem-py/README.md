@@ -52,12 +52,12 @@ Written in **Pydantic AI / pydantic-graph** (RV-43), from specification only —
 | `src/golem_py/core_client.py` | `resolve.bind:v1` + the honest lattice mapper |
 | `src/golem_py/gate_client.py` | `resolve.gate:v1` — the only route from a hypothesis to a binding |
 | `src/golem_py/door_client.py` | the SQL door (`query.v1 Run`, SQL over `ER`, the allow-list as `allowed_er_reads`): `LiveSqlDoor` + the `ResultBatch` decoding (OL-C12) |
-| `src/golem_py/llm_client.py` | the `llm.v1` gateway client: a JSON object at temperature 0, model class `capable` (OL-C13) |
+| `src/golem_py/llm_client.py` | the gateway client over HTTP `POST /v1/chat/completions` with the team's bearer key: one non-streaming call for a JSON object at temperature 0, model class `smart` (OL-C13, D-43) |
 | `src/golem_py/lane.py` | the LLM lane at `emit`: slice → prompt → call → checks → door, one repair, the two refusals (OL-C11, C16, C18) |
 | `src/golem_py/lane_checks.py` | the checks before the door, one pure function (OL-C15) |
 | `src/golem_py/lane_prompt.py` + `config/llm-lane-prompt.md` | the lane's prompt: OL-C14's inputs, OL-C15's rules and answer shape, the repair part |
 | `src/golem_py/model_slice.py` | the `meta.v1` model slice — bound refs' entities first, capped; its names are the ER allow-list (OL-C14) |
-| `generated/` | proto stubs, regenerated from `shared/proto` + `shared/proto-llm`; `plan.v1` comes from the `ttr-plan-proto` wheel (gitignored) |
+| `generated/` | proto stubs, regenerated from `shared/proto`; `plan.v1` comes from the `ttr-plan-proto` wheel (gitignored). No `llm.v1` stubs: the gateway is HTTP (D-43) |
 
 ## Running it
 
@@ -77,20 +77,23 @@ The versions in `pyproject.toml` are **pinned exactly** (pydantic-ai / pydantic-
 
 The lane is **on** when `GOLEM_LLM_LANE_ENABLED` is true (the default) **and** a gateway
 **and** a door are configured; with either target empty it is off. On, it also needs a world
-and the model slice. The CLI checks both before the turn, together with the `capable` rung's
-clock and the prompt file (`check_lane_config`), and exits **2** naming what is missing. A
+and the model slice, and its gateway needs an HTTP(S) URL ending in `/v1` and a key. The CLI
+checks all of it before the turn, together with the `capable` rung's clock and the prompt
+file (`check_lane_config`), and exits **2** naming what is missing — never the key. A
 `Deps` built in code without a slice refuses each lane turn as `LANE_UNAVAILABLE`.
 
 | Variable | Default | What |
 |---|---|---|
 | `GOLEM_LLM_LANE_ENABLED` | `true` | the switch (OL-C11) |
-| `GOLEM_LLM_TARGET` | — | `llm.v1`, the open LLM gateway |
-| `GOLEM_LLM_MODEL_CLASS` / `GOLEM_LLM_MODEL` | `capable` / — | the model class asked for; a pinned model, if any |
+| `GOLEM_LLM_TARGET` | — | the open LLM gateway's base URL, ending in `/v1` (bp-dsk: `http://llm-gateway.ttr-server.svc.cluster.local:7280/v1`); the client posts to `…/v1/chat/completions` |
+| `GOLEM_LLM_API_KEY` | — | the team's virtual key (`ttrk-…`), sent as `Authorization: Bearer`; inject it from a Secret, never on a command line |
+| `GOLEM_LLM_MODEL_CLASS` / `GOLEM_LLM_MODEL` | `smart` / — | the gateway tier asked for as `model_tags`; a pinned model, if any, is sent instead |
 | `GOLEM_QUERY_TARGET` / `GOLEM_QUERY_WORLD` / `GOLEM_QUERY_TIMEOUT_S` | — / — / `30` | `query.v1`, the door; the world every lane query runs in |
 | `GOLEM_META_TARGET` / `GOLEM_META_PACKAGES` / `GOLEM_META_TIMEOUT_S` | — / — / `10` | `meta.v1`, and the packages the slice is read from |
 | `GOLEM_LLM_MODEL_SLICE_ENTITIES` | `40` | the slice's cap; its entity names are the ER read allow-list |
 
-The call runs under the ladder's `capable` timeout and counts against the profile's
+The call is one request, bounded as a whole by the ladder's `capable` timeout, with no retry; it
+counts against the profile's
 `max_llm_invocations` (`CHAT_QUICK`: 2 — the write and the one repair). The prompt states a
 reference date — today in UTC unless `Deps.reference_date` is injected.
 

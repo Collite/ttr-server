@@ -14,12 +14,14 @@ about what it is.
 
 **The LLM lane (OL W1c).** The lane's settings come from the `GOLEM_*` environment
 (`golem_py.settings.GolemSettings.from_env`): the door (`GOLEM_QUERY_TARGET`,
-`GOLEM_QUERY_WORLD`), the gateway (`GOLEM_LLM_TARGET`, `GOLEM_LLM_MODEL`,
+`GOLEM_QUERY_WORLD`), the gateway (`GOLEM_LLM_TARGET`, an HTTP base URL ending in `/v1`;
+`GOLEM_LLM_API_KEY`, the team's key from a Secret; `GOLEM_LLM_MODEL`,
 `GOLEM_LLM_MODEL_CLASS`), the model slice (`GOLEM_META_TARGET`, `GOLEM_META_PACKAGES`) and
 the switch (`GOLEM_LLM_LANE_ENABLED`, default on). The lane is on only when the switch is
 on and a gateway and a door are configured (OL-C11). With none of them set, the CLI answers
 exactly as it did before W1c. When the lane is on, its configuration is checked BEFORE the
-turn (`check_lane_config`), and a bad one exits 2 naming what is wrong.
+turn — the gateway URL and key, the world, the slice, `check_lane_config` — and a bad one
+exits 2 naming what is wrong (never the key).
 
 `--json` prints the envelope rather than the whole outcome. For an answer, that is contracts
 §6 plus the lane's fields: SQL, provenance, rows, `llm_handled`. For a refusal or an ask, it
@@ -50,7 +52,7 @@ from golem_py.gate_client import LiveGate  # noqa: E402
 from golem_py.graph import run_turn  # noqa: E402
 from golem_py.ladder import ConfigError, LadderConfig, load_default  # noqa: E402
 from golem_py.lane import check_lane_config, lane_on  # noqa: E402
-from golem_py.llm_client import LiveLlmGateway  # noqa: E402
+from golem_py.llm_client import LiveLlmGateway, chat_endpoint  # noqa: E402
 from golem_py.model_slice import LiveModelSlice  # noqa: E402
 from golem_py.outputs import Answer, Ask, RefusalWithGaps, TurnOutput  # noqa: E402
 from golem_py.settings import GolemSettings  # noqa: E402
@@ -104,6 +106,7 @@ def build_deps(settings: GolemSettings, ladder: LadderConfig, core_target: str) 
         llm=(
             LiveLlmGateway(
                 settings.llm_target,
+                api_key=settings.llm_api_key,
                 model=settings.llm_model,
                 model_class=settings.llm_model_class,
             )
@@ -145,6 +148,12 @@ def check_startup(deps: Deps, profile: str) -> None:
         raise ConfigInvalid(f"{exc}; the ladder defines: {known}") from exc
     if not lane_on(deps):
         return
+    chat_endpoint(deps.settings.llm_target)  # an http(s) URL ending in /v1 (OL-C13)
+    if not deps.settings.llm_api_key.get_secret_value():
+        raise ConfigInvalid(
+            "the LLM lane is on and GOLEM_LLM_API_KEY is empty: inject the team's gateway key "
+            "from a Secret, or switch the lane off with GOLEM_LLM_LANE_ENABLED=false"
+        )
     if not deps.settings.query_world:
         raise ConfigInvalid("the LLM lane is on and GOLEM_QUERY_WORLD is empty")
     if deps.model_slice is None:

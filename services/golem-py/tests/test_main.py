@@ -41,10 +41,13 @@ from tests.test_llm_lane import (
     reply,
 )
 
+KEY = "ttrk-test-0000-not-a-real-key"
+
 LANE_ENV = {
     "GOLEM_QUERY_TARGET": "query:7306",
     "GOLEM_QUERY_WORLD": "hartland_cz",
-    "GOLEM_LLM_TARGET": "llm-gateway:9090",
+    "GOLEM_LLM_TARGET": "http://llm-gateway.ttr-server.svc.cluster.local:7280/v1",
+    "GOLEM_LLM_API_KEY": KEY,
     "GOLEM_LLM_MODEL": "gw-capable-1",
     "GOLEM_META_TARGET": "metadata:7261",
     "GOLEM_META_PACKAGES": "hartland",
@@ -52,7 +55,13 @@ LANE_ENV = {
 
 
 def _settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> GolemSettings:
-    for name in list(LANE_ENV) + ["GOLEM_LLM_LANE_ENABLED", "GOLEM_PROFILE", "GOLEM_LADDER_CONFIG"]:
+    for name in list(LANE_ENV) + [
+        "GOLEM_LLM_LANE_ENABLED",
+        "GOLEM_LLM_MODEL_CLASS",
+        "GOLEM_PROFILE",
+        "GOLEM_LADDER_CONFIG",
+        "GOLEM_LEXICON_ARCHIVE_PATHS",
+    ]:
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
@@ -71,8 +80,11 @@ def test_the_lane_settings_reach_the_three_live_legs(monkeypatch: pytest.MonkeyP
     deps = main.build_deps(_settings(monkeypatch, **LANE_ENV), load_default(), "resolver:7276")
 
     assert isinstance(deps.door, LiveSqlDoor) and deps.door.target == "query:7306"
-    assert isinstance(deps.llm, LiveLlmGateway) and deps.llm.target == "llm-gateway:9090"
-    assert deps.llm.model == "gw-capable-1" and deps.llm.model_class == "capable"
+    assert isinstance(deps.llm, LiveLlmGateway)
+    assert deps.llm.endpoint == (
+        "http://llm-gateway.ttr-server.svc.cluster.local:7280/v1/chat/completions"
+    )
+    assert deps.llm.model == "gw-capable-1" and deps.llm.model_class == "smart"
     assert isinstance(deps.model_slice, LiveModelSlice)
     assert deps.settings.query_world == "hartland_cz"
     assert lane_on(deps)
@@ -246,3 +258,51 @@ def test_the_profile_comes_from_the_environment_when_no_flag_is_given(
 
     assert main.main(["--question", "q"]) == main.EXIT_CONFIG
     assert "NO_SUCH_PROFILE" in capsys.readouterr().err
+
+
+# OL W1c·S3a·T1 — the gateway's URL and key are checked before the turn; the key never shows.
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [
+        ({"GOLEM_LLM_API_KEY": ""}, "GOLEM_LLM_API_KEY is empty"),
+        ({"GOLEM_LLM_API_KEY": "   "}, "GOLEM_LLM_API_KEY is empty"),
+        ({"GOLEM_LLM_TARGET": "llm-gateway:9090"}, "http"),
+        ({"GOLEM_LLM_TARGET": "http://llm-gateway:7280"}, "must end in /v1"),
+        ({"GOLEM_LLM_TARGET": "http://llm-gateway:7280/v1/chat/completions"}, "must end in /v1"),
+        ({"GOLEM_LLM_TARGET": "http://llm-gateway:7280/v1?x=1"}, "no query"),
+        ({"GOLEM_LLM_TARGET": f"http://golem:{KEY}@llm-gateway:7280/v1"}, "credentials"),
+    ],
+    ids=["no-key", "blank-key", "grpc-target", "no-v1", "full-path", "query", "userinfo"],
+)
+def test_a_lane_without_a_usable_gateway_url_or_key_exits_2_without_showing_the_key(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    env: dict[str, str],
+    message: str,
+) -> None:
+    _settings(monkeypatch, **(LANE_ENV | env))
+
+    async def no_turn(*_: object, **__: object) -> None:
+        raise AssertionError("a turn ran on an invalid configuration")
+
+    monkeypatch.setattr(main, "run_turn", no_turn)
+
+    assert main.main(["--question", "q"]) == main.EXIT_CONFIG
+    err = capsys.readouterr().err
+    assert message in err
+    assert KEY not in err
+
+
+def test_the_key_is_in_no_repr_and_a_lane_that_is_off_needs_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings(monkeypatch, **LANE_ENV)
+    deps = main.build_deps(settings, load_default(), "resolver:7276")
+
+    assert KEY not in repr(settings) and KEY not in repr(deps)
+    assert settings.llm_api_key.get_secret_value() == KEY
+
+    off = _settings(
+        monkeypatch, **(LANE_ENV | {"GOLEM_LLM_API_KEY": "", "GOLEM_LLM_LANE_ENABLED": "false"})
+    )
+    main.check_startup(main.build_deps(off, load_default(), "resolver:7276"), "CHAT_QUICK")

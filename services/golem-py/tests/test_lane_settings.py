@@ -15,7 +15,8 @@ def test_with_nothing_configured_the_lane_has_nothing_to_run_on() -> None:
     settings = GolemSettings()
     assert settings.llm_lane_enabled is True  # OL-C11: the switch defaults on …
     assert settings.query_target == settings.llm_target == settings.meta_target == ""  # … idle
-    assert settings.llm_model_class == "capable"
+    assert settings.llm_model_class == "smart"  # the gateway tier (OL-C13, S3a Found 1)
+    assert settings.llm_api_key.get_secret_value() == ""
     assert settings.llm_model_slice_entities == 40
 
 
@@ -23,7 +24,9 @@ def test_the_env_names_the_three_services(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("GOLEM_QUERY_TARGET", "query:7280")
     monkeypatch.setenv("GOLEM_QUERY_WORLD", "hartland_cz")
     monkeypatch.setenv("GOLEM_QUERY_TIMEOUT_S", "12.5")
-    monkeypatch.setenv("GOLEM_LLM_TARGET", "llm-gateway:7300")
+    monkeypatch.setenv("GOLEM_LLM_TARGET", "http://llm-gateway:7280/v1")
+    monkeypatch.setenv("GOLEM_LLM_API_KEY", " ttrk-x \n")
+    monkeypatch.setenv("GOLEM_LLM_MODEL_CLASS", "fast")
     monkeypatch.setenv("GOLEM_LLM_MODEL", "m-1")
     monkeypatch.setenv("GOLEM_LLM_LANE_ENABLED", "false")
     monkeypatch.setenv("GOLEM_LLM_MODEL_SLICE_ENTITIES", "25")
@@ -34,7 +37,12 @@ def test_the_env_names_the_three_services(monkeypatch: pytest.MonkeyPatch) -> No
     s = GolemSettings.from_env()
 
     assert (s.query_target, s.query_world, s.query_timeout_s) == ("query:7280", "hartland_cz", 12.5)
-    assert (s.llm_target, s.llm_model, s.llm_lane_enabled) == ("llm-gateway:7300", "m-1", False)
+    assert (s.llm_target, s.llm_model, s.llm_lane_enabled) == (
+        "http://llm-gateway:7280/v1",
+        "m-1",
+        False,
+    )
+    assert (s.llm_api_key.get_secret_value(), s.llm_model_class) == ("ttrk-x", "fast")
     assert s.llm_model_slice_entities == 25
     assert (s.meta_target, s.meta_packages, s.meta_timeout_s) == (
         "metadata:7270",

@@ -25,7 +25,7 @@ from golem_py.door_client import LiveSqlDoor
 from golem_py.errors import DoorRejected, LaneServiceUnavailable
 from golem_py.graph import run_turn
 from golem_py.ladder import load_default
-from golem_py.llm_client import LiveLlmGateway, LlmReply
+from golem_py.llm_client import SERVICE, LiveLlmGateway, LlmReply
 from golem_py.model_slice import ModelSlice, SliceAttribute, SliceEntity, SliceRelation
 from golem_py.outputs import Answer, RefusalWithGaps
 from golem_py.query_client import QueryResult
@@ -469,7 +469,7 @@ async def test_an_unreachable_leg_is_lane_unavailable(leg: str) -> None:
     door: object = FakeDoor(ROWS)
     slicer: object | None = FakeSlice()
     if leg == "gateway":
-        gateway = FakeGateway(LaneServiceUnavailable("llm.v1", "UNAVAILABLE"))
+        gateway = FakeGateway(LaneServiceUnavailable(SERVICE, "HTTP 503"))
     elif leg == "door":
         door = FakeDoor(LaneServiceUnavailable("query.v1", "UNAVAILABLE"))
     elif leg == "meta":
@@ -477,7 +477,7 @@ async def test_an_unreachable_leg_is_lane_unavailable(leg: str) -> None:
     elif leg == "no slice configured":
         slicer = None
     elif leg == "live gateway down":
-        gateway = LiveLlmGateway(unused_target())
+        gateway = LiveLlmGateway(f"http://{unused_target()}/v1", api_key="ttrk-test")
     else:
         door = LiveSqlDoor(unused_target(), timeout_s=2.0)
 
@@ -488,7 +488,7 @@ async def test_an_unreachable_leg_is_lane_unavailable(leg: str) -> None:
 
     assert isinstance(out, RefusalWithGaps), out
     assert out.reason == "LANE_UNAVAILABLE"
-    service = {"gateway": "llm.v1", "live gateway down": "llm.v1", "door": "query.v1"}
+    service = {"gateway": SERVICE, "live gateway down": SERVICE, "door": "query.v1"}
     assert service.get(leg, "meta.v1" if "slice" in leg or leg == "meta" else "query.v1") in (
         out.explanation
     )
