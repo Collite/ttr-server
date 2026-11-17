@@ -7,6 +7,7 @@ and a refused reload keeping the previous snapshot — is in `services/nlp`.
 
 from __future__ import annotations
 
+import sys
 from importlib.metadata import EntryPoint
 
 import pytest
@@ -140,6 +141,19 @@ def test_e_a_single_unowned_file_is_one_info_too(tmp_path):
     assert [(d.severity, d.code) for d in diagnostics] == [
         (SEVERITY_INFO, NLS_PACK_006)
     ]
+
+
+def test_e_an_unowned_url_needs_no_http_extra(monkeypatch):
+    """review-335 B1: ownership is settled before the optional reader is
+    imported — an unowned URL is never fetched, so it cannot need `httpx`."""
+    monkeypatch.setitem(sys.modules, "httpx", None)
+
+    state = load_sources(["https://packs.example/unused.pack.yaml"], stages={})
+
+    assert [(d.severity, d.code) for d in state.diagnostics] == [
+        (SEVERITY_INFO, NLS_PACK_006)
+    ]
+    assert state.files == ()
 
 
 # ── the pipeline table (OL-C7) ───────────────────────────────────────────────

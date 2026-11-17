@@ -245,19 +245,11 @@ def _is_url(source: str) -> bool:
 def _read_url(
     source: str, owners: Mapping[str, FileKind]
 ) -> tuple[list[SourceFile], list[Diagnostic]]:
-    """Fetch one file over HTTP. ``httpx`` comes from the ``[http]`` extra."""
-    try:
-        import httpx
-    except ImportError:
-        return [], [
-            error(
-                NLS_PACK_001,
-                "an http(s) pack source needs the `http` extra — "
-                "install `ttr-nlp[http]`",
-                source=source,
-            )
-        ]
+    """Fetch one file over HTTP. ``httpx`` comes from the ``[http]`` extra.
 
+    Ownership is settled first: a URL no installed stage owns is one INFO and is
+    never fetched (OL-C8), so it must not need the HTTP reader either.
+    """
     name = source.split("?")[0]
     kind = _kind_of(name, owners)
     if kind is None:
@@ -268,6 +260,18 @@ def _read_url(
                 NLS_PACK_001,
                 f"a URL source must name a {_known(owners)} file "
                 "— one URL is one file, and the suffix is how its kind is known",
+                source=source,
+            )
+        ]
+
+    try:
+        import httpx
+    except ImportError:
+        return [], [
+            error(
+                NLS_PACK_001,
+                "an http(s) pack source needs the `http` extra — "
+                "install `ttr-nlp[http]`",
                 source=source,
             )
         ]
