@@ -1731,7 +1731,7 @@ class Ledger(
             check(decisions.size <= 1) { "a run must have at most one decision" }
             val result =
                 decisions.singleOrNull()?.let {
-                    Json.decodeFromJsonElement<EvaluationResult>(it[RunProtocol.payload])
+                    DECISION_JSON.decodeFromJsonElement<EvaluationResult>(it[RunProtocol.payload])
                 }
             val batch =
                 row[Runs.batchId]?.let { id ->
@@ -1743,6 +1743,7 @@ class Ledger(
                 status = row[Runs.status],
                 verdict = result?.verdict,
                 guards = result?.guards.orEmpty(),
+                warnings = result?.warnings.orEmpty(),
                 mode = result?.mode,
                 protocolRef = row[Runs.protocolRef] ?: "/automation/runs/$runId/protocol",
                 recipe = row[Runs.recipe],
@@ -2069,6 +2070,8 @@ class Ledger(
     private fun Instant.utc(): OffsetDateTime = atOffset(ZoneOffset.UTC)
 
     companion object {
+        private val DECISION_JSON = Json { ignoreUnknownKeys = true }
+
         const val CLAIM_ATTEMPTS = 3
 
         /** `GET /automation/runs`' largest page (S3.1 T4); [listRuns] reads one more row to know a next page exists. */

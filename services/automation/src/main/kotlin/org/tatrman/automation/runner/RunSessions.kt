@@ -179,12 +179,13 @@ class RunSessions(
                 requireNotNull(current).wire
             }
         return RunProgress(
-            id.toString(),
-            visibleStatus,
-            result?.verdict,
-            result?.guards.orEmpty(),
-            result?.mode,
-            "/automation/runs/$id/protocol",
+            runId = id.toString(),
+            status = visibleStatus,
+            verdict = result?.verdict,
+            guards = result?.guards.orEmpty(),
+            mode = result?.mode,
+            protocolRef = "/automation/runs/$id/protocol",
+            warnings = result?.warnings.orEmpty(),
         )
     }
 
