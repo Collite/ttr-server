@@ -1373,152 +1373,19 @@ class RunRuntimeComponentSpec :
 
         // ---- S2.2: the apply through the door, end to end (open → evaluate → close) ----
 
-        fun sqlAuto(text: String) =
-            LedgerTestDb.db.getDataSource().connection.use { c ->
-                c.autoCommit = true
-                c.createStatement().use { it.execute(text) }
-            }
+        fun sqlAuto(text: String) = wetSql(text)
 
-        fun query(text: String): List<List<String?>> =
-            LedgerTestDb.db.getDataSource().connection.use { c ->
-                c.createStatement().use { s ->
-                    s.executeQuery(text).use { rs ->
-                        buildList { while (rs.next()) add((1..rs.metaData.columnCount).map { rs.getString(it) }) }
-                    }
-                }
-            }
+        fun query(text: String): List<List<String?>> = wetQuery(text)
 
-        /**
-         * The default H-1 fixture (route `release` → `release`, a transition placed/held → released, with history) plus
-         * the generated verdict catalog entities of the approval fixture's `release_order`, which the writer lowers
-         * against. ERP = public (sales_order), automation_pg = wet_runtime.
-         */
         fun wetFixture(
             protocol: String? = null,
             routed: Boolean = true,
             initial: String = "held",
             keys: List<String> = listOf("4711"),
             wire: String = "release",
-        ): Triple<DurableRuntimeFixture, org.tatrman.automation.writer.RowWritesQueryFake, Unit> {
-            val root = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
-            val catalog =
-                BundleLoader(AuthorMap(emptyMap())).load(
-                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
-                    BundleKind.SERVED,
-                )
-            org.tatrman.automation.writer
-                .Ddl(LedgerTestDb.db.getDataSource(), { listOf("wet_runtime") })
-                .refresh(catalog.copy(recipes = catalog.recipes.filterKeys { it == "release_order" }))
-            val verdicts =
-                (catalog.model.schemas.getValue("er") as ErSchema).entities.filterValues {
-                    it.qname.name.startsWith("release_order_verdict")
-                }
-            sqlAuto(
-                "CREATE SCHEMA IF NOT EXISTS public; DROP TABLE IF EXISTS public.sales_order; " +
-                    "CREATE TABLE public.sales_order " +
-                    "(order_number text PRIMARY KEY, state text NOT NULL, held_for text); " +
-                    "INSERT INTO public.sales_order VALUES ('4711', '$initial', 'AR')",
-            )
-            val fake =
-                org.tatrman.automation.writer.RowWritesQueryFake(
-                    LedgerTestDb.db.getDataSource(),
-                    mapOf("w-erp" to "public", "w-auto" to "wet_runtime"),
-                    bundle = { catalog },
-                )
-            val program = "release_on_placement"
-            val f =
-                DurableRuntimeFixture(
-                    transformBundle = { b ->
-                        val er = b.model.schemas.getValue("er") as ErSchema
-                        val r = b.recipes.getValue("release_order")
-                        val wired =
-                            r.recipe.copy(
-                                wiring =
-                                    r.recipe.wiring.map {
-                                        it.copy(
-                                            action = wire,
-                                            columns =
-                                                mapOf("order" to "order_number") +
-                                                    // release_confirmed also takes the order's value (a literal here).
-                                                    if (wire ==
-                                                        "release_confirmed"
-                                                    ) {
-                                                        mapOf("value" to "100000")
-                                                    } else {
-                                                        emptyMap()
-                                                    },
-                                        )
-                                    },
-                            )
-                        // The Core 0.22.3 fixture's release_confirmed `dry_run` names `{by}`, not a column, which the
-                        // preview refuses (fixed in hartland content by ttr-demo#171); the spec uses a column-only text.
-                        val actions =
-                            b.actions.mapValues { (name, a) ->
-                                if (name == "release_confirmed") {
-                                    a.copy(
-                                        dryRun =
-                                            org.tatrman.ttr.metadata.model.LocalizedText(
-                                                mapOf("en" to "would confirm the release of {order} ({value})"),
-                                            ),
-                                    )
-                                } else {
-                                    a
-                                }
-                            }
-                        val base = b.withActions(actions)
-                        base.copy(
-                            recipes =
-                                b.recipes +
-                                    (
-                                        "release_order" to
-                                            r.copy(recipe = wired, manifest = r.manifest.copy(recipe = wired))
-                                    ),
-                            model =
-                                base.model.copy(
-                                    schemas =
-                                        base.model.schemas + ("er" to er.copy(entities = er.entities + verdicts)),
-                                ),
-                            programs =
-                                b.programs + (
-                                    program to
-                                        b.programs
-                                            .getValue(
-                                                program,
-                                            ).let { p ->
-                                                p.copy(
-                                                    protocol = protocol,
-                                                    port =
-                                                        if (keys.size >
-                                                            1
-                                                        ) {
-                                                            "keys"
-                                                        } else {
-                                                            p.port
-                                                        },
-                                                )
-                                            }
-                                ),
-                        )
-                    },
-                    queryTable = { request ->
-                        Table(
-                            listOf(ManifestColumn("order_number", "text"), ManifestColumn("verdict_reason", "text")),
-                            if (routed ||
-                                "candidates" in request.source
-                            ) {
-                                keys.map { listOf(it, "SQL reason") }
-                            } else {
-                                emptyList()
-                            },
-                        )
-                    },
-                    writeRoutes = "demo/erp_db=w-erp,demo/automation_db=w-auto",
-                    writes = fake,
-                )
-            return Triple(f, fake, Unit)
-        }
+        ) = wetRuntimeFixture(tempdir(prefix = "automation-bundles-").toPath(), protocol, routed, initial, keys, wire)
 
-        fun dropWet() = sqlAuto("DROP SCHEMA IF EXISTS wet_runtime CASCADE; DROP TABLE IF EXISTS public.sales_order")
+        fun dropWet() = dropWetRuntime()
 
         "a committed H-1 run applies through the door; a second run is idempotent; a dry run sends no row_writes" {
             val (f, fake, _) = wetFixture()
@@ -2236,7 +2103,7 @@ private suspend fun eventually(predicate: () -> Boolean) {
     withTimeout(5000) { while (!withContext(Dispatchers.IO) { predicate() }) delay(10) }
 }
 
-private class RuntimeClock(
+internal class RuntimeClock(
     @Volatile var now: Instant,
 ) : Clock() {
     override fun getZone(): ZoneId = ZoneOffset.UTC
@@ -2246,7 +2113,7 @@ private class RuntimeClock(
     override fun instant(): Instant = now
 }
 
-private class DurableRuntimeFixture(
+internal class DurableRuntimeFixture(
     sync: String = "60s",
     private val beforeRead: suspend () -> Unit = {},
     transformBundle: (Bundle) -> Bundle = { it },
@@ -2259,6 +2126,14 @@ private class DurableRuntimeFixture(
     /** S2.2: AUTOMATION_DOOR_WRITE_ROUTES, and the row_writes seam (the component fake). */
     writeRoutes: String = "",
     private val writes: QueryRun? = null,
+    /** S3.5: the engine's task history for answer runs (default: none configured). */
+    private val engineHistory: org.tatrman.automation.engine.EngineHistory = org.tatrman.automation.engine.NoEngine,
+    /** S3.5: the service credentials (a deployment that runs as a declared identity needs its own). */
+    private val tokens: ServiceTokens = ServiceTokens(emptyMap(), { error("unused") }),
+    /** The specs run `release_native_event` as its caller; S3.5 keeps its declared `identity.automation_decider`. */
+    runAsCaller: Boolean = true,
+    /** S3.5 review-354 F2: the ledger the runtime gets (a spy injects faults); the fixture's own [ledger] by default. */
+    private val ledgerFor: (Ledger) -> Ledger = { it },
 ) {
     /** Every row_writes request that reached the door — a dry run must leave it at zero (R217-L5). */
     val rowWrites = AtomicInteger()
@@ -2362,6 +2237,9 @@ private class DurableRuntimeFixture(
         }
     val served: Bundle get() = bundle
 
+    /** S3.5: a refresh the runtime sees from now on (the D-99 check of an answer); null = the fixture's bundle. */
+    @Volatile var refreshed: Bundle? = null
+
     private val bundle =
         transformBundle(
             source.copy(
@@ -2372,11 +2250,15 @@ private class DurableRuntimeFixture(
                         if (name == "release_on_placement") p.copy(mode = "batch") else p
                     },
                 deployments =
-                    source.deployments +
-                        (
-                            "release_native_event" to
-                                source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
-                        ),
+                    if (runAsCaller) {
+                        source.deployments +
+                            (
+                                "release_native_event" to
+                                    source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                            )
+                    } else {
+                        source.deployments
+                    },
             ),
         ).let { afterPrepare(it.withActions(it.actions)) }
     private val query =
@@ -2441,7 +2323,7 @@ private class DurableRuntimeFixture(
     fun start() =
         RunRuntime(
             config,
-            { bundle },
+            { refreshed ?: bundle },
             approvalReader ?: ApprovalReader {
                 _,
                 _,
@@ -2449,12 +2331,13 @@ private class DurableRuntimeFixture(
                 ->
                 true
             },
-            ServiceTokens(emptyMap(), { error("unused") }),
-            ledger,
+            tokens,
+            ledgerFor(ledger),
             scope,
             clock,
             query,
             LocalStagingStore(stagingRoot),
+            engineHistory = engineHistory,
         )
 
     fun close() {

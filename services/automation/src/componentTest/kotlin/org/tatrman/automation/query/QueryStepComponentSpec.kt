@@ -510,6 +510,25 @@ class QueryStepComponentSpec :
                         HttpStatusCode.BadRequest
                     client.get("/automation/runs?since=yesterday") { bearerAuth(maya) }.status shouldBe
                         HttpStatusCode.BadRequest
+                    // review-354 F3: answer runs (S3.5) are a kind the listing filters on.
+                    val answerRun =
+                        f.ledger
+                            .claimRun(
+                                org.tatrman.automation.ledger.RunOpen(
+                                    recipe = "release_order",
+                                    kind = org.tatrman.automation.ledger.RUN_KIND_ANSWER,
+                                    caller = "maya",
+                                    callerSubject = "sub-maya",
+                                ),
+                            ).runId
+                    val answers = client.get("/automation/runs?kind=answer&status=any") { bearerAuth(maya) }
+                    answers.status shouldBe HttpStatusCode.OK
+                    Json
+                        .parseToJsonElement(answers.bodyAsText())
+                        .jsonObject
+                        .getValue("runs")
+                        .jsonArray
+                        .map { it.jsonObject["runId"]!!.jsonPrimitive.content } shouldBe listOf(answerRun.toString())
 
                     // T5 as re-cut (⚑AU-S31-1): every known target answers 404 templates-not-served until S3.1b.
                     val c7 = client.get("/automation/templates/camunda-7") { bearerAuth(maya) }

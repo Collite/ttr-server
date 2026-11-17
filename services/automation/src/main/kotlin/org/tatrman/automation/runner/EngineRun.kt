@@ -25,6 +25,11 @@ data class EngineRef(
     val deploymentId: String,
     val taskId: String? = null,
     val answeredBy: String? = null,
+    /**
+     * S3.5 ⚑AU-S35-2 (reserved): the answer's decision. v1 is approve-only — absent or `approve`; anything else is
+     * `400 engine · decision-unsupported` (a decline stays on the sweep / the dev reject route).
+     */
+    val decision: String? = null,
 )
 
 /** What an open records of its engine block: the ref, and whether the asserted person was verified (null: none). */
@@ -55,6 +60,7 @@ data class EngineRun(
             put("deploymentId", ref.deploymentId)
             ref.taskId?.let { put("taskId", it) }
             ref.answeredBy?.let { put("answeredBy", it) }
+            ref.decision?.let { put("decision", it) }
             personVerified?.let { put("personVerified", it) }
         }
 }
