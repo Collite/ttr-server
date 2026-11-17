@@ -11,6 +11,15 @@ import org.tatrman.translate.grpc.RefusalText.Clean
  */
 class RefusalTextSpec :
     StringSpec({
+        "a REL_NODE decode failure (ttr-core#407): the bare exception class goes, the node stays" {
+            RefusalText.of("IllegalArgumentException: no message at PROJECT") shouldBe Clean("no message at PROJECT")
+            RefusalText.of("AssertionError: rowType mismatch at FILTER") shouldBe Clean("rowType mismatch at FILTER")
+        }
+
+        "a sentence that merely starts with a capitalised word and a colon keeps it" {
+            RefusalText.of("Error: the source is empty") shouldBe Clean("Error: the source is empty")
+        }
+
         "a validator error: the exception class, the position prose and the repeats go; the suggestion stays" {
             RefusalText.of(
                 "org.apache.calcite.runtime.CalciteContextException: From line 1, column 15 to line 1, column 26: " +
