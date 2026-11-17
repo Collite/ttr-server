@@ -54,9 +54,14 @@ class PromptTemplate:
         return cls(instructions=parts[0].strip(), input=parts[1], repair=parts[2])
 
 
+def load_template() -> PromptTemplate:
+    """Read and parse the prompt file — uncached, so a startup check sees the file as it is."""
+    return PromptTemplate.parse(DEFAULT_PROMPT_PATH.read_text(encoding="utf-8"))
+
+
 @cache
 def default_template() -> PromptTemplate:
-    return PromptTemplate.parse(DEFAULT_PROMPT_PATH.read_text(encoding="utf-8"))
+    return load_template()
 
 
 @dataclass(frozen=True)

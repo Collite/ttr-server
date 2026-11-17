@@ -27,11 +27,23 @@ dressed as data.
 from __future__ import annotations
 
 from golem_py.budgets import Budgets
-from golem_py.compose import StructuredQuestion, operator_refs
+from golem_py.compose import StructuredQuestion, composable_residue
 from golem_py.deps import Deps
-from golem_py.errors import DoorRejected, LaneReplyRefused, LaneServiceUnavailable
+from golem_py.errors import (
+    ConfigInvalid,
+    DoorRejected,
+    LaneReplyRefused,
+    LaneServiceUnavailable,
+)
+from golem_py.ladder import LadderConfig
 from golem_py.lane_checks import LaneQuery, check_reply, literal_sources
-from golem_py.lane_prompt import LanePrompt, render, render_repair
+from golem_py.lane_prompt import (
+    LanePrompt,
+    PromptTemplateError,
+    load_template,
+    render,
+    render_repair,
+)
 from golem_py.llm_client import LlmReply
 from golem_py.model_slice import ModelSlice
 from golem_py.observability import log_node
@@ -50,6 +62,21 @@ def lane_on(deps: Deps) -> bool:
     """OL-C11. The model slice is not part of the switch: a lane that is on but cannot read
     the model refuses as unavailable rather than falling back to a structural answer."""
     return deps.settings.llm_lane_enabled and deps.llm is not None and deps.door is not None
+
+
+def check_lane_config(ladder: LadderConfig) -> None:
+    """What a lane that is on needs before its first turn, checked at STARTUP (the
+    `ConfigInvalid` convention): a clock for its rung and a prompt file that parses. Without
+    them every lane turn would fail the same way mid-conversation, and nothing would name why."""
+    if ladder.timeout_ms(LANE_RUNG) <= 0:
+        raise ConfigInvalid(
+            f"the LLM lane runs under the {LANE_RUNG!r} rung's clock and the ladder gives it "
+            f"none: set rungs.{LANE_RUNG}.timeout_ms or rung_timeouts_ms.{LANE_RUNG}"
+        )
+    try:
+        load_template()
+    except (OSError, PromptTemplateError) as exc:
+        raise ConfigInvalid(f"the LLM lane's prompt file: {exc}") from exc
 
 
 def lane_applies(state: ResolutionState, deps: Deps) -> bool:
@@ -77,7 +104,7 @@ def _refusal(
         reason=reason,
         gaps=state.gaps,
         lattice=state,
-        composable_residue=[op for op in operator_refs(state) if deps.skills.has(op)],
+        composable_residue=composable_residue(state, deps.skills),
         explanation=error,
     )
 
