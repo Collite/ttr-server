@@ -11,11 +11,16 @@ and before the door is called the code checks the rules the prompt states:
   `JOIN`, `APPLY`, or a comma in a `FROM` list) holds an entity of the slice or a sub-query;
 * **no parameters** — no `?`, `$1`, `:name` or `@name`;
 * **a literal that restricts a member comes from a binding, a value or the question's own
-  words** — a string literal compared to a column (`=`, `<>`, `!=`, `LIKE`, `ILIKE`, from
-  either side) or listed in a column's `IN ( … )` must be a whole word or a whole run of
-  words of what the lattice carries (see `literal_sources`); `%` at its edges is dropped
-  first, and a date is exempt. Every other string literal — a function's argument, a
-  `CASE` label, a `COALESCE` fallback — restricts no member and is not traced;
+  words** — a string literal that is an operand of `=`, `<>`, `!=`, `LIKE` or `ILIKE` (with
+  `NOT`, from either side) whose OTHER operand is not itself a literal — a column, `f(column)`,
+  `CAST(… AS …)`, a `CASE … END`, a sub-query — or an element of an `IN ( … )` after any such
+  expression, or a label after `WHEN` in a simple `CASE <expr> WHEN '…'`, must be a whole word
+  or a whole run of words of what the lattice carries (see `literal_sources`). A literal wrapped
+  on its own side (`LOWER('Brno')`, `CAST('Brno' AS …)`, `'Brno'::text`) is still that literal;
+  a prefixed one (`N'…'`, `E'…'`) is a literal like any other. `%` at its edges is dropped
+  first, and a date is exempt. Every other string literal — a function's argument, a searched
+  `CASE`'s labels, a `COALESCE` fallback — restricts no member and is not traced (review-329
+  ✅R329-C: comparing `UPPER(s.region)` hid an invented member from the column-only rule);
 * **`handled_spans` names carried gaps** — a claim on a span no carried gap sits on is not a
   claim the envelope can hold beside `gaps_carried` (OL-C17).
 
@@ -80,18 +85,16 @@ _FROM_ENDERS = frozenset(
 )
 # A string literal right after one of these is temporal, not a member.
 _TYPED_LITERALS = frozenset({"DATE", "TIME", "TIMESTAMP", "INTERVAL"})
-# The comparisons that restrict a column to a member; the pattern ones only read left to right.
+# The comparisons that restrict an expression to a member.
 _EQUALITY = frozenset({"=", "<>", "!="})
 _PATTERN = frozenset({"LIKE", "ILIKE"})
-# Words that can stand where a column would and are not one.
-_NOT_COLUMNS = frozenset({"END", "NULL", "TRUE", "FALSE", "NOT"})
 _TEMPORAL = re.compile(r"^\d{4}-\d{2}(-\d{2})?([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$")
 
 _TOKEN = re.compile(
     r"""
      (?P<ws>\s+)
     |(?P<comment>--[^\n]*|/\*.*?\*/)
-    |(?P<string>'(?:[^']|'')*')
+    |(?P<string>[NnEe]?'(?:[^']|'')*')
     |(?P<qident>"(?:[^"]|"")*")
     |(?P<number>\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)
     |(?P<param>\?|\$\d+|\$[A-Za-z_]\w*|@@?[A-Za-z_]\w*|(?<!:):[A-Za-z_]\w*)
@@ -228,80 +231,186 @@ def _check_names(toks: list[_Tok], allowed_entities: Sequence[str]) -> None:
 
 
 def _literal(tok: _Tok) -> str:
-    return tok.text[1:-1].replace("''", "'")
+    """A string token's value: the prefix (`N`, `E`) and the quotes dropped, `''` undone."""
+    text = tok.text[tok.text.index("'") :]
+    return text[1:-1].replace("''", "'")
 
 
-def _is_column(tok: _Tok) -> bool:
-    return tok.kind == "qident" or (tok.kind == "ident" and tok.upper not in _NOT_COLUMNS)
+# Words that stand where an operand would and are literals themselves.
+_LITERAL_WORDS = frozenset({"NULL", "TRUE", "FALSE"})
+# Calls that wrap a literal with a type rather than an argument list.
+_CASTS = frozenset({"CAST", "TRY_CAST"})
 
 
-def _column_ends_at(toks: Sequence[_Tok], k: int, *, negatable: bool) -> bool:
-    """A column reference ends at `k` (a name, not a call: what follows it is the
-    comparison). `NOT LIKE` / `NOT IN` step over the `NOT`."""
-    if negatable and k >= 0 and toks[k].upper == "NOT":
-        k -= 1
-    return k >= 0 and _is_column(toks[k])
+def _close_of(toks: Sequence[_Tok], open_at: int) -> int:
+    """The index of the `)` closing the `(` at `open_at`, or -1."""
+    depth = 0
+    for j in range(open_at, len(toks)):
+        if toks[j].text == "(":
+            depth += 1
+        elif toks[j].text == ")":
+            depth -= 1
+            if depth == 0:
+                return j
+    return -1
 
 
-def _column_starts_at(toks: Sequence[_Tok], k: int) -> bool:
-    """A column reference starts at `k` — a name that is not followed by a call's `(`."""
-    if k >= len(toks) or not _is_column(toks[k]):
-        return False
-    _, nxt = _name_at(toks, k)
-    return nxt >= len(toks) or toks[nxt].text != "("
+def _open_of(toks: Sequence[_Tok], close_at: int) -> int:
+    """The index of the `(` the `)` at `close_at` closes, or -1."""
+    depth = 0
+    for j in range(close_at, -1, -1):
+        if toks[j].text == ")":
+            depth += 1
+        elif toks[j].text == "(":
+            depth -= 1
+            if depth == 0:
+                return j
+    return -1
+
+
+def _literal_from(toks: Sequence[_Tok], k: int) -> tuple[int | None, int] | None:
+    """A literal OPERAND starting at `k`: `(the string's index or None, its last index)`, or
+    None when what starts at `k` is not a literal. A literal is a string (typed, prefixed or
+    plain), a number, `NULL`/`TRUE`/`FALSE`, and any of these wrapped on its own side — in
+    parentheses, in a one-argument call (`LOWER('Brno')`), in `CAST(… AS type)`, or followed by
+    `::type`."""
+    if k < 0 or k >= len(toks):
+        return None
+    tok = toks[k]
+    found: tuple[int | None, int] | None = None
+    if tok.kind == "string":
+        found = (k, k)
+    elif tok.kind == "number" or tok.upper in _LITERAL_WORDS:
+        found = (None, k)
+    elif tok.text in ("-", "+") and k + 1 < len(toks) and toks[k + 1].kind == "number":
+        found = (None, k + 1)
+    elif tok.upper in _TYPED_LITERALS and k + 1 < len(toks) and toks[k + 1].kind == "string":
+        found = (k + 1, k + 1)
+    elif tok.text == "(":
+        inner = _literal_from(toks, k + 1)
+        if inner is not None and inner[1] + 1 < len(toks) and toks[inner[1] + 1].text == ")":
+            found = (inner[0], inner[1] + 1)
+    elif tok.kind == "ident" and k + 1 < len(toks) and toks[k + 1].text == "(":
+        inner = _literal_from(toks, k + 2)
+        close = _close_of(toks, k + 1)
+        if inner is not None and close > inner[1]:
+            after = toks[inner[1] + 1]
+            if after.text == ")" or (tok.upper in _CASTS and after.upper == "AS"):
+                found = (inner[0], close)
+    if found is None:
+        return None
+    end = found[1]
+    while end + 2 < len(toks) and toks[end + 1].text == "::" and toks[end + 2].kind == "ident":
+        end += 2
+    return found[0], end
+
+
+def _operand_start(toks: Sequence[_Tok], end: int) -> int:
+    """Where the operand ending at `end` starts: back over a `::type`, a call or a
+    parenthesis, a typed literal's keyword, a dotted name."""
+    k = end
+    while k >= 2 and toks[k].kind == "ident" and toks[k - 1].text == "::":
+        k -= 2
+    if toks[k].text == ")":
+        k = max(_open_of(toks, k), 0)
+        if k > 0 and toks[k - 1].kind in ("ident", "qident"):
+            k -= 1
+    elif toks[k].kind == "string" and k > 0 and toks[k - 1].upper in _TYPED_LITERALS:
+        return k - 1
+    elif toks[k].kind == "number" and k > 0 and toks[k - 1].text in ("-", "+"):
+        return k - 1
+    while k >= 2 and toks[k - 1].text == "." and toks[k - 2].kind in ("ident", "qident"):
+        k -= 2
+    return k
+
+
+def _literal_ending_at(toks: Sequence[_Tok], end: int) -> tuple[int | None, int] | None:
+    """A literal operand that ENDS at `end` (see `_literal_from`), or None."""
+    if end < 0:
+        return None
+    found = _literal_from(toks, _operand_start(toks, end))
+    return found if found is not None and found[1] == end else None
+
+
+def _comparison_literals(toks: Sequence[_Tok]) -> list[int]:
+    """The literal side of each comparison whose other side is not a literal."""
+    out: list[int] = []
+    for p, op in enumerate(toks):
+        pattern = op.upper in _PATTERN
+        if not (op.text in _EQUALITY or pattern) or p == 0:
+            continue
+        left_end = p - 2 if pattern and toks[p - 1].upper == "NOT" else p - 1
+        left = _literal_ending_at(toks, left_end)
+        right = _literal_from(toks, p + 1)
+        if left is not None and right is None and left[0] is not None:
+            out.append(left[0])
+        elif right is not None and left is None and right[0] is not None:
+            out.append(right[0])
+    return out
 
 
 def _in_list(toks: Sequence[_Tok], open_at: int) -> list[int]:
-    """The plain string elements of the `( … )` opening at `open_at`; none for a sub-query."""
+    """The string elements of the `( … )` opening at `open_at` — each a literal operand of its
+    own (`'Brno'`, `N'Brno'`, `UPPER('Brno')`); none for a sub-query."""
     if open_at + 1 < len(toks) and toks[open_at + 1].upper == "SELECT":
         return []
+    close = _close_of(toks, open_at)
     out: list[int] = []
-    depth = 0
-    for j in range(open_at, len(toks)):
-        text = toks[j].text
-        if text == "(":
-            depth += 1
-        elif text == ")":
-            depth -= 1
-            if depth == 0:
-                break
-        elif (
-            depth == 1
-            and toks[j].kind == "string"
-            and toks[j - 1].text in ("(", ",")
-            and j + 1 < len(toks)
-            and toks[j + 1].text in (",", ")")
-        ):
-            out.append(j)
+    j = open_at + 1
+    while 0 < j < close:
+        found = _literal_from(toks, j)
+        if found is not None and toks[found[1] + 1].text in (",", ")"):
+            if found[0] is not None:
+                out.append(found[0])
+            j = found[1] + 2
+            continue
+        # Not a literal element: skip to the next comma at this level.
+        depth = 0
+        while j < close and not (depth == 0 and toks[j].text == ","):
+            depth += {"(": 1, ")": -1}.get(toks[j].text, 0)
+            j += 1
+        j += 1
+    return out
+
+
+def _in_literals(toks: Sequence[_Tok]) -> list[int]:
+    """The elements of an `IN ( … )` whose left side is any non-literal expression."""
+    out: list[int] = []
+    for i, tok in enumerate(toks):
+        if tok.upper != "IN" or i + 1 >= len(toks) or toks[i + 1].text != "(":
+            continue
+        left_end = i - 2 if i >= 2 and toks[i - 1].upper == "NOT" else i - 1
+        if left_end < 0 or toks[left_end].text in ("(", ","):
+            continue
+        if _literal_ending_at(toks, left_end) is None:
+            out += _in_list(toks, i + 1)
+    return out
+
+
+def _simple_case_literals(toks: Sequence[_Tok]) -> list[int]:
+    """The labels after `WHEN` in a simple `CASE <expr> WHEN '…'` — each compared to `<expr>`.
+    A searched `CASE WHEN <condition>` holds its comparisons inside the condition."""
+    out: list[int] = []
+    simple: list[bool] = []  # one entry per open CASE
+    for i, tok in enumerate(toks):
+        if tok.upper == "CASE":
+            simple.append(i + 1 < len(toks) and toks[i + 1].upper != "WHEN")
+        elif tok.upper == "END" and simple:
+            simple.pop()
+        elif tok.upper == "WHEN" and simple and simple[-1]:
+            found = _literal_from(toks, i + 1)
+            if found is not None and found[0] is not None:
+                out.append(found[0])
     return out
 
 
 def _member_literals(toks: Sequence[_Tok]) -> list[int]:
-    """The string literals that restrict a member: compared to a column, or in its `IN`."""
-    out: list[int] = []
-    for i, tok in enumerate(toks):
-        if tok.kind == "string" and i >= 2:
-            op = toks[i - 1]
-            if (op.text in _EQUALITY or op.upper in _PATTERN) and _column_ends_at(
-                toks, i - 2, negatable=op.upper in _PATTERN
-            ):
-                out.append(i)
-                continue
-        if (
-            tok.kind == "string"
-            and i + 1 < len(toks)
-            and toks[i + 1].text in _EQUALITY
-            and _column_starts_at(toks, i + 2)
-        ):
-            out.append(i)
-        elif (
-            tok.upper == "IN"
-            and i + 1 < len(toks)
-            and toks[i + 1].text == "("
-            and _column_ends_at(toks, i - 1, negatable=True)
-        ):
-            out += _in_list(toks, i + 1)
-    return sorted(set(out))
+    """The string literals that restrict a member (review-329 ✅R329-C): compared to anything
+    that is not itself a literal, listed in such an expression's `IN`, or a simple `CASE`'s
+    `WHEN` label."""
+    return sorted(
+        set(_comparison_literals(toks) + _in_literals(toks) + _simple_case_literals(toks))
+    )
 
 
 def _whole_words(needle: str) -> re.Pattern[str]:

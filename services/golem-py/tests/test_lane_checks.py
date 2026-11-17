@@ -203,6 +203,8 @@ def test_a_reply_that_breaks_a_rule_is_refused_naming_it(case: str, text: str, r
 # two ref paths (which `literal_sources` no longer yields — they show a path is no word store).
 PROBE = ("Zobraz tržby za minulý měsíc", "er.entity.store_sales", "er.attribute.store_sales.region")
 OSTRAVA = ("Tržby prodejny Ostrava za minulý měsíc",)
+SS = "SELECT 1 FROM er.entity.store_sales s"
+SS2 = "SELECT 1 FROM er.entity.store s"
 MEMBER_ROWS = [
     (
         "a function's unit argument",
@@ -261,6 +263,74 @@ MEMBER_ROWS = [
         "SELECT 1 FROM er.entity.store st "
         "WHERE st.id IN (SELECT s.id FROM er.entity.store_sales s)",
         OSTRAVA,
+        None,
+    ),
+    # review-329 re-review R1 (✅R329-C, carried to W1c·S3·T0): the other operand is not a
+    # literal, so the literal is traced — a column, `f(column)`, `CAST(… AS …)`, a `CASE … END`.
+    # The first seven rows are the review's probe, 'Brno' nowhere in the sources.
+    ("R1 an upper-cased column", f"{SS} WHERE UPPER(s.region) = 'BRNO'", PROBE, "BRNO"),
+    (
+        "R1 lower on both sides",
+        f"{SS} WHERE LOWER(s.region) = LOWER('Brno')",
+        PROBE,
+        "Brno",
+    ),
+    ("R1 a trimmed column in a LIKE", f"{SS} WHERE TRIM(s.region) LIKE 'Brno%'", PROBE, "Brno%"),
+    ("R1 a cast column", f"{SS} WHERE CAST(s.code AS VARCHAR) = 'X9'", PROBE, "X9"),
+    ("R1 an upper-cased column's IN", f"{SS} WHERE UPPER(s.region) IN ('BRNO')", PROBE, "BRNO"),
+    (
+        "R1 a simple CASE label",
+        "SELECT CASE s.region WHEN 'Brno' THEN 1 END FROM er.entity.store_sales s",
+        PROBE,
+        "Brno",
+    ),
+    ("R1 a prefixed literal", f"{SS} WHERE s.region = N'Brno'", PROBE, "Brno"),
+    ("an escape-prefixed literal", f"{SS} WHERE s.region = E'Brno'", PROBE, "Brno"),
+    ("a call on the right", f"{SS} WHERE 'Brno' = UPPER(s.region)", PROBE, "Brno"),
+    ("a cast literal", f"{SS} WHERE s.region = CAST('Brno' AS VARCHAR)", PROBE, "Brno"),
+    ("a ::-cast literal", f"{SS} WHERE s.region = 'Brno'::text", PROBE, "Brno"),
+    ("a parenthesised literal", f"{SS} WHERE s.region = ('Brno')", PROBE, "Brno"),
+    ("a wrapped IN element", f"{SS} WHERE s.region IN (UPPER('Brno'), 'x')", PROBE, "Brno"),
+    ("an IN after a call", f"{SS} WHERE LOWER(s.region) NOT IN ('brno')", PROBE, "brno"),
+    (
+        "a CASE expression compared",
+        f"{SS} WHERE CASE WHEN s.a > 0 THEN s.region END = 'Brno'",
+        PROBE,
+        "Brno",
+    ),
+    (
+        "a not-like on a call",
+        f"{SS} WHERE LOWER(s.region) NOT LIKE 'brno%'",
+        PROBE,
+        "brno%",
+    ),
+    # …and what stays untraced or sourced.
+    (
+        "a sourced member, case-folded",
+        f"{SS} WHERE LOWER(s.name) = LOWER('Ostrava')",
+        OSTRAVA,
+        None,
+    ),
+    (
+        "a sourced simple CASE label",
+        f"{SS2} WHERE CASE s.name WHEN 'Ostrava' THEN 1 END = 1",
+        OSTRAVA,
+        None,
+    ),
+    ("two literals compared", f"{SS} WHERE 'a' = 'b'", PROBE, None),
+    ("a literal against a number", f"{SS} WHERE LOWER('x') = 1", PROBE, None),
+    (
+        "a date range on a call",
+        f"{SS} WHERE DATE_TRUNC('month', s.sold_on) = DATE '2026-10-01'",
+        PROBE,
+        None,
+    ),
+    ("a month on a call", f"{SS} WHERE TO_CHAR(s.sold_on, 'YYYY-MM') = '2026-10'", PROBE, None),
+    (
+        "a searched CASE's labels",
+        "SELECT CASE WHEN s.region IS NULL THEN 'none' ELSE 'some' END "
+        "FROM er.entity.store_sales s",
+        PROBE,
         None,
     ),
 ]
