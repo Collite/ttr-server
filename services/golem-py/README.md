@@ -76,8 +76,10 @@ The versions in `pyproject.toml` are **pinned exactly** (pydantic-ai / pydantic-
 ## The LLM lane's settings
 
 The lane is **on** when `GOLEM_LLM_LANE_ENABLED` is true (the default) **and** a gateway
-**and** a door are configured; with either target empty it is off. On, it also needs the
-model slice — a lane that cannot read the model refuses as `LANE_UNAVAILABLE`.
+**and** a door are configured; with either target empty it is off. On, it also needs a world
+and the model slice. The CLI checks both before the turn, together with the `capable` rung's
+clock and the prompt file (`check_lane_config`), and exits **2** naming what is missing. A
+`Deps` built in code without a slice refuses each lane turn as `LANE_UNAVAILABLE`.
 
 | Variable | Default | What |
 |---|---|---|
@@ -91,6 +93,37 @@ model slice — a lane that cannot read the model refuses as `LANE_UNAVAILABLE`.
 The call runs under the ladder's `capable` timeout and counts against the profile's
 `max_llm_invocations` (`CHAT_QUICK`: 2 — the write and the one repair). The prompt states a
 reference date — today in UTC unless `Deps.reference_date` is injected.
+
+## Running it against an estate
+
+The image is the CLI: one turn per run, the outcome on stdout. `--json` prints the envelope
+for an answer (`sql`, `provenance.lane` / `llm_model` / `sql_sha256`, `row_count`, `rows`,
+`llm_handled`, `gaps_carried`), and for a refusal or an ask, the outcome without its
+lattice. Five variables name the estate: `GOLEM_QUERY_TARGET`, `GOLEM_QUERY_WORLD`,
+`GOLEM_LLM_TARGET`, `GOLEM_META_TARGET` and `GOLEM_META_PACKAGES`. `--subject` is the
+caller, and the door applies that caller's row rules to the query the lane wrote.
+
+```bash
+docker run --rm \
+  -e GOLEM_QUERY_TARGET=query:7306 -e GOLEM_QUERY_WORLD=hartland_cz \
+  -e GOLEM_LLM_TARGET=llm-gateway:9090 \
+  -e GOLEM_META_TARGET=metadata:7261 -e GOLEM_META_PACKAGES=hartland \
+  ghcr.io/collite/golem-py:<version> \
+  --core resolver:7276 --subject <persona> --question "Zobraz tržby za rok 2025" --json
+```
+
+On a cluster, run it as a one-off Job in a throwaway namespace with the same environment and
+arguments. Leave out `GOLEM_QUERY_TARGET` or `GOLEM_LLM_TARGET`, and the same command answers
+structurally, as before W1c.
+
+⚑ **Two gaps, checked live on bp-dsk on 2026-11-17** (OL W1c·S3 "Found while doing", for the
+planner):
+
+1. The open gateway (`services/llm-gateway` 2.0) serves HTTP `/v1/chat/completions` only.
+   Nothing answers `llm.v1` gRPC, so a lane that is on refuses `LANE_UNAVAILABLE` there.
+2. The CLI does not load an operator library yet. Without the estate's lexicon archive, any
+   question naming an operator (`Zobraz …` → `op:show`) refuses `NO_CAPABLE_PLUGIN` before
+   the lane. A question that names no operator refuses that way with or without one (OL-C18).
 
 ## Two traps worth knowing before you edit the graph
 

@@ -1,0 +1,100 @@
+{
+  "_provenance": "AUTHORED, not read from a live meta.v1: the ER side of the estate the h1-cs and h5-cs goldens bind (md.measure.cost, md.dimension.Account.code, er.CostCenter.code), in the shape LiveModelSlice builds from GetModel. OL W1c·S3·T2.",
+  "packages": [
+    "hartland_cz"
+  ],
+  "entities": [
+    {
+      "qname": "er.entity.cost_entry",
+      "description": "one booked cost line",
+      "attributes": [
+        {
+          "name": "entry_id",
+          "type": "int",
+          "is_key": true
+        },
+        {
+          "name": "account_id",
+          "type": "int"
+        },
+        {
+          "name": "cost_center_id",
+          "type": "int"
+        },
+        {
+          "name": "booked_on",
+          "type": "date"
+        },
+        {
+          "name": "amount",
+          "type": "decimal",
+          "description": "the cost, CZK"
+        }
+      ]
+    },
+    {
+      "qname": "er.entity.account",
+      "description": "an account of the chart of accounts",
+      "attributes": [
+        {
+          "name": "account_id",
+          "type": "int",
+          "is_key": true
+        },
+        {
+          "name": "code",
+          "type": "varchar",
+          "description": "the six-digit account code"
+        },
+        {
+          "name": "name",
+          "type": "varchar"
+        }
+      ]
+    },
+    {
+      "qname": "er.entity.cost_center",
+      "description": "a cost centre (středisko)",
+      "attributes": [
+        {
+          "name": "cost_center_id",
+          "type": "int",
+          "is_key": true
+        },
+        {
+          "name": "code",
+          "type": "varchar"
+        },
+        {
+          "name": "name",
+          "type": "varchar"
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "name": "booked_to",
+      "from_entity": "er.entity.cost_entry",
+      "to_entity": "er.entity.account",
+      "join_pairs": [
+        [
+          "er.entity.cost_entry.account_id",
+          "er.entity.account.account_id"
+        ]
+      ]
+    },
+    {
+      "name": "charged_to",
+      "from_entity": "er.entity.cost_entry",
+      "to_entity": "er.entity.cost_center",
+      "join_pairs": [
+        [
+          "er.entity.cost_entry.cost_center_id",
+          "er.entity.cost_center.cost_center_id"
+        ]
+      ]
+    }
+  ],
+  "omitted_entities": 0
+}

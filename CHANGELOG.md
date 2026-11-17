@@ -16,6 +16,28 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **golem-py: the CLI takes the LLM lane's settings, and four lane-on conversations join the
+  conformance tier (OL W1c·S3).**
+  - `src/main.py` builds the door, the gateway and the model slice from `GOLEM_*`. Before
+    the turn, a lane that is on is checked for a world, a slice, the `capable` clock and the
+    prompt file (`check_lane_config`); a bad configuration exits 2.
+  - `--json` prints the answer's envelope: SQL, provenance, rows, `llm_handled`. A refusal
+    or an ask prints without its lattice.
+  - The image sets no `GOLEM_*` default of its own (they live in `GolemSettings`). Five
+    variables name the estate; without `GOLEM_QUERY_TARGET` or `GOLEM_LLM_TARGET` it answers as
+    before. A missing or invalid ladder file, or an unknown profile, also exits 2.
+  - The member-literal check traces a string literal by where it sits (review-343
+    ✅R343-A): in `WHERE`/`HAVING`/`ON`/`QUALIFY` at any depth, between `WHEN` and `THEN`, in a
+    sub-query's select list or a `VALUES` list, or compared to any non-literal operand
+    (`UPPER(col) = 'X'`). Dates are exempt by name: typed and temporal-cast literals, ISO
+    dates, a date function's arguments, and period labels compared to a date function
+    (`TO_CHAR(d,'YYYYMM') = '202610'`). Before, only a few comparison shapes were traced, and
+    concatenation, literal-only operands, other operators or a sub-query could carry an
+    invented member past the check. Nesting deeper than 64 parentheses refuses `invalid_sql`.
+  - Conversations: `conformance/conversations/` gains a `lane:` block (recorded slice,
+    gateway replies, door outcomes, reference date) and four fixtures: `ol-lane-covered`,
+    `ol-lane-relative-period`, `ol-lane-door-repair` and `ol-lane-query-not-written`. The
+    five heroes still run with the lane off, unchanged.
 - **`ttr-nlp` and `nlp` — pipeline stages through the `ttrnlp.stages` group (OL W1b·S1).** New
   module `ttrnlp.stages`: the `Stage` protocol, `StageTrace`, `installed_stages()`. The loader, `validate_sources`,
   the `ttr-nlp validate` CLI and the `nlp` runner reach stages through the group only; the rule engine is

@@ -58,7 +58,9 @@ the RV-P4 conversation tier that sits above them:
 5. **Conformance CONVERSATIONS** (golem-py — RV-P4.4 T2/T3, the **P4 phase gate**) —
    the five hero conversations under [`conformance/conversations/`](conversations/)
    (`h1-answer` · `h1prime-regate` · `h2-ask-pin-resume` · `h4-refusal` ·
-   `h5-answer-with-gap`), driven through the Python OS Golem by
+   `h5-answer-with-gap`), plus four of the same goldens with the LLM lane on and its legs
+   recorded (`ol-lane-covered` · `ol-lane-relative-period` · `ol-lane-door-repair` ·
+   `ol-lane-query-not-written`, OL W1c·S3), driven through the Python OS Golem by
    `services/golem-py/tests/test_conformance_conversations.py`. Multi-turn, hermetic:
    the core is RECORDED from the resolver's own lattice goldens, so a core change fails
    this tier the same day it fails `LatticeGoldenTest`. Asserted numerically where the

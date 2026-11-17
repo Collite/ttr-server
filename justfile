@@ -420,7 +420,8 @@ conformance-service-level:
     ./gradlew :services:lex-matcher:test --tests '*OverlayDrillTest*'
     just eval-grounding-test
     # RV-P4.4.T3 — the conformance-CONVERSATION tier (the P4 phase gate). Hermetic: the
-    # five hero conversations in conformance/conversations/ driven through golem-py
+    # five hero conversations in conformance/conversations/ (plus four with the LLM lane on,
+    # its legs recorded — OL W1c·S3) driven through golem-py
     # against the resolver's OWN lattice goldens, so a core change fails this the same
     # day it fails the Kotlin tier. The SAME fixtures are what RV-P5's Kotlin Golem must
     # pass (RV-28: one corpus, N shells).

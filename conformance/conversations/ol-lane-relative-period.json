@@ -1,0 +1,135 @@
+{
+  "id": "ol-lane-relative-period",
+  "description": "OL W1c·S3 — H5 with the lane on: a relative period the core did not bind. `posledních 12 měsíců` reaches the lattice only as NER's duration P12M (no chrono ref, no interval), so nothing in the core says WHICH twelve months. The prompt states the reference date (2026-11-16) and the value as it was grounded; the query restricts to the twelve whole months before the reference month, [2025-11-01, 2026-11-01). `plánem` stays carried: the slice has no plan, the LLM claims no span, and gaps_carried is still the core's account.",
+  "surface": "golem",
+  "corpus": "hartland_cz",
+  "invariants": [
+    "the lane is what emit does when it is on; the verdicts do not change and nothing in it binds (OL-C11)",
+    "the door runs the query under the CALLER's subject, whoever wrote it (OL-C12)",
+    "a relative period is counted from the reference date the prompt states, never from the model's own idea of today",
+    "the LLM's claim (llm_handled) sits beside gaps_carried and never edits it (OL-C17)"
+  ],
+  "turns": [
+    {
+      "tool": "golem.turn:v1",
+      "args": {
+        "conversation_id": "c-ol-period",
+        "turn_id": "t-1",
+        "text": "Ukaž vývoj nákladů střediska 220 za posledních 12 měsíců a porovnej s plánem.",
+        "locale": "cs",
+        "caller_subject": "user-a",
+        "profile": "CHAT_QUICK"
+      },
+      "core": {
+        "lattice": "h5-cs"
+      },
+      "lane": {
+        "slice": "cost-ledger",
+        "world": "hartland_cz",
+        "reference_date": "2026-11-16",
+        "gateway": {
+          "model": "capable-fixture",
+          "replies": [
+            {
+              "sql": "SELECT DATE_TRUNC('month', e.booked_on) AS mesic, SUM(e.amount) AS naklady FROM er.entity.cost_entry e JOIN er.entity.cost_center c ON e.cost_center_id = c.cost_center_id WHERE c.code = '220' AND e.booked_on >= DATE '2025-11-01' AND e.booked_on < DATE '2026-11-01' GROUP BY DATE_TRUNC('month', e.booked_on) ORDER BY mesic",
+              "handled_spans": [],
+              "note": "the 12 whole months before 2026-11; no plan in the slice"
+            }
+          ]
+        },
+        "door": [
+          {
+            "columns": [
+              "mesic",
+              "naklady"
+            ],
+            "rows": [
+              [
+                "2025-11-01",
+                15890.0
+              ],
+              [
+                "2025-12-01",
+                18641.0
+              ],
+              [
+                "2026-01-01",
+                21392.0
+              ],
+              [
+                "2026-02-01",
+                17265.5
+              ],
+              [
+                "2026-03-01",
+                20016.5
+              ],
+              [
+                "2026-04-01",
+                15890.0
+              ],
+              [
+                "2026-05-01",
+                18641.0
+              ],
+              [
+                "2026-06-01",
+                21392.0
+              ],
+              [
+                "2026-07-01",
+                17265.5
+              ],
+              [
+                "2026-08-01",
+                20016.5
+              ],
+              [
+                "2026-09-01",
+                15890.0
+              ],
+              [
+                "2026-10-01",
+                18641.0
+              ]
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "answer",
+        "llm_invocations": 1,
+        "asks": 0,
+        "measures": [
+          "md.measure.cost"
+        ],
+        "operators": [
+          "op:show",
+          "op:trend"
+        ],
+        "gaps_carried": [
+          "GAP_KIND_G1_UNBOUND"
+        ],
+        "gaps_carried_spans": [
+          "plánem"
+        ],
+        "lane": "llm",
+        "llm_model": "capable-fixture",
+        "sql": "SELECT DATE_TRUNC('month', e.booked_on) AS mesic, SUM(e.amount) AS naklady FROM er.entity.cost_entry e JOIN er.entity.cost_center c ON e.cost_center_id = c.cost_center_id WHERE c.code = '220' AND e.booked_on >= DATE '2025-11-01' AND e.booked_on < DATE '2026-11-01' GROUP BY DATE_TRUNC('month', e.booked_on) ORDER BY mesic",
+        "rows": 12,
+        "llm_handled_spans": [],
+        "door_calls": 1,
+        "door_subject": "user-a",
+        "prompt_states": [
+          [
+            "reference date (today, for relative periods): 2026-11-16",
+            "posledních 12 měsíců",
+            "P12M",
+            "plánem"
+          ]
+        ],
+        "no_binding_below_threshold": true
+      }
+    }
+  ]
+}

@@ -28,11 +28,14 @@ Rules — a query that breaks any of them is refused and never run:
    `FROM er.entity.store_sales s`). No other table, view or schema. Join along the relations
    listed.
 3. No parameters or placeholders (`?`, `:name`, `$1`, `@name`). Write values as literals.
-4. A literal that restricts a member (a name, a code, a category) must come from a binding, a
-   value, or the question's own words, written whole as it appears there — `LIKE '%Ostrava%'`,
-   never a cut-off word like `'%Ostrav%'`. Never invent a member. Dates and periods are written as
-   ISO dates (`DATE '2026-10-01'`), computed from a grounded value or, for a relative period
-   ("last month"), from the reference date.
+4. Never invent a member (a name, a code, a category). Every string literal in a `WHERE`,
+   `HAVING` or `ON` clause, in a `CASE … WHEN` condition, in a sub-query's select list or in a
+   `VALUES` list — and any literal compared to a column — must come from a binding, a value, or
+   the question's own words, written whole as it appears there: `LIKE '%Ostrava%'`, never a
+   cut-off word like `'%Ostrav%'`. Dates and periods are not members: write them as ISO dates
+   (`DATE '2026-10-01'`) or intervals, or as a period label compared to a date function
+   (`TO_CHAR(s.sold_on, 'YYYYMM') = '202610'`), computed from a grounded value or, for a relative
+   period ("last month"), from the reference date.
 5. `handled_spans` lists the carried gaps your query expresses, each as `[start, end]` exactly
    as given below. List only carried gaps, and only the ones the query really expresses.
 

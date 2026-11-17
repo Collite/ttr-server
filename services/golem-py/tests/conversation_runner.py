@@ -21,14 +21,22 @@ it is the thing that would catch what a recording cannot.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from golem_py.deps import Deps, GateResult, HypothesisOutcome
+from golem_py.errors import DoorRejected, LaneServiceUnavailable
 from golem_py.graph import run_turn
 from golem_py.ladder import load_default
+from golem_py.llm_client import LlmReply
+from golem_py.model_slice import ModelSlice, SliceAttribute, SliceEntity, SliceRelation
 from golem_py.outputs import TurnOutput
+from golem_py.query_client import QueryResult
 from golem_py.resume import resume_turn
+from golem_py.settings import GolemSettings
 from golem_py.snapshots import InMemorySnapshotStore
 from golem_py.state import (
     Binding,
@@ -50,6 +58,8 @@ from tests.lattice_fixtures import lattice_golden
 
 # services/golem-py/tests → the repo root's shared corpus.
 FIXTURE_DIR = Path(__file__).resolve().parents[3] / "conformance" / "conversations"
+# The recorded model slices a `lane:` block names by id (OL W1c·S3).
+SLICE_DIR = FIXTURE_DIR / "lane"
 
 
 def fixture_ids() -> list[str]:
@@ -138,6 +148,134 @@ def build_gate(turn: dict[str, Any]) -> RecordedGate:
     )
 
 
+# ------------------------------------------------------------------ the lane's legs (OL W1c·S3)
+
+
+class RecordedGateway:
+    """`llm.v1` as recorded: each call takes the next reply, in order, and keeps its prompt.
+
+    A reply is a JSON object the model wrote (serialised as the reply text), `{"raw": text}`
+    for a text that is not one, or `{"unavailable": detail}` for a gateway that could not
+    answer."""
+
+    def __init__(self, spec: dict[str, Any]):
+        self.model = spec.get("model", "")
+        self.replies: list[dict[str, Any]] = list(spec.get("replies", []))
+        self.prompts: list[str] = []
+
+    async def complete_json(self, *, instructions: str, prompt: str, timeout_s: float) -> LlmReply:
+        self.prompts.append(prompt)
+        assert self.replies, "the lane called the gateway more often than the fixture recorded"
+        reply = self.replies.pop(0)
+        if "unavailable" in reply:
+            raise LaneServiceUnavailable("llm.v1", reply["unavailable"])
+        text = reply["raw"] if "raw" in reply else json.dumps(reply, ensure_ascii=False)
+        return LlmReply(text=text, model=self.model)
+
+
+@dataclass
+class DoorCall:
+    sql: str
+    world: str
+    caller_subject: str
+    allowed_entities: tuple[str, ...]
+
+
+class RecordedDoor:
+    """`query.v1` as recorded: each call takes the next outcome — rows, a rejection (the
+    door's code and text, verbatim), or `{"unavailable": detail}`."""
+
+    def __init__(self, outcomes: Sequence[dict[str, Any]]):
+        self.outcomes = list(outcomes)
+        self.calls: list[DoorCall] = []
+
+    async def run(
+        self, *, sql: str, world: str, caller_subject: str, allowed_entities: Sequence[str]
+    ) -> QueryResult:
+        self.calls.append(DoorCall(sql, world, caller_subject, tuple(allowed_entities)))
+        assert self.outcomes, "the lane called the door more often than the fixture recorded"
+        outcome = self.outcomes.pop(0)
+        if "rejected" in outcome:
+            raise DoorRejected(outcome["rejected"]["code"], outcome["rejected"]["message"])
+        if "unavailable" in outcome:
+            raise LaneServiceUnavailable("query.v1", outcome["unavailable"])
+        columns = list(outcome["columns"])
+        return QueryResult(
+            rows=[dict(zip(columns, row, strict=True)) for row in outcome["rows"]],
+            columns=columns,
+            provenance=dict(outcome.get("provenance", {})),
+        )
+
+
+def load_slice(name: str) -> ModelSlice:
+    raw: dict[str, Any] = json.loads((SLICE_DIR / f"{name}.slice.json").read_text("utf-8"))
+    return ModelSlice(
+        packages=tuple(raw["packages"]),
+        entities=tuple(
+            SliceEntity(
+                qname=e["qname"],
+                description=e.get("description", ""),
+                bound=e.get("bound", False),
+                attributes=tuple(SliceAttribute(**a) for a in e.get("attributes", [])),
+            )
+            for e in raw["entities"]
+        ),
+        relations=tuple(
+            SliceRelation(
+                name=r["name"],
+                from_entity=r["from_entity"],
+                to_entity=r["to_entity"],
+                join_pairs=tuple((a, b) for a, b in r.get("join_pairs", [])),
+            )
+            for r in raw.get("relations", [])
+        ),
+        omitted_entities=raw.get("omitted_entities", 0),
+    )
+
+
+class RecordedSlice:
+    """`meta.v1` as recorded: one slice, whatever the bound refs."""
+
+    def __init__(self, model_slice: ModelSlice):
+        self.model_slice = model_slice
+        self.calls = 0
+
+    async def slice(self, *, bound_refs: Sequence[str], cap: int) -> ModelSlice:
+        self.calls += 1
+        return self.model_slice
+
+
+@dataclass
+class LaneLegs:
+    """One turn's recorded lane: what it was given and what it was asked."""
+
+    gateway: RecordedGateway
+    door: RecordedDoor
+    slice: RecordedSlice
+    world: str
+    reference_date: date
+
+    def leftovers(self) -> list[str]:
+        """Recordings the turn never consumed — a fixture that records a call the lane never
+        makes would otherwise pass while saying something untrue."""
+        out = [f"gateway reply {r}" for r in self.gateway.replies]
+        out += [f"door outcome {o}" for o in self.door.outcomes]
+        return out
+
+
+def build_lane(turn: dict[str, Any]) -> LaneLegs | None:
+    spec = turn.get("lane")
+    if spec is None:
+        return None
+    return LaneLegs(
+        gateway=RecordedGateway(spec.get("gateway", {})),
+        door=RecordedDoor(spec.get("door", [])),
+        slice=RecordedSlice(load_slice(spec["slice"])),
+        world=spec["world"],
+        reference_date=date.fromisoformat(spec["reference_date"]),
+    )
+
+
 class ConversationRun:
     """One fixture, driven end to end, keeping every turn's output for assertions."""
 
@@ -158,6 +296,8 @@ class ConversationRun:
         # user's pin — which is a claim about what we PROPOSED, not about what the
         # recorded gate happened to echo back.
         self.turn_hypotheses: list[list[Hypothesis]] = []
+        # The recorded lane legs of each non-gate turn, aligned with `outputs` (None: lane off).
+        self.lanes: list[LaneLegs | None] = []
 
     async def run(self) -> list[TurnOutput]:
         for index, turn in enumerate(self.fixture["turns"]):
@@ -183,6 +323,7 @@ class ConversationRun:
             skills=fixture_library(),
             clock=lambda: 1000.0,  # frozen: a byte-identical replay must not race a clock
         )
+        lane = self._use_lane(turn)
         args = turn["args"]
         state = ResolutionState(
             question=args["text"],
@@ -196,12 +337,34 @@ class ConversationRun:
         self.gate.last_hypotheses = []
         output = await run_turn(state, self.deps)
         self.outputs.append(output)
+        self.lanes.append(lane)
         self.gate_calls.append(self.gate.calls - before)
         self.turn_hypotheses.append(list(self.gate.last_hypotheses))
         self.last_snapshot_id = getattr(output, "snapshot_id", "")
 
+    def _use_lane(self, turn: dict[str, Any]) -> LaneLegs | None:
+        """Give THIS turn its own lane, or none. No `lane:` ⇒ no gateway and no door ⇒ the lane
+        is off (OL-C11), which is how every fixture written before W1c·S3 runs. With one, all
+        three legs are this turn's recordings. A resume never inherits the previous turn's
+        legs (review-343 T1): it would run with the lane on while being recorded as off."""
+        assert self.deps is not None
+        lane = build_lane(turn)
+        if lane is None:
+            self.deps.llm = None
+            self.deps.door = None
+            self.deps.model_slice = None
+            return None
+        reference_date = lane.reference_date
+        self.deps.settings = GolemSettings(query_world=lane.world)
+        self.deps.llm = lane.gateway
+        self.deps.door = lane.door
+        self.deps.model_slice = lane.slice
+        self.deps.reference_date = lambda: reference_date
+        return lane
+
     async def _resume(self, turn: dict[str, Any], index: int) -> None:
         assert self.deps is not None, "a resume turn must follow a turn"
+        lane = self._use_lane(turn)
         if "gate" in turn:
             self.gate = build_gate(turn)
             self.deps.gate = self.gate
@@ -221,13 +384,13 @@ class ConversationRun:
             deps=self.deps,
         )
         self.outputs.append(output)
+        self.lanes.append(lane)
         self.gate_calls.append(self.gate.calls - before)
         self.turn_hypotheses.append(list(self.gate.last_hypotheses))
         # A resume that pauses AGAIN mints its own snapshot (the key carries the HITL
         # round), so the next resume must follow the new one. An answer or a refusal has
         # no snapshot id and must not clear the one a replay turn still needs.
         self.last_snapshot_id = getattr(output, "snapshot_id", "") or self.last_snapshot_id
-
 
     async def _gate(self, turn: dict[str, Any]) -> None:
         """A bare re-gate turn: hypotheses in, gated bindings out, folded into the

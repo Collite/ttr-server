@@ -56,5 +56,22 @@ ENV PATH="/build/services/golem-py/.venv/bin:${PATH}"
 ENV PYTHONPATH=/app/src:/app/generated
 ENV GOLEM_LADDER_CONFIG=/app/config/golem-ladder.yaml
 
+# ===== the LLM lane (OL W1c, contracts §C) =====
+# Every GOLEM_* default lives in one place, `golem_py.settings.GolemSettings` (the switch is on,
+# the model class is `capable`, the slice cap is 40), and the image sets none of them. Five
+# variables name the estate:
+#   GOLEM_QUERY_TARGET    the query door, `query.v1` (host:port)
+#   GOLEM_QUERY_WORLD     the world every lane query runs in
+#   GOLEM_LLM_TARGET      the open LLM gateway, `llm.v1` (host:port)
+#   GOLEM_META_TARGET     `meta.v1` (host:port), for the model slice
+#   GOLEM_META_PACKAGES   the packages the slice reads, comma-separated
+# The lane is ON only when the switch is on AND GOLEM_QUERY_TARGET AND GOLEM_LLM_TARGET are set
+# (OL-C11). Leave either out and the image answers structurally, as it did before W1c.
+# GOLEM_LLM_MODEL optionally pins a model (empty: the gateway picks within the class).
+# The CLI checks the startup configuration BEFORE the turn: the ladder file and the profile
+# always; for a lane that is on, also the world, the slice, the `capable` rung's clock and the
+# prompt file (/app/config/llm-lane-prompt.md). A bad configuration exits 2 and names what is
+# wrong.
+
 ENTRYPOINT ["python", "src/main.py"]
 CMD ["--help"]

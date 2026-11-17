@@ -96,5 +96,21 @@ scoring input, never a source.
 - **2026-11-17 · AU S2.4 review-328 F4, compatibility comments only.** Clean-room observed: no legacy predecessor
   source, `EXAMPLES.md`, or Kantheon Golem code was read. Read this directory's `pyproject.toml` and `PROVENANCE.md`,
   the JVM version catalog and review-328's compatibility evidence. The wheel remains pinned to 0.14.1.
+- **2026-11-17 · OL W1c·S3: conversations with the lane on, the CLI wiring, the release.**
+  Clean-room observed. No legacy predecessor-platform repository, `EXAMPLES.md`, legacy
+  conversation corpus or Kantheon Golem code was opened, listed or searched in this session, and
+  no prompt text from any other agent was read. What WAS read:
+  - Tatrman project documents: OL `contracts.md` §C and §H, the stage list, the plan and
+    review-329, whose ✅R329-C carry is T0.
+  - The shared `.proto` tree (`llm_gateway.proto`, `resolver.v1`).
+  - The resolver's lattice goldens and their `PROVENANCE.md`.
+  - `conformance/conversations/` and its `SCHEMA.md`.
+  - This repo's `release-image.yml`, `PUBLISHING.md` and `justfile`.
+  - The route list, ports and chart values of this repo's own `services/llm-gateway`, read
+    only to learn which wire it serves.
+  - This directory's own code and tests.
+
+  The live probes of bp-dsk's `meta.v1`, `query.v1` and gateway ports used this directory's
+  own clients.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.

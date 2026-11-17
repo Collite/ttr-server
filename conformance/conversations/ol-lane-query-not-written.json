@@ -1,0 +1,59 @@
+{
+  "id": "ol-lane-query-not-written",
+  "description": "OL W1c·S3 — H1 with the lane on, and a reply that invents a member. The query narrows the account by a name nothing in the question, the bindings or the values says — upper-cased, the form review-329 R1 showed slipping past a column-only rule. The checks refuse it before the door: QUERY_NOT_WRITTEN with the lattice and the broken rule, no repair (the door never saw it), no rows.",
+  "surface": "golem",
+  "corpus": "hartland_cz",
+  "invariants": [
+    "the lane is what emit does when it is on; the verdicts do not change and nothing in it binds (OL-C11)",
+    "the door runs the query under the CALLER's subject, whoever wrote it (OL-C12)",
+    "a refusal is not an error: it carries the lattice and the last error",
+    "a query the checks refused is never sent, and never repaired (OL-C16)",
+    "never rows from a query the checks refused"
+  ],
+  "turns": [
+    {
+      "tool": "golem.turn:v1",
+      "args": {
+        "conversation_id": "c-ol-not-written",
+        "turn_id": "t-1",
+        "text": "Zobraz náklady účtu 501001 v roce 2025 podle období",
+        "locale": "cs",
+        "caller_subject": "user-a",
+        "profile": "CHAT_QUICK"
+      },
+      "core": {
+        "lattice": "h1-cs"
+      },
+      "lane": {
+        "slice": "cost-ledger",
+        "world": "hartland_cz",
+        "reference_date": "2026-11-16",
+        "gateway": {
+          "model": "capable-fixture",
+          "replies": [
+            {
+              "sql": "SELECT DATE_TRUNC('month', e.booked_on) AS obdobi, SUM(e.amount) AS naklady FROM er.entity.cost_entry e JOIN er.entity.account a ON e.account_id = a.account_id WHERE a.code = '501001' AND UPPER(a.name) = 'SPOTŘEBA MATERIÁLU' AND e.booked_on >= DATE '2025-01-01' AND e.booked_on < DATE '2026-01-01' GROUP BY DATE_TRUNC('month', e.booked_on) ORDER BY obdobi",
+              "handled_spans": [],
+              "note": "material costs only"
+            }
+          ]
+        },
+        "door": []
+      },
+      "expect": {
+        "outcome": "refusal",
+        "refusal_reason": "QUERY_NOT_WRITTEN",
+        "llm_invocations": 1,
+        "asks": 0,
+        "min_bindings": 5,
+        "gap_kinds": [],
+        "door_calls": 0,
+        "explanation_contains": [
+          "literal_unsourced",
+          "SPOTŘEBA MATERIÁLU"
+        ],
+        "no_binding_below_threshold": true
+      }
+    }
+  ]
+}

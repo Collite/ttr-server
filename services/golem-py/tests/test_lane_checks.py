@@ -203,6 +203,8 @@ def test_a_reply_that_breaks_a_rule_is_refused_naming_it(case: str, text: str, r
 # two ref paths (which `literal_sources` no longer yields — they show a path is no word store).
 PROBE = ("Zobraz tržby za minulý měsíc", "er.entity.store_sales", "er.attribute.store_sales.region")
 OSTRAVA = ("Tržby prodejny Ostrava za minulý měsíc",)
+SS = "SELECT 1 FROM er.entity.store_sales s"
+SS2 = "SELECT 1 FROM er.entity.store s"
 MEMBER_ROWS = [
     (
         "a function's unit argument",
@@ -261,6 +263,75 @@ MEMBER_ROWS = [
         "SELECT 1 FROM er.entity.store st "
         "WHERE st.id IN (SELECT s.id FROM er.entity.store_sales s)",
         OSTRAVA,
+        None,
+    ),
+    # review-329 re-review R1 (✅R329-C, carried to W1c·S3·T0): the other operand is not a
+    # literal, so the literal is traced — a column, `f(column)`, `CAST(… AS …)`, a `CASE … END`.
+    # The first seven rows are the review's probe, 'Brno' nowhere in the sources.
+    ("R1 an upper-cased column", f"{SS} WHERE UPPER(s.region) = 'BRNO'", PROBE, "BRNO"),
+    (
+        "R1 lower on both sides",
+        f"{SS} WHERE LOWER(s.region) = LOWER('Brno')",
+        PROBE,
+        "Brno",
+    ),
+    ("R1 a trimmed column in a LIKE", f"{SS} WHERE TRIM(s.region) LIKE 'Brno%'", PROBE, "Brno%"),
+    ("R1 a cast column", f"{SS} WHERE CAST(s.code AS VARCHAR) = 'X9'", PROBE, "X9"),
+    ("R1 an upper-cased column's IN", f"{SS} WHERE UPPER(s.region) IN ('BRNO')", PROBE, "BRNO"),
+    (
+        "R1 a simple CASE label",
+        "SELECT CASE s.region WHEN 'Brno' THEN 1 END FROM er.entity.store_sales s",
+        PROBE,
+        "Brno",
+    ),
+    ("R1 a prefixed literal", f"{SS} WHERE s.region = N'Brno'", PROBE, "Brno"),
+    ("an escape-prefixed literal", f"{SS} WHERE s.region = E'Brno'", PROBE, "Brno"),
+    ("a call on the right", f"{SS} WHERE 'Brno' = UPPER(s.region)", PROBE, "Brno"),
+    ("a cast literal", f"{SS} WHERE s.region = CAST('Brno' AS VARCHAR)", PROBE, "Brno"),
+    ("a ::-cast literal", f"{SS} WHERE s.region = 'Brno'::text", PROBE, "Brno"),
+    ("a parenthesised literal", f"{SS} WHERE s.region = ('Brno')", PROBE, "Brno"),
+    ("a wrapped IN element", f"{SS} WHERE s.region IN (UPPER('Brno'), 'x')", PROBE, "Brno"),
+    ("an IN after a call", f"{SS} WHERE LOWER(s.region) NOT IN ('brno')", PROBE, "brno"),
+    (
+        "a CASE expression compared",
+        f"{SS} WHERE CASE WHEN s.a > 0 THEN s.region END = 'Brno'",
+        PROBE,
+        "Brno",
+    ),
+    (
+        "a not-like on a call",
+        f"{SS} WHERE LOWER(s.region) NOT LIKE 'brno%'",
+        PROBE,
+        "brno%",
+    ),
+    # …and what stays untraced or sourced.
+    (
+        "a sourced member, case-folded",
+        f"{SS} WHERE LOWER(s.name) = LOWER('Ostrava')",
+        OSTRAVA,
+        None,
+    ),
+    (
+        "a sourced simple CASE label",
+        f"{SS2} WHERE CASE s.name WHEN 'Ostrava' THEN 1 END = 1",
+        OSTRAVA,
+        None,
+    ),
+    # review-343 ✅R343-A: inside WHERE every literal is traced by position, compared or not.
+    ("two literals compared in WHERE", f"{SS} WHERE 'a' = 'b'", PROBE, "a"),
+    ("a literal against a number in WHERE", f"{SS} WHERE LOWER('x') = 1", PROBE, "x"),
+    (
+        "a date range on a call",
+        f"{SS} WHERE DATE_TRUNC('month', s.sold_on) = DATE '2026-10-01'",
+        PROBE,
+        None,
+    ),
+    ("a month on a call", f"{SS} WHERE TO_CHAR(s.sold_on, 'YYYY-MM') = '2026-10'", PROBE, None),
+    (
+        "a searched CASE's labels",
+        "SELECT CASE WHEN s.region IS NULL THEN 'none' ELSE 'some' END "
+        "FROM er.entity.store_sales s",
+        PROBE,
         None,
     ),
 ]
@@ -339,3 +410,114 @@ def test_the_literal_sources_are_what_the_lattice_carries() -> None:
         assert expected in sources
     # A ref path is no source; only a member ref's key is.
     assert not any("." in s and "#" in s for s in sources)
+
+
+# review-343 ✅R343-A — trace by POSITION, exempt by NAME. Sources: the question alone.
+R343_SOURCES = ("Zobraz tržby za minulý měsíc",)
+R343_FROM = "SELECT SUM(s.amount) FROM er.entity.store_sales s "
+R343_WHERE = R343_FROM + "WHERE "
+R343_REFUSE = [
+    # L3 · concatenation
+    ("concat on the column side", R343_WHERE + "s.region || '' = 'Brno'"),
+    ("concat on the literal side", R343_WHERE + "s.region = '' || 'Brno'"),
+    ("concat column in IN", R343_WHERE + "s.region || '' IN ('Brno')"),
+    ("concat inside IN", R343_WHERE + "s.region IN ('' || 'Brno')"),
+    # L3 · literal-only operand
+    ("COALESCE of literals", R343_WHERE + "s.region = COALESCE(NULL,'Brno')"),
+    ("REPLACE of literals", R343_WHERE + "s.region = REPLACE('Xrno','X','B')"),
+    ("CASE of literals", R343_WHERE + "s.region = CASE WHEN 1 = 1 THEN 'Brno' END"),
+    ("scalar sub-query", R343_WHERE + "s.region = (SELECT 'Brno')"),
+    ("IN sub-query of a literal", R343_WHERE + "s.region IN (SELECT 'Brno')"),
+    # L3 · other operators
+    ("BETWEEN", R343_WHERE + "s.region BETWEEN 'Brno' AND 'Brno'"),
+    ("range", R343_WHERE + "s.region >= 'Brno' AND s.region <= 'Brno'"),
+    ("IS NOT DISTINCT FROM", R343_WHERE + "s.region IS NOT DISTINCT FROM 'Brno'"),
+    ("SIMILAR TO", R343_WHERE + "s.region SIMILAR TO 'Brno'"),
+    ("= ANY(ARRAY[…])", R343_WHERE + "s.region = ANY(ARRAY['Brno'])"),
+    # L3 · a member fed from a sub-query
+    ("derived table", R343_FROM + "JOIN (SELECT 'Brno' AS r) x ON s.region = x.r"),
+    ("VALUES list", R343_FROM + "JOIN (VALUES ('Brno')) v(r) ON s.region = v.r"),
+    (
+        "nested derived table in IN",
+        R343_WHERE + "s.region IN (SELECT r FROM (SELECT 'Brno' AS r) t)",
+    ),
+    (
+        "conditional aggregation",
+        "SELECT SUM(CASE WHEN s.region BETWEEN 'Brno' AND 'Brno' THEN s.amount END) "
+        "FROM er.entity.store_sales s",
+    ),
+    # ✅R329-C's seven rows
+    ("R329-C upper", R343_WHERE + "UPPER(s.region) = 'BRNO'"),
+    ("R329-C lower both", R343_WHERE + "LOWER(s.region) = LOWER('Brno')"),
+    ("R329-C trim like", R343_WHERE + "TRIM(s.region) LIKE 'Brno%'"),
+    ("R329-C cast column", R343_WHERE + "CAST(s.code AS VARCHAR) = 'X9'"),
+    ("R329-C upper IN", R343_WHERE + "UPPER(s.region) IN ('BRNO')"),
+    (
+        "R329-C simple CASE",
+        "SELECT CASE s.region WHEN 'Brno' THEN 1 END FROM er.entity.store_sales s",
+    ),
+    ("R329-C prefixed", R343_WHERE + "s.region = N'Brno'"),
+    # a digit-only member code compared to a column stays traced
+    ("a member code", R343_WHERE + "s.code = '00123'"),
+]
+R343_PASS = [
+    # L1 · period labels compared to a date function
+    ("YYYYMM label", R343_WHERE + "TO_CHAR(s.sold_on,'YYYYMM') = '202610'"),
+    ("MM/YYYY label", R343_WHERE + "TO_CHAR(s.sold_on,'MM/YYYY') = '10/2026'"),
+    ("quarter label", R343_WHERE + """TO_CHAR(s.sold_on,'YYYY-"Q"Q') = '2026-Q3'"""),
+    ("ISO month label", R343_WHERE + "TO_CHAR(s.sold_on,'YYYY-MM') = '2026-10'"),
+    ("a label BETWEEN", R343_WHERE + "TO_CHAR(s.sold_on,'YYYYMM') BETWEEN '202601' AND '202610'"),
+    ("labels IN", R343_WHERE + "TO_CHAR(s.sold_on,'YYYYMM') IN ('202609', '202610')"),
+    ("a number", R343_WHERE + "EXTRACT(YEAR FROM s.sold_on) = 2025"),
+    (
+        "a unit, a typed date, an interval",
+        R343_WHERE + "s.sold_on >= DATE_TRUNC('month', DATE '2026-11-16') - INTERVAL '1' MONTH",
+    ),
+    ("a date function's arguments", R343_WHERE + "s.sold_on >= TO_DATE('01.10.2026','DD.MM.YYYY')"),
+    ("a ::interval cast", R343_WHERE + "s.sold_on >= CURRENT_DATE - '1 month'::interval"),
+    ("a CAST to DATE", R343_WHERE + "s.sold_on >= CAST('1.10.2026' AS DATE)"),
+    (
+        "the outermost select list",
+        "SELECT COALESCE(s.region,'unknown'), "
+        "CASE WHEN s.amount > 0 THEN 'kladné' ELSE 'jiné' END, REPLACE(s.region,'a','b') "
+        "FROM er.entity.store_sales s",
+    ),
+    (
+        "GROUP BY and ORDER BY",
+        "SELECT TO_CHAR(s.sold_on,'YYYY-MM') AS m, SUM(s.amount) FROM er.entity.store_sales s "
+        "GROUP BY TO_CHAR(s.sold_on,'YYYY-MM'), COALESCE(s.region,'?') "
+        "ORDER BY COALESCE(s.region,'?')",
+    ),
+    ("a whole word of the question", R343_WHERE + "s.note LIKE '%tržby%'"),
+]
+
+
+def _r343(sql: str) -> object:
+    return check_reply(
+        reply(sql), allowed_entities=SLICE, carried=CARRIED, literal_sources=R343_SOURCES
+    )
+
+
+@pytest.mark.parametrize(("case", "sql"), R343_REFUSE, ids=[c for c, _ in R343_REFUSE])
+def test_r343_an_invented_member_is_refused_wherever_it_sits(case: str, sql: str) -> None:
+    with pytest.raises(LaneReplyRefused) as exc:
+        _r343(sql)
+    assert exc.value.rule == "literal_unsourced", exc.value.detail
+
+
+@pytest.mark.parametrize(("case", "sql"), R343_PASS, ids=[c for c, _ in R343_PASS])
+def test_r343_periods_dates_and_the_outer_select_list_pass(case: str, sql: str) -> None:
+    _r343(sql)
+
+
+@pytest.mark.parametrize("depth", [65, 2000])
+def test_r343_deep_nesting_is_refused_never_crashes(depth: int) -> None:
+    sql = R343_WHERE + "s.region = " + "(" * depth + "'x'" + ")" * depth
+    with pytest.raises(LaneReplyRefused) as exc:
+        _r343(sql)
+    assert exc.value.rule == "invalid_sql"
+
+
+def test_r343_nesting_up_to_the_cap_is_checked_normally() -> None:
+    sql = R343_WHERE + "s.region = " + "(" * 60 + "'tržby'" + ")" * 60
+    _r343(sql)
