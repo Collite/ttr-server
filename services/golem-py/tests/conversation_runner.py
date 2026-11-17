@@ -323,16 +323,7 @@ class ConversationRun:
             skills=fixture_library(),
             clock=lambda: 1000.0,  # frozen: a byte-identical replay must not race a clock
         )
-        # No `lane:` ⇒ no gateway and no door ⇒ the lane is off (OL-C11), which is how every
-        # fixture written before W1c·S3 runs. With one, all three legs are the recordings.
-        lane = build_lane(turn)
-        if lane is not None:
-            reference_date = lane.reference_date
-            self.deps.settings = GolemSettings(query_world=lane.world)
-            self.deps.llm = lane.gateway
-            self.deps.door = lane.door
-            self.deps.model_slice = lane.slice
-            self.deps.reference_date = lambda: reference_date
+        lane = self._use_lane(turn)
         args = turn["args"]
         state = ResolutionState(
             question=args["text"],
@@ -351,8 +342,29 @@ class ConversationRun:
         self.turn_hypotheses.append(list(self.gate.last_hypotheses))
         self.last_snapshot_id = getattr(output, "snapshot_id", "")
 
+    def _use_lane(self, turn: dict[str, Any]) -> LaneLegs | None:
+        """Give THIS turn its own lane, or none. No `lane:` ⇒ no gateway and no door ⇒ the lane
+        is off (OL-C11), which is how every fixture written before W1c·S3 runs. With one, all
+        three legs are this turn's recordings. A resume never inherits the previous turn's
+        legs (review-343 T1): it would run with the lane on while being recorded as off."""
+        assert self.deps is not None
+        lane = build_lane(turn)
+        if lane is None:
+            self.deps.llm = None
+            self.deps.door = None
+            self.deps.model_slice = None
+            return None
+        reference_date = lane.reference_date
+        self.deps.settings = GolemSettings(query_world=lane.world)
+        self.deps.llm = lane.gateway
+        self.deps.door = lane.door
+        self.deps.model_slice = lane.slice
+        self.deps.reference_date = lambda: reference_date
+        return lane
+
     async def _resume(self, turn: dict[str, Any], index: int) -> None:
         assert self.deps is not None, "a resume turn must follow a turn"
+        lane = self._use_lane(turn)
         if "gate" in turn:
             self.gate = build_gate(turn)
             self.deps.gate = self.gate
@@ -372,7 +384,7 @@ class ConversationRun:
             deps=self.deps,
         )
         self.outputs.append(output)
-        self.lanes.append(None)
+        self.lanes.append(lane)
         self.gate_calls.append(self.gate.calls - before)
         self.turn_hypotheses.append(list(self.gate.last_hypotheses))
         # A resume that pauses AGAIN mints its own snapshot (the key carries the HITL

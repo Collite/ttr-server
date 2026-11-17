@@ -94,9 +94,9 @@ Kotlin shell needs its own.
 
 ## `lane:` — the LLM lane's legs, recorded (OL W1c·S3)
 
-A `golem.turn:v1` turn may carry a `lane:` block. When it does, the lane is ON for that
-turn (OL-C11: the switch is on, and there is a gateway and a door), and all three of its
-legs are recordings:
+A `golem.turn:v1` or `golem.resume:v1` turn may carry a `lane:` block. When it does, the
+lane is ON for that turn (OL-C11: the switch is on, and there is a gateway and a door), and
+all three of its legs are that turn's recordings:
 
 ```jsonc
 "lane": {
@@ -111,7 +111,8 @@ legs are recordings:
 ```
 
 A turn without `lane:` runs with the lane OFF, which is how every fixture written before
-W1c·S3 still runs. A gateway reply that is an object is sent as its JSON text. The door's
+W1c·S3 still runs. A resume never inherits the previous turn's legs: a resume after a lane
+turn either carries its own `lane:` block or runs with the lane off. A gateway reply that is an object is sent as its JSON text. The door's
 `rejected` text is handed back verbatim, as a real door's would be. **Recorded** means
 *replayed*, in the same sense that the core is recorded. The four `ol-lane-*` fixtures
 replay the resolver's own goldens. Their gateway replies and door results are AUTHORED
