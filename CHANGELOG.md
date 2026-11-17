@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.22.3 → 0.22.7; translator/plan-proto stay 0.14.3 (MW S4.1).**
+  Load diagnostics in metadata's `/health` and in refresh warnings now report 1-based columns: the same file shows a
+  column one higher than before (`x.ttrm:12:5` where 0.22.3 showed `x.ttrm:12:4`; `:0:0` still means "no position").
+  metadata, resolver and automation resolve a single translator line (0.14.3; on 0.22.3 automation and resolver took
+  0.14.1 transitively). The `yaml` source kind and `MetadataLoader.of` arrive in the reader. `grounding-lexicon`'s next
+  server-libs POM names ttr-lexicon/ttr-snapshot 0.22.7. The three readers' fat jars are built with Zip64 (✅D-MW-86).
+
 - **golem-py: the CLI takes the LLM lane's settings, and four lane-on conversations join the
   conformance tier (OL W1c·S3).**
   - `src/main.py` builds the door, the gateway and the model slice from `GOLEM_*`. Before
