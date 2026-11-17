@@ -680,7 +680,7 @@ _release-guard:
 #
 # `what`: one of the image modules (by name or path — see `image_modules`;
 #   GHCR only, RELEASE accepted for interface uniformity but changes nothing),
-#   `bundle server-libs` (the 14-module Maven library set — GH Packages always,
+#   `bundle server-libs` (the 16-module Maven library set — GH Packages always,
 #   + Maven Central on RELEASE), or `wheel <name>` (a pure-Python distribution —
 #   see `wheel_modules`; a bare tag BUILDS ONLY, PyPI upload on RELEASE).
 #   `alchemy` is short for `wheel ttr-sqlalchemy` (no image module is called that).
