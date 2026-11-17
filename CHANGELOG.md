@@ -23,6 +23,13 @@ outside this repo could notice is in.
   rewritten to quoted identifiers before parsing, schema detection and saved-query reference extraction. That rewrite also
   catches `ARRAY[…]` and `c[1]` (ttr-core#412). The published `translate-snapshot` and `server-proto` POMs now name 0.14.3.
 
+- **`server-libs` — the grounding kernel published (OL W3·S1).** `org.tatrman:grounding-core` (plan.v1
+  recipe scaffolding: `PlanExpr`, `SqlRenderer`) and `org.tatrman:grounding-lexicon` (the `ground:<kind>`
+  trigger slice: `GroundingSlice`, `GroundingSliceSource`) join the set, which is now sixteen libraries. Same
+  coordinates, POM metadata and sources/javadoc jars as the rest; no code or API change. `grounding-core` depends
+  on `server-proto` and `text`. `grounding-lexicon` depends on `text` and on ttr-core's `ttr-lexicon` and
+  `ttr-snapshot` at the grammar ref.
+
 - **golem-py — the LLM lane's three clients (OL W1c·S1).** The `llm.v1` gateway client (`CreateResponse`:
   a JSON object at temperature 0, model class `capable`, the caller's timeout), the `meta.v1` model slice
   (`GetModel` for `GOLEM_META_PACKAGES`; the bound refs' ER entities first, capped at

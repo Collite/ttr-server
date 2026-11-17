@@ -5,16 +5,21 @@ name: Publish server libraries (GH Packages)
 # staging registry). Tag-driven, mirroring tatrman's publish.yml.
 #
 # Tag → set:
-#   server-libs/v<x.y.z>   the 14-module library set (SV-P1 S2 T1 audit; +2 at FZ-P3; +1 at CH-P2):
+#   server-libs/v<x.y.z>   the 16-module library set (SV-P1 S2 T1 audit; +2 at FZ-P3; +1 at CH-P2;
+#                          +2 at OL W3·S1):
 #     server-proto · otel-config · logging-config · ktor-configurator ·
 #     db-common · data-formatter · lex-matcher-core · text · fuzzy-common ·
-#     whois-common · keycloak-auth · meta-client · llm-client · transfer-core
+#     whois-common · keycloak-auth · meta-client · llm-client · transfer-core ·
+#     grounding-core · grounding-lexicon
 #   (capabilities-client trimmed — no external consumer; see build.gradle.kts.)
 #   FZ-P3 added lex-matcher-core (the extracted fuzzy engine, consumed by a downstream platform)
 #   and text (its S-2 fold dependency — the RG-P0.S3 cross-repo consumer landed).
 #   CH-P2 added transfer-core (the Charon transfer seam, consumed in-process by
 #   tatrman-platform's radegast); this same set's server-proto now also carries
 #   transfer.v1 + metis.v1 (CH-P1) — so ONE server-libs release ships the whole CH cutover.
+#   OL W3·S1 added the grounding kernel, grounding-core + grounding-lexicon (OL-C27): the time
+#   service in ttr-platform builds on them as published artefacts (OL-C28). Their only project
+#   edges are server-proto and text, both already in the set.
 #
 # Version comes from the tag via -Ptatrman-server.version (the build reads that
 # gradle property, NOT -Pversion). RO-24: never re-cut an existing version.
@@ -113,7 +118,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # SV-P1 S4 — public lane (RO-17). The root aggregate
-      # `publishAndReleaseToMavenCentral` uploads ONE signed bundle of all 14 libs
+      # `publishAndReleaseToMavenCentral` uploads ONE signed bundle of all 16 libs
       # to the Central Portal and AUTO-RELEASES it (enabled 2026-07-12 after the
       # first manual release). Skipped until the four credential secrets are set, so
       # the GH Packages lane above stays green in the interim. Secret names ARE the
