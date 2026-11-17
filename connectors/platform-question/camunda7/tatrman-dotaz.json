@@ -1,0 +1,130 @@
+{
+  "$schema": "https://unpkg.com/@camunda/element-templates-json-schema/resources/schema.json",
+  "name": "Tatrman – dotaz",
+  "id": "tatrman-dotaz",
+  "version": 1,
+  "appliesTo": [
+    "bpmn:ServiceTask"
+  ],
+  "properties": [
+    {
+      "type": "Text",
+      "value": "",
+      "binding": {
+        "type": "camunda:field",
+        "name": "tatrman_config"
+      },
+      "label": "Konfigurace",
+      "constraints": {
+        "notEmpty": true
+      }
+    },
+    {
+      "type": "String",
+      "value": "",
+      "binding": {
+        "type": "camunda:inputParameter",
+        "name": "tatrman_params"
+      },
+      "label": "Parametry",
+      "description": "Názvy proměnných oddělené čárkou nebo mezerou"
+    },
+    {
+      "type": "String",
+      "value": "tatrman_vysledek",
+      "binding": {
+        "type": "camunda:inputParameter",
+        "name": "tatrman_result"
+      },
+      "label": "Výsledek",
+      "constraints": {
+        "notEmpty": true
+      }
+    },
+    {
+      "type": "Hidden",
+      "value": true,
+      "binding": {
+        "type": "property",
+        "name": "camunda:asyncBefore"
+      }
+    },
+    {
+      "type": "Hidden",
+      "value": "def raw = execution.getVariable('tatrman_response')\ndef answer = new groovy.json.JsonSlurperClassic().parseText(raw)\ndef resultName = execution.getVariable('tatrman_result') ?: 'tatrman_vysledek'\nexecution.setVariable(resultName, org.camunda.spin.plugin.variable.SpinValues.jsonValue(raw).create())\nexecution.setVariable('tatrman_status', answer.status)\nexecution.setVariable('tatrman_chyba', answer.status == 'error' ? answer.error?.message?.toString() : null)\n(answer.variables ?: [:]).each { name, value ->\n  if (!(name instanceof String) || !(name ==~ /^[A-Za-z_][A-Za-z0-9_]*$/) || name.startsWith('tatrman_')) {\n    java.util.logging.Logger.getLogger('org.tatrman.platform.question').warning('Ignoring invalid or reserved answer variable name: ' + name)\n    return\n  }\n  def typed = value\n  if (value instanceof Map || value instanceof List) {\n    typed = org.camunda.spin.plugin.variable.SpinValues.jsonValue(groovy.json.JsonOutput.toJson(value)).create()\n  } else if (value instanceof BigDecimal && Double.isFinite(value.doubleValue()) &&\n      new BigDecimal(value.doubleValue().toString()).compareTo(value) == 0) {\n    // Use a native Double only when its decimal text round-trips unchanged.\n    typed = value.doubleValue()\n  } else if (value instanceof BigDecimal) {\n    // Spin JSON rounds BigDecimal on readback; built-in Java serialization retains it exactly.\n    typed = org.camunda.bpm.engine.variable.Variables.objectValue(value)\n        .serializationDataFormat('application/x-java-serialized-object').create()\n  } else if (value instanceof BigInteger || (value instanceof CharSequence && value.length() > 4000)) {\n    // JSON-serialized Objects retain integers beyond Long and text beyond the native column.\n    typed = org.camunda.bpm.engine.variable.Variables.objectValue(value instanceof CharSequence ? value.toString() : value)\n        .serializationDataFormat('application/json').create()\n  } else if (value instanceof CharSequence) {\n    typed = value.toString()\n  }\n  execution.setVariable(name, typed)\n}\n",
+      "binding": {
+        "type": "camunda:executionListener",
+        "event": "end",
+        "scriptFormat": "groovy"
+      }
+    }
+  ],
+  "scopes": [
+    {
+      "type": "camunda:Connector",
+      "properties": [
+        {
+          "type": "Hidden",
+          "value": "http-connector",
+          "binding": {
+            "type": "property",
+            "name": "connectorId"
+          }
+        },
+        {
+          "type": "Hidden",
+          "value": "def url = System.getProperty('tatrman.url')\nif (url == null || url.trim().isEmpty())\n  throw new IllegalStateException('engine property tatrman.url is not set')\nurl\n",
+          "binding": {
+            "type": "camunda:inputParameter",
+            "name": "url",
+            "scriptFormat": "groovy"
+          }
+        },
+        {
+          "type": "Hidden",
+          "value": "POST",
+          "binding": {
+            "type": "camunda:inputParameter",
+            "name": "method"
+          }
+        },
+        {
+          "type": "Hidden",
+          "value": "def token = System.getProperty('tatrman.token')\nif (token == null || token.trim().isEmpty())\n  throw new IllegalStateException('engine property tatrman.token is not set')\n['Content-Type':'application/json; charset=UTF-8', 'Accept':'application/json', 'Authorization':'Bearer ' + token]\n",
+          "binding": {
+            "type": "camunda:inputParameter",
+            "name": "headers",
+            "scriptFormat": "groovy"
+          }
+        },
+        {
+          "type": "Hidden",
+          "value": "// camunda:string is literal model data; an inputParameter would evaluate JUEL.\ndef field = execution.bpmnModelElementInstance.extensionElements.elementsQuery\n    .filterByType(org.camunda.bpm.model.bpmn.instance.camunda.CamundaField).list()\n    .find { it.camundaName == 'tatrman_config' }\ndef params = [:]\n(execution.getVariable('tatrman_params') ?: '').split(/[,\\s]+/).findAll { it }.each { name ->\n  def value = execution.getVariable(name)\n  // Missing/null is not SQL NULL: let required params fail and optional params default.\n  if (value == null) return\n  params[name] = value instanceof Date ? value.format(\"yyyy-MM-dd'T'HH:mm:ss\") : value\n}\ngroovy.json.JsonOutput.toJson([config: field?.camundaString?.textContent, params: params])\n",
+          "binding": {
+            "type": "camunda:inputParameter",
+            "name": "payload",
+            "scriptFormat": "groovy"
+          }
+        },
+        {
+          "type": "Hidden",
+          "value": "['connection-timeout':5000, 'socket-timeout':130000, 'connection-request-timeout':5000]",
+          "binding": {
+            "type": "camunda:inputParameter",
+            "name": "request-config",
+            "scriptFormat": "groovy"
+          }
+        },
+        {
+          "type": "Hidden",
+          "value": "tatrman_response",
+          "binding": {
+            "type": "camunda:outputParameter",
+            "source": "// Preserve body text: reading a Spin tree back would re-serialize its numbers.\nif (!(response instanceof CharSequence) || !response.toString().trim().startsWith('{'))\n  throw new IllegalStateException('Tatrman: odpověď HTTP ' + statusCode + ' není JSON služby')\n// Transient strings are never persisted, so the 4,000-character column limit does not apply.\norg.camunda.bpm.engine.variable.Variables.stringValue(response.toString(), true)\n",
+            "scriptFormat": "groovy"
+          }
+        }
+      ]
+    }
+  ]
+}

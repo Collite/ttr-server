@@ -1,0 +1,13 @@
+{
+  "core": {
+    "items": {
+      "entity": "item"
+    },
+    "answer": {
+      "golem": {
+        "agent": "catalogue",
+        "question": "List items"
+      }
+    }
+  }
+}

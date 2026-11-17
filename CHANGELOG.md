@@ -47,6 +47,7 @@ outside this repo could notice is in.
   **`NLS-PACK-006`**: a pipeline naming a stage that is not installed (ERROR, fail-all), or a typed source file
   no installed stage owns (INFO, not read). `nlp` pipelines take `stages: [{stage: <name>, …}]`; `rules:` stays
   as an alias. Two entries naming one stage are a boot error. No proto change; rule behaviour unchanged.
+
 - **automation 0.11.41 — the route invariant tolerates CHAR padding and records `route_padded` (ttr-server#428).**
   Evaluation accepts trailing plain spaces only when the trimmed route or detail-route stamp matches its route port.
   Other whitespace and detail context stamps remain strict. One non-refusing warning
@@ -2101,6 +2102,19 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
+
+- **platform-question 0.11.0 — the external workflow task contract (OL W6·S3).**
+  `connectors/platform-question` publishes the read-only `/automation/query` and
+  `/automation/check` interface, a configuration JSON Schema with examples, English
+  and Czech Camunda 7 element templates, and one generic BPMN sample. CI validates
+  both templates against the vendored official Camunda schema and all 11 examples
+  (four valid, seven invalid, with expected failure reasons). Templates preserve
+  non-round-tripping BigDecimal values through built-in Java Object serialization
+  (HTTP JSON unchanged), fail missing engine properties as incidents, and protect
+  reserved answer variables. Row prefixes and column selections are constrained.
+  Tag `platform-question/v0.11.0` runs `platform-question.yml` to build the folder
+  archive, test it unpacked, and publish the GitHub release; the image lane excludes it.
+  This release contains the contract and template; the bridge follows separately.
 
 ## chrono 0.11.32 — 2026-11-12
 

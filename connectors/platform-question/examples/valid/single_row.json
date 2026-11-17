@@ -1,0 +1,15 @@
+{
+  "core": {
+    "item": {
+      "entity": "item",
+      "where": "id = {item_id}"
+    }
+  },
+  "variables": {
+    "selected": {
+      "kind": "row",
+      "over": "item",
+      "prefix": ""
+    }
+  }
+}

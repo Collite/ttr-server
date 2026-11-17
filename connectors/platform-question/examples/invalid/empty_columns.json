@@ -1,0 +1,8 @@
+{
+  "core": {
+    "item": {
+      "entity": "item",
+      "columns": []
+    }
+  }
+}
