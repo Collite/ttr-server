@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.runner
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.*
@@ -67,6 +73,133 @@ class EvaluateSpec :
                         )
                     result.guards.all { it.status == "passed" } shouldBe true
                     runner.evaluate() shouldBe result
+                }
+            }
+        }
+
+        "a route value padded to the longest literal matches its port and is recorded as a warning" {
+            val logger = LoggerFactory.getLogger(PartRunner::class.java) as Logger
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            logger.addAppender(appender)
+            try {
+                coroutineScope {
+                    val recorded = mutableListOf<EvaluationResult>()
+                    val paddedRoute = "to_customer_care     "
+                    PartRunner(
+                        runnerContext(paddingRecipe()),
+                        Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, paddedRoute))) },
+                        Staging(LocalStagingStore(Files.createTempDirectory("au-eval-padding"))) {},
+                        this,
+                        { _, result -> recorded += result },
+                    ).use { runner ->
+                        val result = runner.evaluate()
+                        result.verdict.routes.mapValues { it.value.rowCount } shouldBe
+                            mapOf("to_customer_care" to 2L, "replacement_no_return" to 1L)
+                        val warnings = Json.encodeToJsonElement(result).jsonObject["warnings"]
+                        warnings shouldBe
+                            Json.parseToJsonElement(
+                                """[{"code":"route_padded","port":"to_customer_care","rows":2}]""",
+                            )
+                        recorded shouldBe listOf(result)
+                        runner.evaluate() shouldBe result
+                        recorded.size shouldBe 1
+                        result.guards.all { it.status == "passed" } shouldBe true
+                        appender.list.filter { it.level == Level.WARN }.map { it.formattedMessage } shouldBe
+                            listOf("route_padded port=to_customer_care rows=2 run=${runner.context.id}")
+                    }
+                }
+            } finally {
+                logger.detachAppender(appender)
+                appender.stop()
+            }
+        }
+
+        "a route value that differs after trimming still fails" {
+            for (cell in listOf(
+                "to_customer_car     ",
+                "to_customer_care\t",
+                "to_customer_care\n",
+                "to_customer_care\u00a0",
+                null,
+                42,
+            )) {
+                supervisorScope {
+                    PartRunner(
+                        runnerContext(paddingRecipe()),
+                        Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, cell))) },
+                        Staging(LocalStagingStore(Files.createTempDirectory("au-eval-mismatch"))) {},
+                        this,
+                        { _, _ -> error("a mismatched route must not be journalled") },
+                    ).use { runner ->
+                        shouldThrow<IllegalArgumentException> { runner.evaluate() }.message shouldBe
+                            "route column differs from its port"
+                    }
+                }
+            }
+        }
+
+        "padded detail routes are warned with their full port name" {
+            coroutineScope {
+                PartRunner(
+                    runnerContext(paddingRecipe(detail = true)),
+                    Door { read -> ReadResult(Table(read.columns, detailPaddingRows(read.sql))) },
+                    Staging(LocalStagingStore(Files.createTempDirectory("au-eval-detail-padding"))) {},
+                    this,
+                    { _, _ -> },
+                ).use { runner ->
+                    val result = runner.evaluate()
+                    result.warnings shouldBe
+                        listOf(
+                            EvaluationWarning("route_padded", "to_customer_care", 2),
+                            EvaluationWarning("route_padded", "to_customer_care.lines", 1),
+                        )
+                    result.verdict.routes
+                        .getValue("to_customer_care")
+                        .detail shouldBe
+                        mapOf("lines" to "/automation/runs/${runner.context.id}/routes/to_customer_care/details/lines")
+                }
+            }
+        }
+
+        "detail route mismatches and padded context stamps still fail" {
+            val badStamps =
+                listOf(
+                    "to_customer_car     " to "lines",
+                    "to_customer_care\t" to "lines",
+                    "to_customer_care\u00a0" to "lines",
+                    null to "lines",
+                    42 to "lines",
+                    "to_customer_care     " to "lines ",
+                    "to_customer_care     " to "lines\t",
+                )
+            for ((route, context) in badStamps) {
+                supervisorScope {
+                    PartRunner(
+                        runnerContext(paddingRecipe(detail = true)),
+                        Door { read -> ReadResult(Table(read.columns, detailPaddingRows(read.sql, route, context))) },
+                        Staging(LocalStagingStore(Files.createTempDirectory("au-eval-detail-mismatch"))) {},
+                        this,
+                        { _, _ -> error("a mismatched detail must not be journalled") },
+                    ).use { runner ->
+                        shouldThrow<IllegalArgumentException> { runner.evaluate() }.message shouldBe
+                            "detail stamp differs from its port"
+                    }
+                }
+            }
+        }
+
+        "an unpadded run records no warning" {
+            coroutineScope {
+                PartRunner(
+                    runnerContext(paddingRecipe()),
+                    Door { read -> ReadResult(Table(read.columns, paddingRows(read.sql, "to_customer_care"))) },
+                    Staging(LocalStagingStore(Files.createTempDirectory("au-eval-unpadded"))) {},
+                    this,
+                    { _, _ -> },
+                ).use { runner ->
+                    Json { encodeDefaults = true }
+                        .encodeToJsonElement(runner.evaluate())
+                        .jsonObject["warnings"] shouldBe JsonArray(emptyList())
                 }
             }
         }
@@ -282,4 +415,90 @@ internal fun evaluationRows(name: String): List<List<Any?>> =
         "also" -> listOf(listOf(1L, "a", "also", "another SQL reason"))
         "empty" -> emptyList()
         else -> error("unexpected statement")
+    }
+
+private fun paddingRecipe(detail: Boolean = false): LoadedRecipe {
+    val original = evaluationRecipe()
+    val names = mapOf("yes" to "to_customer_care", "also" to "replacement_no_return")
+    val recipe =
+        original.recipe.copy(
+            roles =
+                original.recipe.roles!!.copy(
+                    routes =
+                        names.values.map {
+                            ManifestRoute(
+                                it,
+                                detail =
+                                    if (detail &&
+                                        it == "to_customer_care"
+                                    ) {
+                                        listOf("lines")
+                                    } else {
+                                        emptyList()
+                                    },
+                            )
+                        },
+                ),
+        )
+    val islands =
+        original.manifest.islands.map { island ->
+            if (island.name == "way") {
+                island.copy(
+                    outputs =
+                        island.outputs.filter { it.port in names }.map {
+                            it.copy(
+                                port = names.getValue(it.port),
+                            )
+                        } +
+                            if (detail) {
+                                listOf(
+                                    ManifestOutput(
+                                        "to_customer_care.lines",
+                                        "yes.lines",
+                                        columns =
+                                            KEY_COLUMNS +
+                                                listOf(
+                                                    ManifestColumn("route", "text"),
+                                                    ManifestColumn("context", "text"),
+                                                ),
+                                        keyed = true,
+                                        storage = "erp_db",
+                                    ),
+                                )
+                            } else {
+                                emptyList()
+                            },
+                )
+            } else {
+                island
+            }
+        }
+    return original.copy(
+        recipe = recipe,
+        manifest = original.manifest.copy(recipe = recipe, islands = islands),
+        statements = original.statements + ("yes.lines" to "yes.lines"),
+    )
+}
+
+private fun detailPaddingRows(
+    name: String,
+    route: Any? = "to_customer_care     ",
+    context: String = "lines",
+): List<List<Any?>> =
+    if (name == "yes.lines") {
+        listOf(listOf(BigDecimal.ONE, "a", route, context))
+    } else {
+        paddingRows(name, "to_customer_care     ")
+    }
+
+private fun paddingRows(
+    name: String,
+    careRoute: Any?,
+): List<List<Any?>> =
+    evaluationRows(name).map { row ->
+        when (name) {
+            "yes" -> row.toMutableList().also { it[2] = careRoute }
+            "also" -> row.toMutableList().also { it[2] = "replacement_no_return" }
+            else -> row
+        }
     }

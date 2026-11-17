@@ -112,6 +112,8 @@ class NlpServicer(nlp_pb2_grpc.NlpServiceServicer):
             self._orchestrator,
             morph=self._morph,
             queue=self._queue,
+            # The loader's stages, so a run and a load never see two groups.
+            stages=getattr(self._packs, "stages", None),
         )
 
     @property

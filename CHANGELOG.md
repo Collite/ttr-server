@@ -38,6 +38,23 @@ outside this repo could notice is in.
     gateway replies, door outcomes, reference date) and four fixtures: `ol-lane-covered`,
     `ol-lane-relative-period`, `ol-lane-door-repair` and `ol-lane-query-not-written`. The
     five heroes still run with the lane off, unchanged.
+- **`ttr-nlp` and `nlp` — pipeline stages through the `ttrnlp.stages` group (OL W1b·S1).** New
+  module `ttrnlp.stages`: the `Stage` protocol, `StageTrace`, `installed_stages()`. The loader, `validate_sources`,
+  the `ttr-nlp validate` CLI and the `nlp` runner reach stages through the group only; the rule engine is
+  registered there by this wheel (`rules = "ttrnlp.rules.stage:RulesStage"`). `LoadedState.stages` and
+  `.stage_status` are new; `LoadedState.packs` / `Gathered.packs` are read-only views of the `rules` stage until
+  the rule engine moves out; `loader.PACK_SUFFIX` is gone (`ttrnlp.rules.stage.PACK_SUFFIX`). New code
+  **`NLS-PACK-006`**: a pipeline naming a stage that is not installed (ERROR, fail-all), or a typed source file
+  no installed stage owns (INFO, not read). `nlp` pipelines take `stages: [{stage: <name>, …}]`; `rules:` stays
+  as an alias. Two entries naming one stage are a boot error. No proto change; rule behaviour unchanged.
+- **automation 0.11.41 — the route invariant tolerates CHAR padding and records `route_padded` (ttr-server#428).**
+  Evaluation accepts trailing plain spaces only when the trimmed route or detail-route stamp matches its route port.
+  Other whitespace and detail context stamps remain strict. One non-refusing warning
+  per padded port, including its row count, is persisted in the decision, surfaced in run status and logged at WARN.
+  Both durable and session status carry the warnings; decision readers ignore future additive fields.
+  Genuine mismatches and the other decision invariants still fail; older decisions default to no warnings.
+  Rolling back below 0.11.41 breaks run status for decisions that recorded a warning.
+
 - **golem-py — the LLM lane at `emit` (OL W1c·S2).** With `GOLEM_LLM_LANE_ENABLED` (default on), a gateway
   and a door configured, a question that composed and carries no blocking gap is answered by one `llm.v1`
   call that writes a `SELECT` over the model slice's `er.*` entities (prompt: `config/llm-lane-prompt.md`).

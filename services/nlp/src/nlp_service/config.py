@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -123,12 +123,38 @@ class SourcesConfig(BaseModel):
 
 
 class RuleRef(BaseModel):
-    """One `(pack, phase)` step of a pipeline's rule stage."""
+    """One `(pack, phase)` step of a pipeline's rule stage — the `rules:` alias."""
 
     model_config = ConfigDict(extra="forbid")
 
     pack: str
     phase: str
+
+
+#: The stage the `rules:` key aliases (OL-C7).
+RULES_STAGE = "rules"
+
+
+class StageRef(BaseModel):
+    """One step of a pipeline's `stages:` (OL-C7): `{stage: <name>, …its own keys}`.
+
+    The keys besides `stage` belong to the stage and are not this service's to
+    know; they are kept as given, and the stage checks them (`check_refs`) when
+    the snapshot loads.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    stage: str = Field(min_length=1)
+
+    def params(self) -> Dict[str, object]:
+        """The stage's own keys, in the order written."""
+        return dict(self.model_extra or {})
+
+    def label(self) -> str:
+        """The step name `GetStatus` reports: the stage's values joined by `:`
+        (`hero-patterns:query-match` for a rules step), or the stage's name."""
+        return ":".join(str(v) for v in self.params().values()) or self.stage
 
 
 #: The two in-process steps a `morph: true` pipeline runs instead of calling a
@@ -153,7 +179,12 @@ MORPH_COVERED_OPS = frozenset({"TOKENIZE", "LEMMATIZE"})
 
 class PipelineConfig(BaseModel):
     """A named pipeline (contracts §7): engine ops, then gazetteer lists, then
-    rule phases — in that order, and in the order written.
+    its stages (OL-C7) — in that order, and in the order written.
+
+    `rules: [{pack, phase}]` stays valid and means the same entries with
+    `stage: rules`; it is folded into `stages` on validation, so everything
+    after this model sees `stages` only. A pipeline writing both is refused —
+    which of the two orders it meant is not something to guess.
 
     `morph: true` (LM, NLS-P9.1) swaps the front of that for the in-process
     Czech morphology: our own tokenizer and the snapshot annotator, replacing
@@ -167,8 +198,21 @@ class PipelineConfig(BaseModel):
 
     ops: List[str] = Field(default_factory=list)
     gazetteer: List[str] = Field(default_factory=list)
+    stages: List[StageRef] = Field(default_factory=list)
     rules: List[RuleRef] = Field(default_factory=list)
     morph: bool = False
+
+    @model_validator(mode="after")
+    def _fold_the_rules_alias(self) -> "PipelineConfig":
+        if self.rules and self.stages:
+            raise ValueError("a pipeline writes `stages:` or the `rules:` alias, not both")
+        if self.rules:
+            self.stages = [
+                StageRef(stage=RULES_STAGE, pack=ref.pack, phase=ref.phase)
+                for ref in self.rules
+            ]
+            self.rules = []
+        return self
 
     def engine_ops(self) -> List[str]:
         """The ops that still go to a backend when the morph front runs."""
@@ -190,7 +234,7 @@ class PipelineConfig(BaseModel):
         return [
             *ops,
             *self.gazetteer,
-            *(f"{ref.pack}:{ref.phase}" for ref in self.rules),
+            *(ref.label() for ref in self.stages),
         ]
 
 
