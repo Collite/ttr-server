@@ -1,0 +1,16 @@
+{
+  "core": {
+    "answer": {
+      "golem": {
+        "agent": "catalogue",
+        "question": "Which items cost more than {minimum}?"
+      }
+    }
+  },
+  "variables": {
+    "outcome": {
+      "kind": "verdict",
+      "over": "answer"
+    }
+  }
+}
