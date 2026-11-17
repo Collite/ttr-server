@@ -167,6 +167,27 @@ Engine polling contract (D-47):
    The production queue and maintenance share the configured ledger clock. A missing/released context fails closed; restarting cannot reconstruct today's recipe as
    the old run, and an existing key may remain held until the ledger's existing budget-plus-two-minute claim rule.
 
+Answer runs (S3.5, D-230 — D-159 completed). An Open whose `engine` block carries `taskId` + `answeredBy`, verified
+against the engine's task history and sent by the engine client, is a **decision, not a run of the recipe**:
+`POST /automation/recipes/{r}/runs { deployment, port: { key: { keyColumn: value, … } }, engine: { instanceId,
+businessKey, deploymentId, taskId, answeredBy } }`. It finds the newest `waiting` run of that recipe and deployment the
+engine opened in `instanceId` without a task, commits the held group of `port.key` (the hold group is the candidate
+key: only that key's held rows apply, the other keys stay held), records the decision on those rows as `{ decision:
+"commit", by: answeredBy, at, answer: <answer run id> }`, and closes — all at Open. The answer run is a run of kind
+`answer` (the six engine columns, the `people` entry, one `writes` entry with `answer: true`); it has no batch and no
+executor. Response `201 { runId, status: "closed", answer: { original, batch, key, decision, by, applied, skipped,
+failed, unknown, replayed } }`; the same answer again (the same `idempotencyKey`, else the same engine task and key) is
+`200 replayed: true` with that outcome; a key decided before answers `200` with `answer.replayed: true` and applies
+nothing. The engine chain is therefore **Open → status**: `evaluate`, part reads and `close` of an answer run are
+`409 close-not-ready · answer-run`. `role.ops` is not asked of the engine client — the approval is the person's, proved
+by the engine's history; the run's D-99 fingerprints must still be served (`409 superseded`, nothing applied).
+Refusals: `409 answer-unmatched · no-waiting-run | no-held-key`, `400 port · key-not-object | key-missing` (the key is
+always the object), `400 engine · decision-unsupported` (v1 approves only; `decision: "approve"` is the default). A
+refusal after the claim leaves the answer run `failed` with its error code; that frees its idempotency key, so the
+engine's retry decides. `GET /automation/runs/{id}` gains `kind` and `answer`; on the original run each action of a
+decided key carries `decided`, and `batch.held` counts the held rows still undecided. A row an obligation shares
+between two keys belongs to the first key's group (a known v1 limit, as on the dev route).
+
 `RunSessions` enforces the batch budget from the **committed** `runs.started_at` returned by a new claim,
 not from HTTP arrival, user `asOf`, delivery or evaluation start. Idle time, queue wait and all evaluation waves
 share that deadline. The monitor rechecks the injected clock at most every 250ms, and API reads/polls check it

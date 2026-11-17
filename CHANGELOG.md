@@ -16,6 +16,17 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation 0.11.42 — an answer run decides the answered key's held rows at Open (D-159 completed; ttr-server#429).**
+  A verified engine answer (`engine.taskId` + `answeredBy`, from the engine client) no longer re-runs the recipe and
+  holds the approved key again: it finds the instance's waiting run, commits that key's held group (D-99 first; no
+  `role.ops`), records `{ decision, by, at, answer }` on the rows and closes at Open — a run of the new kind `answer`
+  (migration V14), `201 { status: "closed", answer: {…} }`. Its `evaluate`, part reads and `close` are
+  `409 close-not-ready · answer-run`; unmatched answers are the new `409 answer-unmatched`; `engine.decision` other than
+  `approve` is `400 engine · decision-unsupported`; a bare-scalar `port.key` is `400 port · key-not-object`. Run status
+  gains `kind`, `answer`, `actions[].decided` and `batch.held`. V14 only widens the `kind` check and adds an index;
+  Flyway's default ignores it as a future migration on a rollback below 0.11.42, whose service then reads `answer` runs
+  as closed runs and runs an answer Open as an ordinary run again (the pre-S3.5 behaviour).
+
 - **golem-py: the CLI takes the LLM lane's settings, and four lane-on conversations join the
   conformance tier (OL W1c·S3).**
   - `src/main.py` builds the door, the gateway and the model slice from `GOLEM_*`. Before
