@@ -324,3 +324,35 @@ set's modules are exclusive to GitHub Packages `Collite/ttr-server` and Maven Lo
 ```
 
 (`org.tatrman` lines only.) `clean build` on the same lane compiled both consumer classes.
+
+## OL W1b·S1 internal release — the `ttrnlp.stages` group, 2026-11-17
+
+`nlp/v0.11.6` points to merge `d6e11b8372c7eb4ee1c1751967b85554ede10ce3` of
+[#430](https://github.com/Collite/ttr-server/pull/430) (review-335: one repair round, then PASS; PR CI
+[44069877169](https://github.com/Collite/ttr-server/actions/runs/44069877169) green on head `97fc2d39`).
+The next free version was checked against the remote `nlp/v*` tags and GHCR before the cut: both ended at 0.11.5.
+
+| Tag | Published artifact | Release CI |
+|---|---|---|
+| `nlp/v0.11.6` | `ghcr.io/collite/nlp:0.11.6` | [44084166582](https://github.com/Collite/ttr-server/actions/runs/44084166582), green on `d6e11b83` |
+
+Manifest-list digest: `nlp:0.11.6` → `sha256:3c4e15f1011f99bf06fd7cd62c8eed148bc06b2f36c3268d2b58efee3a22a0e1`
+(`linux/amd64`, plus its attestation manifest).
+
+The rule engine now reaches the loader and the runner through the `ttrnlp.stages` entry-point group (OL-C6…C10);
+pipelines take `stages:`, and `rules:` stays as an alias. Pipeline config, traces and `nlp.v1` are unchanged.
+No library cut, no pin change and no cluster roll in this stage.
+
+### Released-image check
+
+The image was pulled by digest and run on a developer Mac (`--platform linux/amd64`) with bp-dsk's nlp
+values: `NLP_LANE=option`; `NLP_PIPELINES` with the gazetteer-only `hartland-mini-mentions` pipeline;
+`/etc/nlp/packs` mounted with only the `nlp-packs` ConfigMap's README; and `/etc/nlp/lists` mounted with the four
+`estate/nlp-lists/*.list.yaml`. Boot log: `packs loaded: state_id=03570ff8a2a062d6 packs=0 lists=4 pipelines=1`.
+`grpcurl -plaintext -emit-defaults … org.tatrman.nlp.v1.NlpService/GetStatus` answered `ready: true`, plus:
+
+```json
+{"stateId": "03570ff8a2a062d6", "packsLoaded": 0, "listsLoaded": 4, "diagnostics": []}
+```
+
+`installed_stages()` in the container returned `['rules']`. The container was removed afterwards.
