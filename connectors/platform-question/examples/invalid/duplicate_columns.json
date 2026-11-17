@@ -1,0 +1,11 @@
+{
+  "core": {
+    "item": {
+      "entity": "item",
+      "columns": [
+        "id",
+        "id"
+      ]
+    }
+  }
+}

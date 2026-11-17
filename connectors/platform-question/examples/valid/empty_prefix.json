@@ -1,0 +1,15 @@
+{
+  "core": {
+    "record": {
+      "table": "item",
+      "where": "id = {item_id}"
+    }
+  },
+  "variables": {
+    "fields": {
+      "kind": "row",
+      "over": "record",
+      "prefix": ""
+    }
+  }
+}

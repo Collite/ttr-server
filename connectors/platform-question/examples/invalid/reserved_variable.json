@@ -1,0 +1,13 @@
+{
+  "core": {
+    "items": {
+      "entity": "item"
+    }
+  },
+  "variables": {
+    "tatrman_status": {
+      "kind": "exists",
+      "over": "items"
+    }
+  }
+}
