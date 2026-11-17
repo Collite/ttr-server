@@ -32,11 +32,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from ttrnlp.packs.diag import NLS_PACK_001, Diagnostic
 from ttrnlp.packs.diag import error as diagnostic
 from ttrnlp.packs.loader import LoadedState, LoadError, load_sources
+from ttrnlp.stages import Stage, installed_stages
 
 from nlp_service.config import AppConfig
 from nlp_service.diagnostics import NLS_PACK_010, meaning
@@ -51,9 +53,18 @@ def _now() -> str:
 class PackState:
     """Owns the current `LoadedState`. Built at boot, replaced by `reload()`."""
 
-    def __init__(self, config: AppConfig, *, clock=_now):
+    def __init__(
+        self,
+        config: AppConfig,
+        *,
+        clock=_now,
+        stages: Mapping[str, Stage] | None = None,
+    ):
         self._config = config
         self._clock = clock
+        # Resolved once, here: a clash in the `ttrnlp.stages` group is a boot
+        # error (`StageError`), not a diagnostic a reload could clear (OL-C6).
+        self._stages = installed_stages() if stages is None else stages
         self._lock = asyncio.Lock()
         self._state: LoadedState | None = None
         self._boot_diagnostics: list[Diagnostic] = []
@@ -65,6 +76,11 @@ class PackState:
     def state(self) -> LoadedState | None:
         """The serving snapshot, or `None` if no load has ever succeeded."""
         return self._state
+
+    @property
+    def stages(self) -> Mapping[str, Stage]:
+        """The installed stages every load and reload goes through."""
+        return self._stages
 
     @property
     def diagnostics(self) -> list[Diagnostic]:
@@ -98,7 +114,10 @@ class PackState:
         }
         try:
             state = load_sources(
-                self.sources(), pipelines=pipelines, loaded_at=self._clock()
+                self.sources(),
+                pipelines=pipelines,
+                loaded_at=self._clock(),
+                stages=self._stages,
             )
         except LoadError as exc:
             return None, list(exc.diagnostics)
