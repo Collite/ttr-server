@@ -1,0 +1,199 @@
+{
+  "name": "release_order",
+  "key": [
+    "order.order_number"
+  ],
+  "asOf": "now",
+  "document": "releasing-a-placed-order.md",
+  "parameters": [
+    {
+      "name": "tolerance",
+      "type": "decimal",
+      "value": "0.01"
+    },
+    {
+      "name": "confirmation_threshold",
+      "type": "decimal",
+      "value": "50000"
+    }
+  ],
+  "roles": {
+    "candidates": "placed_orders",
+    "contexts": [
+      {
+        "name": "shortfall",
+        "class": "per-candidate",
+        "kind": "sql"
+      },
+      {
+        "name": "price_differences",
+        "class": "per-candidate",
+        "kind": "sql"
+      },
+      {
+        "name": "overdue",
+        "class": "per-candidate",
+        "kind": "sql"
+      }
+    ],
+    "decision": "verdict",
+    "routes": [
+      {
+        "name": "hold_sales",
+        "because": "stock shortfall or price difference",
+        "detail": [
+          "shortfall",
+          "price_differences"
+        ],
+        "turnFed": false
+      },
+      {
+        "name": "hold_ar",
+        "because": "overdue invoices",
+        "detail": [
+          "overdue"
+        ],
+        "turnFed": false
+      },
+      {
+        "name": "release_confirmed",
+        "because": "all checks passed; above the confirmation threshold",
+        "detail": [],
+        "turnFed": false
+      },
+      {
+        "name": "release",
+        "because": "all checks passed",
+        "detail": [],
+        "turnFed": false
+      }
+    ],
+    "switchMode": "overlapping",
+    "elseRoute": null
+  },
+  "wiring": [
+    {
+      "routes": [
+        "verdict.release"
+      ],
+      "action": "release",
+      "columns": {
+        "order": "order_number"
+      },
+      "when": null
+    },
+    {
+      "routes": [
+        "verdict.release_confirmed"
+      ],
+      "action": "ask",
+      "columns": {
+        "who": "role.sales_manager",
+        "about": "order_number",
+        "action": "release",
+        "due": "2 working_days"
+      },
+      "when": null
+    },
+    {
+      "routes": [
+        "verdict.hold_sales"
+      ],
+      "action": "hold",
+      "columns": {
+        "order": "order_number",
+        "department": "\"Sales\""
+      },
+      "when": null
+    },
+    {
+      "routes": [
+        "verdict.hold_sales"
+      ],
+      "action": "notify",
+      "columns": {
+        "who": "role.sales",
+        "detail": "shortfall, price_differences"
+      },
+      "when": null
+    },
+    {
+      "routes": [
+        "verdict.hold_ar"
+      ],
+      "action": "hold",
+      "columns": {
+        "order": "order_number",
+        "department": "\"AR\""
+      },
+      "when": null
+    },
+    {
+      "routes": [
+        "verdict.hold_ar"
+      ],
+      "action": "notify",
+      "columns": {
+        "who": "role.ar",
+        "detail": "overdue"
+      },
+      "when": null
+    }
+  ],
+  "kinds": [
+    "sql"
+  ],
+  "mode": "per-candidate",
+  "windows": [],
+  "verdictSchema": {
+    "entity": "release_order_verdict",
+    "columns": [
+      {
+        "name": "run",
+        "type": "text"
+      },
+      {
+        "name": "as_of",
+        "type": "timestamp"
+      },
+      {
+        "name": "order_number",
+        "type": "text"
+      },
+      {
+        "name": "route",
+        "type": "text"
+      },
+      {
+        "name": "verdict_reason",
+        "type": "text"
+      },
+      {
+        "name": "parameters_fp",
+        "type": "text"
+      },
+      {
+        "name": "run_as",
+        "type": "text"
+      },
+      {
+        "name": "written_at",
+        "type": "timestamp"
+      }
+    ],
+    "detail": "release_order_verdict_detail",
+    "current": "release_order_verdict_current"
+  },
+  "objectsRead": [
+    "er.entity.order",
+    "er.entity.sales_line",
+    "er.entity.inventory",
+    "er.entity.invoice",
+    "er.entity.price_list"
+  ],
+  "fingerprints": {
+    "text": "sha256:76049a8677a1a57d5264ddbff9ba57037c74eabef4963e0d2ed7d89111da959f",
+    "values": "sha256:6c63016f02df4d40daf1b4cdb247c36d5ec8dad2633083a0608265710d03e126"
+  },
+  "protocol": "always"
+}

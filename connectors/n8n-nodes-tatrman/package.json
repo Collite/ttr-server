@@ -1,0 +1,65 @@
+{
+  "name": "@collite/n8n-nodes-tatrman",
+  "version": "0.1.0",
+  "description": "Tatrman Automation nodes for n8n",
+  "license": "UNLICENSED",
+  "author": {
+    "name": "Collite",
+    "email": "info@collite.com"
+  },
+  "homepage": "https://github.com/Collite/kantheon/tree/master/connectors/n8n-nodes-tatrman",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Collite/kantheon.git",
+    "directory": "connectors/n8n-nodes-tatrman"
+  },
+  "keywords": [
+    "n8n-community-node-package"
+  ],
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "scripts/entrypoint.sh"
+  ],
+  "engines": {
+    "node": ">=22.16"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/copy-icons.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "lint": "eslint .",
+    "scan": "node scripts/scan.mjs",
+    "prepack": "pnpm build"
+  },
+  "peerDependencies": {
+    "luxon": "3.7.2",
+    "n8n-workflow": "2.44.2"
+  },
+  "devDependencies": {
+    "@n8n/scan-community-package": "0.40.0",
+    "@types/luxon": "3.2.0",
+    "@types/node": "22.20.1",
+    "eslint": "9.39.1",
+    "luxon": "3.7.2",
+    "n8n-workflow": "2.44.2",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.2",
+    "vitest": "3.2.7"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/TatrmanAutomationApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Tatrman/TatrmanRun.node.js",
+      "dist/nodes/Tatrman/TatrmanTrigger.node.js"
+    ]
+  }
+}
