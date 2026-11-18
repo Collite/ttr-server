@@ -17,15 +17,17 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 /**
  * S2.8 (D-239, ttr-server#443): the wiring a preview refusal belongs to. [wiring] is the wiring's key — its position in
- * the recipe, its routes and its action (`#1:way.hold->release`); [kind] is `expression` or `condition`.
+ * the recipe, its routes and its action (`#1:way.hold->release`); [kind] is `expression`, `condition` or `mapping`. A
+ * refusal no single wiring owns (the obligation snapshot, kind `snapshot`) names no [wiring] and no [action].
  */
 internal data class PreviewSite(
     val run: String,
-    val wiring: String,
-    val action: String,
+    val wiring: String?,
+    val action: String?,
     val kind: String = "expression",
 ) {
     companion object {
@@ -54,7 +56,7 @@ internal object PreviewRefusals {
     private val log = LoggerFactory.getLogger(PreviewRefusals::class.java)
 
     /** A refusal already named (and logged) by an inner guard passes through unchanged. */
-    private fun named(error: Throwable): Boolean =
+    fun named(error: Throwable): Boolean =
         error is AutomationException && error.code == ErrorCode.PREVIEW_UNSUPPORTED && error.detail != null
 
     fun cause(error: Throwable): String =
@@ -70,13 +72,13 @@ internal object PreviewRefusals {
         error: Throwable,
         data: () -> Redaction = { Redaction.NONE },
     ): Nothing {
-        if (error is AutomationException && named(error)) throw error
+        if (named(error)) throw error
         val cause = cause(error)
         val detail =
             buildJsonObject {
                 site?.let {
-                    put("wiring", it.wiring)
-                    put("action", it.action)
+                    it.wiring?.let { wiring -> put("wiring", wiring) }
+                    it.action?.let { action -> put("action", action) }
                     put("kind", it.kind)
                 }
                 expression?.let { put("expression", it) }
@@ -105,17 +107,22 @@ internal object PreviewRefusals {
         throw AutomationException(ErrorCode.PREVIEW_UNSUPPORTED, message, detail)
     }
 
-    /** Names refusals that carry no detail of their own, e.g. the obligation transition mapping's. */
+    /**
+     * Names refusals that carry no detail of their own — the native writer, obligation and obligation transition
+     * mappings — with a fixed [cause] token: their own messages may quote data, so they reach neither the detail nor
+     * the log.
+     */
     inline fun <T> naming(
         site: PreviewSite,
         cause: String,
+        kind: String = "mapping",
         block: () -> T,
     ): T =
         try {
             block()
         } catch (e: AutomationException) {
             if (e.code != ErrorCode.PREVIEW_UNSUPPORTED || e.detail != null) throw e
-            refuse(e.message ?: e.code.code, site.copy(kind = "mapping"), null, PreviewRefused(cause))
+            refuse(e.message ?: e.code.code, site.copy(kind = kind), null, PreviewRefused(cause))
         }
 
     /**
@@ -134,7 +141,10 @@ internal object PreviewRefusals {
 
     private const val ROUTED_MIN = 3
 
-    /** Every rendering is replaced, longest first, so a shorter value never splits a longer one. */
+    /**
+     * Every rendering is replaced, longest first, so a shorter value never splits a longer one. A bound rendering
+     * shorter than [ROUTED_MIN] is replaced only as a whole token: a binding of `3` hides `row 3`, not `INT32`.
+     */
     internal fun redact(
         message: String,
         bound: Sequence<Any?>,
@@ -144,8 +154,21 @@ internal object PreviewRefusals {
         val forms = sortedSetOf<String>(compareByDescending<String> { it.length }.thenBy { it })
         bound.forEach { forms += renderings(it) }
         routed.forEach { value -> forms += renderings(value).filter { it.length >= ROUTED_MIN } }
-        return forms.fold(message) { text, form -> if (form.isEmpty()) text else text.replace(form, "?") }
+        return forms.fold(message) { text, form ->
+            when {
+                form.isEmpty() -> text
+                form.length < ROUTED_MIN ->
+                    text.replace(
+                        Regex("$TOKEN_EDGE_BEFORE${Regex.escape(form)}$TOKEN_EDGE_AFTER"),
+                        "?",
+                    )
+                else -> text.replace(form, "?")
+            }
+        }
     }
+
+    private const val TOKEN_EDGE_BEFORE = "(?<![A-Za-z0-9_.])"
+    private const val TOKEN_EDGE_AFTER = "(?![A-Za-z0-9_.])"
 
     private fun renderings(
         value: Any?,
@@ -164,19 +187,19 @@ internal object PreviewRefusals {
             value is Instant -> temporal(value.atOffset(ZoneOffset.UTC))
             value is OffsetDateTime -> temporal(value)
             value is ZonedDateTime -> temporal(value.toOffsetDateTime())
-            value is LocalDateTime -> setOf(value.toString(), value.toString().replace('T', ' '))
+            value is LocalDateTime -> local(value)
             else -> setOf(value.toString())
         }
 
     private fun temporal(value: OffsetDateTime): Set<String> {
         val utc = value.withOffsetSameInstant(ZoneOffset.UTC)
-        val local = utc.toLocalDateTime().toString()
-        return setOf(
-            value.toString(),
-            utc.toInstant().toString(),
-            local,
-            local.replace('T', ' '),
-            utc.toLocalDate().toString(),
-        )
+        return setOf(value.toString(), utc.toInstant().toString(), utc.toLocalDate().toString()) +
+            local(utc.toLocalDateTime())
     }
+
+    /** ISO `toString` drops zero seconds (`12:30`); the engine prints them (`12:30:00`): both are redacted. */
+    private fun local(value: LocalDateTime): Set<String> =
+        setOf(value.toString(), value.format(SECONDS)).flatMap { listOf(it, it.replace('T', ' ')) }.toSet()
+
+    private val SECONDS = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss")
 }

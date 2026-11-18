@@ -128,7 +128,9 @@ class ApplyPlanner(
                     }
                 val obligation =
                     if (action.sinks[Bundle.NATIVE] == "obligation" && action.transition == null) {
-                        PreviewObligation.resolve(action, metadata, metadata.targets[wiring.action])
+                        PreviewRefusals.naming(site, OBLIGATION) {
+                            PreviewObligation.resolve(action, metadata, metadata.targets[wiring.action])
+                        }
                     } else {
                         null
                     }
@@ -187,19 +189,25 @@ class ApplyPlanner(
                                 if (action.sinks[Bundle.NATIVE] ==
                                     "writer"
                                 ) {
-                                    PreviewWriter.resolve(action, metadata.entities, targets)
+                                    PreviewRefusals.naming(site, WRITER) {
+                                        PreviewWriter.resolve(action, metadata.entities, targets)
+                                    }
                                 } else {
                                     null
                                 }
-                            writer?.validateArguments(assignmentNames(action, argumentNames))
-                            obligation?.validateArguments(assignmentNames(action, argumentNames))
+                            PreviewRefusals.naming(site, WRITER) {
+                                writer?.validateArguments(assignmentNames(action, argumentNames))
+                            }
+                            PreviewRefusals.naming(site, OBLIGATION) {
+                                obligation?.validateArguments(assignmentNames(action, argumentNames))
+                            }
                             PreviewRefusals.naming(site, FULFILMENT) {
                                 fulfilment?.validateArguments(assignmentNames(action, argumentNames))
                             }
                             val expectedTypes =
                                 writer?.expectedTypes ?: obligation?.expectedTypes
                                     ?: fulfilment?.expectedTypes.orEmpty()
-                            writer?.validateGenerated(defaults.generated)
+                            PreviewRefusals.naming(site, WRITER) { writer?.validateGenerated(defaults.generated) }
                             require(action.columns.filterNot { it.optional }.all { it.name in wiring.columns }) {
                                 "missing required action argument"
                             }
@@ -286,10 +294,11 @@ class ApplyPlanner(
             if (identities.isEmpty()) {
                 null
             } else {
-                PreviewFulfilment.Snapshot(
-                    runner.obligationSnapshot(identities),
-                    identities,
-                )
+                val found = runner.obligationSnapshot(identities)
+                // S2.8: the snapshot is shared by every wiring, so its refusal names the run's snapshot, no wiring.
+                PreviewRefusals.naming(PreviewSite(context.id.toString(), null, null), SNAPSHOT, kind = "snapshot") {
+                    PreviewFulfilment.Snapshot(found, identities)
+                }
             }
         // Normalised tuples compare identities; emitted keys keep the verdict or candidate row representation.
         val routed = mutableMapOf<List<Any>, JsonObject>()
@@ -393,23 +402,27 @@ class ApplyPlanner(
                             val assigned = args.filterKeys { it in fields }
                             if (fulfilment != null) {
                                 val lookup = requireNotNull(snapshot)
+                                // S2.8 (review-368 F1): opposing transitions of one obligation name the later wiring.
                                 obligationRows =
-                                    fulfilments.add(
-                                        PreviewRefusals.naming(sites[prepared.index], FULFILMENT) {
-                                            fulfilment.transition(assigned, lookup, rows.size + 1)
-                                        },
-                                        rows,
-                                    )
+                                    PreviewRefusals.naming(sites[prepared.index], FULFILMENT) {
+                                        fulfilments.add(fulfilment.transition(assigned, lookup, rows.size + 1), rows)
+                                    }
                             } else {
-                                val insert = requireNotNull(obligation).insert(rows.size + 1, assigned, context)
-                                obligationRows = listOf(obligations.add(insert.copy(settle = settleKey(insert)), rows))
+                                obligationRows =
+                                    PreviewRefusals.naming(sites[prepared.index], OBLIGATION) {
+                                        val insert = requireNotNull(obligation).insert(rows.size + 1, assigned, context)
+                                        listOf(obligations.add(insert.copy(settle = settleKey(insert)), rows))
+                                    }
                             }
                         }
                         "transition" -> effects(action, args, metadata, targets, rows)
                         "writer" -> {
                             val fields = assignmentNames(action, args.keys)
                             val assigned = args.filterKeys { it in fields }
-                            val insert = requireNotNull(writer).insert(rows.size + 1, assigned)
+                            val insert =
+                                PreviewRefusals.naming(sites[prepared.index], WRITER) {
+                                    requireNotNull(writer).insert(rows.size + 1, assigned)
+                                }
                             writerKeys.record(insert, generated)
                             // D-206 (F5) + D-210: an insert on a business key — the route row's key with the wiring and
                             // route (what the generated id is seeded by besides the run, `PreviewWriterIds`), never the
@@ -729,8 +742,15 @@ class ApplyPlanner(
         /** The preview sink of an action the engine performs (no native sink, ⚑AU-D3-1). */
         const val ENGINE_SINK = "engine"
 
-        /** S2.8: the cause a refused obligation transition mapping or snapshot names (it has no exception of its own). */
+        /**
+         * S2.8: the fixed causes of the native mapping refusals (they have no exception of their own, and their
+         * messages may quote data): the obligation transition mapping, the obligation snapshot shared by every
+         * wiring, the native writer and the native obligation mappings.
+         */
         private const val FULFILMENT = "obligation-transition"
+        private const val SNAPSHOT = "obligation-snapshot"
+        private const val WRITER = "writer-mapping"
+        private const val OBLIGATION = "obligation-mapping"
 
         private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z_0-9.]*)}")
 

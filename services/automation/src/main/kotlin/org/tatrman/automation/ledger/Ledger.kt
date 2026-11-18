@@ -390,9 +390,10 @@ class Ledger(
         runId: UUID,
         error: JsonElement? = null,
         protocol: Boolean = false,
-    ): Boolean =
+    ): Boolean {
+        outermost("failActiveRun")
         // READ COMMITTED (see [appendProtocol]): the UPDATE holds the run row, so the entry's seq cannot clash.
-        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             val stored = error ?: JsonObject(mapOf("code" to JsonPrimitive("internal")))
             val now = clock.instant().utc()
             val failed =
@@ -408,24 +409,19 @@ class Ledger(
                     it[Runs.error] = stored
                 } == 1
             if (failed && protocol && !isSealed(runId)) {
-                val seq = nextSeq(runId, ProtocolSection.AUTOMATION)
-                RunProtocol.insert {
-                    it[run] = runId
-                    it[section] = ProtocolSection.AUTOMATION.wire
-                    it[RunProtocol.seq] = seq
-                    it[payload] =
-                        JsonObject(
-                            mapOf(
-                                "event" to JsonPrimitive("failed"),
-                                "status" to JsonPrimitive(RunStatus.FAILED.wire),
-                                "error" to stored,
-                            ),
-                        )
-                    it[at] = now
-                }
+                val entry =
+                    JsonObject(
+                        mapOf(
+                            "event" to JsonPrimitive("failed"),
+                            "status" to JsonPrimitive(RunStatus.FAILED.wire),
+                            "error" to stored,
+                        ),
+                    )
+                insertProtocol(runId, ProtocolSection.AUTOMATION, entry, now)
             }
             failed
         }
+    }
 
     /**
      * Session failure callback: preserve the public code without storing exception text or credentials. S2.8 (D-239):
@@ -847,16 +843,26 @@ class Ledger(
         return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             lockRun(runId)
             if (isSealed(runId)) throw ProtocolSealed(runId)
-            val seq = nextSeq(runId, section)
-            RunProtocol.insert {
-                it[run] = runId
-                it[RunProtocol.section] = section.wire
-                it[RunProtocol.seq] = seq
-                it[RunProtocol.payload] = payload
-                it[at] = clock.instant().utc()
-            }
-            seq
+            insertProtocol(runId, section, payload, clock.instant().utc())
         }
+    }
+
+    /** One protocol entry at the section's next seq; the caller holds the run row (READ COMMITTED). */
+    private fun insertProtocol(
+        runId: UUID,
+        section: ProtocolSection,
+        payload: JsonElement,
+        at: java.time.OffsetDateTime,
+    ): Int {
+        val seq = nextSeq(runId, section)
+        RunProtocol.insert {
+            it[run] = runId
+            it[RunProtocol.section] = section.wire
+            it[RunProtocol.seq] = seq
+            it[RunProtocol.payload] = payload
+            it[RunProtocol.at] = at
+        }
+        return seq
     }
 
     /** Seals the protocol at close: a `{"sealed": true}` entry in `automation`, after which nothing appends. */

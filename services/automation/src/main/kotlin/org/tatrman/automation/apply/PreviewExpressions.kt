@@ -81,7 +81,7 @@ internal object PreviewExpressions {
                     }
                 failing?.let { declared[it] ?: it }
             },
-            data = { values(table, bindings) },
+            data = { values(table, bindings, expressions.values) },
         ) {
             projectOnce(expressions, table, bindings, expectedTypes, calendar)
         }
@@ -122,7 +122,7 @@ internal object PreviewExpressions {
             "unsupported action condition",
             site?.copy(kind = "condition"),
             expression = { "when" },
-            data = { values(table, bindings) },
+            data = { values(table, bindings, listOf(expression)) },
         ) {
             execute(listOf(expression), table, bindings, predicate = true, calendar = calendar)
                 .rows
@@ -140,17 +140,40 @@ internal object PreviewExpressions {
         try {
             block()
         } catch (e: Exception) {
+            // A refusal an inner guard already named passes through before the per-expression re-runs.
+            if (PreviewRefusals.named(e)) throw e
             // Neither generated SQL nor a JDBC error containing bound data belongs in the public error (S2.8:
             // the error names the wiring and the cause; the log carries the message with bound values redacted).
             PreviewRefusals.refuse(message, site, runCatching(expression).getOrNull(), e, data)
         }
 
-    /** The values a cause's message could quote: the bindings and the staged route values. */
+    /**
+     * The values a cause's message could quote: the bindings, the values [PreviewTime] derives from them for
+     * [sources] (`as_of - 30 days`; deterministic, so recomputed here on the refusal path only) and the staged route
+     * values.
+     */
     internal fun values(
         table: Table,
         bindings: Map<String, BoundValue>,
-    ): PreviewRefusals.Redaction =
-        PreviewRefusals.Redaction(bindings.values.asSequence().map { it.value }, table.rows.asSequence().flatten())
+        sources: Collection<String> = emptyList(),
+    ): PreviewRefusals.Redaction {
+        // Per source: one expression that does not lower must not cost another's derived values their redaction.
+        val derived =
+            sources.flatMap { source ->
+                runCatching {
+                    val parsed = TtrpParser.parseExpression(source, "<redaction>")
+                    require(parsed.diagnostics.none { it.severity == Severity.ERROR })
+                    PreviewTime
+                        .lower(listOf(parsed.expression), bindings)
+                        .bindings.values
+                        .map { it.value }
+                }.getOrDefault(emptyList())
+            }
+        return PreviewRefusals.Redaction(
+            bindings.values.asSequence().map { it.value } + derived,
+            table.rows.asSequence().flatten(),
+        )
+    }
 
     private fun execute(
         sources: List<String>,
