@@ -217,7 +217,7 @@ class LedgerSpec :
                         "action" to JsonPrimitive("release"),
                         "kind" to JsonPrimitive("expression"),
                         "expression" to JsonPrimitive("order"),
-                        "cause" to JsonPrimitive("RES_001"),
+                        "cause" to JsonPrimitive("TTRP-EXP-001"),
                     ),
                 )
             val refusal =

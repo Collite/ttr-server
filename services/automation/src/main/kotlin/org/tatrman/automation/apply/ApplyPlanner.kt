@@ -111,8 +111,14 @@ class ApplyPlanner(
             require(wiring.routes.all { it in knownRoutes }) { "action wiring names an unknown decision route" }
             require(wiring.action in metadata.actions) { "action was not pinned at open" }
         }
+        // S2.8 (D-239): every preview refusal names its wiring; the run id goes to the refusal's log line only.
+        val sites =
+            recipe.wiring.mapIndexed { index, wiring ->
+                PreviewSite(context.id.toString(), PreviewSite.key(index, wiring), wiring.action)
+            }
         val wiringValues =
-            recipe.wiring.map { wiring ->
+            recipe.wiring.mapIndexed { wiringIndex, wiring ->
+                val site = sites[wiringIndex]
                 val action = metadata.actions.getValue(wiring.action)
                 val defaults = PreviewWriterDefaults.resolve(action, context)
                 val scalarSources =
@@ -128,11 +134,13 @@ class ApplyPlanner(
                     }
                 val fulfilment =
                     if (AutomationScope.needsObligationLookup(action)) {
-                        PreviewFulfilment.resolve(action, metadata, metadata.targets[wiring.action])
+                        PreviewRefusals.naming(site, FULFILMENT) {
+                            PreviewFulfilment.resolve(action, metadata, metadata.targets[wiring.action])
+                        }
                     } else {
                         null
                     }
-                WiringValues(defaults, PreviewWiringValues.prepare(scalarSources, action), obligation, fulfilment)
+                WiringValues(defaults, PreviewWiringValues.prepare(scalarSources, action, site), obligation, fulfilment)
             }
         val roleNames = roles.contexts.map { it.name }.toSet() + listOfNotNull(roles.candidates)
         val writtenAt = clock.instant()
@@ -156,6 +164,7 @@ class ApplyPlanner(
                             "$decision.${route.name}" in it.value.routes
                         }.map { (wiringIndex, wiring) ->
                             currentCoroutineContext().ensureActive()
+                            val site = sites[wiringIndex]
                             val matches =
                                 wiring.whenCondition?.let {
                                     PreviewConditions.select(
@@ -163,6 +172,7 @@ class ApplyPlanner(
                                         table,
                                         context.bindings,
                                         calendar,
+                                        site,
                                     )
                                 }
                             val indices = table.rows.indices.filter { matches == null || it in matches }
@@ -183,7 +193,9 @@ class ApplyPlanner(
                                 }
                             writer?.validateArguments(assignmentNames(action, argumentNames))
                             obligation?.validateArguments(assignmentNames(action, argumentNames))
-                            fulfilment?.validateArguments(assignmentNames(action, argumentNames))
+                            PreviewRefusals.naming(site, FULFILMENT) {
+                                fulfilment?.validateArguments(assignmentNames(action, argumentNames))
+                            }
                             val expectedTypes =
                                 writer?.expectedTypes ?: obligation?.expectedTypes
                                     ?: fulfilment?.expectedTypes.orEmpty()
@@ -193,7 +205,7 @@ class ApplyPlanner(
                             }
                             val contextValues =
                                 PreviewExpressions
-                                    .constants(defaults.values, expectedTypes)
+                                    .constants(defaults.values, expectedTypes, site)
                                     .filterKeys { it !in wiring.columns }
                                     .mapValues { scalar(it.value) }
                             val overridden = defaults.expressions.filterKeys { it in wiring.columns }
@@ -205,6 +217,7 @@ class ApplyPlanner(
                                     context.bindings,
                                     expectedTypes = expectedTypes,
                                     calendar = calendar,
+                                    site = site,
                                 )
                             }
                             val projected =
@@ -215,6 +228,7 @@ class ApplyPlanner(
                                     expectedTypes = expectedTypes,
                                     roleNames = roleNames,
                                     calendar = calendar,
+                                    site = site,
                                 )
                             PreparedWiring(
                                 wiring,
@@ -257,12 +271,14 @@ class ApplyPlanner(
                         val fulfilment = wiring.fulfilment ?: return@wiring emptyList()
                         val action = metadata.actions.getValue(wiring.wiring.action)
                         wiring.arguments.values.map { arguments ->
-                            fulfilment.identity(
-                                arguments.filterKeys {
-                                    it in
-                                        assignmentNames(action, wiring.argumentNames)
-                                },
-                            )
+                            PreviewRefusals.naming(sites[wiring.index], FULFILMENT) {
+                                fulfilment.identity(
+                                    arguments.filterKeys {
+                                        it in
+                                            assignmentNames(action, wiring.argumentNames)
+                                    },
+                                )
+                            }
                         }
                     }
                 }.toSet()
@@ -378,7 +394,12 @@ class ApplyPlanner(
                             if (fulfilment != null) {
                                 val lookup = requireNotNull(snapshot)
                                 obligationRows =
-                                    fulfilments.add(fulfilment.transition(assigned, lookup, rows.size + 1), rows)
+                                    fulfilments.add(
+                                        PreviewRefusals.naming(sites[prepared.index], FULFILMENT) {
+                                            fulfilment.transition(assigned, lookup, rows.size + 1)
+                                        },
+                                        rows,
+                                    )
                             } else {
                                 val insert = requireNotNull(obligation).insert(rows.size + 1, assigned, context)
                                 obligationRows = listOf(obligations.add(insert.copy(settle = settleKey(insert)), rows))
@@ -707,6 +728,9 @@ class ApplyPlanner(
 
         /** The preview sink of an action the engine performs (no native sink, ⚑AU-D3-1). */
         const val ENGINE_SINK = "engine"
+
+        /** S2.8: the cause a refused obligation transition mapping or snapshot names (it has no exception of its own). */
+        private const val FULFILMENT = "obligation-transition"
 
         private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z_0-9.]*)}")
 

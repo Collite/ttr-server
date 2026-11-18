@@ -361,6 +361,17 @@ class DryRunSpec :
                             shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
                                 ErrorCode.PREVIEW_UNSUPPORTED
                         }
+                        if (snapshot.isEmpty()) {
+                            // S2.8: the transition mapping's refusal names its wiring; it has no expression of its own.
+                            val detail = shouldThrow<AutomationException> { runner.evaluate() }.detail!!.jsonObject
+                            detail shouldBe
+                                buildJsonObject {
+                                    put("wiring", "#0:way.hold->fulfil")
+                                    put("action", "fulfil")
+                                    put("kind", "mapping")
+                                    put("cause", "obligation-transition")
+                                }
+                        }
                         f.plan shouldBe null
                         f.journals.get() shouldBe 0
                         f.obligationReads.size shouldBe 1
@@ -1417,7 +1428,7 @@ class DryRunSpec :
                         detail["action"] shouldBe JsonPrimitive("release")
                         detail["kind"] shouldBe JsonPrimitive(expected.first)
                         detail["expression"] shouldBe JsonPrimitive(expected.second)
-                        detail["cause"] shouldBe JsonPrimitive("RES_001")
+                        detail["cause"] shouldBe JsonPrimitive("TTRP-EXP-001")
                         f.journals.get() shouldBe 0
                     }
                 }

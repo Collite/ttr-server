@@ -2,8 +2,6 @@
 package org.tatrman.automation.apply
 
 import kotlinx.serialization.json.*
-import org.tatrman.automation.api.AutomationException
-import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.api.scalar
 import org.tatrman.automation.runner.BoundValue
 import org.tatrman.automation.runner.RecipeBindings
@@ -47,16 +45,20 @@ internal object PreviewWiringValues {
     fun prepare(
         sources: Map<String, String>,
         action: AutomationAction,
-    ): Prepared =
-        guarded {
+        site: PreviewSite? = null,
+    ): Prepared {
+        var current: String? = null
+        return guarded(site, { current }) {
             val parsed =
                 sources
                     .filterKeys { name ->
                         val column = action.columns.singleOrNull { it.name == name }
                         column?.type == "action" || (wiringProperty(action, name) in PARSED_PROPERTIES)
                     }.mapValues { (name, source) ->
+                        current = name
                         parse(source).also { validateKinds(it, wiringProperty(action, name)) }
                     }
+            current = "due"
             val defaultDue =
                 if ("due" !in sources && wiringProperty(action, "due") != null) {
                     action.due?.let {
@@ -71,6 +73,7 @@ internal object PreviewWiringValues {
                 }
             Prepared(action, sources.toMap(), parsed, defaultDue)
         }
+    }
 
     fun project(
         prepared: Prepared,
@@ -79,11 +82,15 @@ internal object PreviewWiringValues {
         expectedTypes: Map<String, String> = emptyMap(),
         roleNames: Set<String>,
         calendar: CalendarSnapshot? = null,
-    ): List<Map<String, JsonElement>> =
-        guarded {
+        site: PreviewSite? = null,
+    ): List<Map<String, JsonElement>> {
+        var current: String? = null
+        return guarded(site, { current }, { PreviewExpressions.values(table, bindings) }) {
             val action = prepared.action
             val sources = prepared.sources
             val scalars = linkedMapOf<String, String>()
+            // S2.8: a generated alias's declared name — its argument, and the call argument it sits in.
+            val declared = mutableMapOf<String, String>()
             val reserved = (sources.keys + table.columns.map { it.name } + bindings.keys).toMutableSet()
             var ordinal = 0
 
@@ -93,6 +100,7 @@ internal object PreviewWiringValues {
                 symbolic: Boolean = true,
             ): (Map<String, JsonElement>) -> JsonElement {
                 val alias = name ?: generateSequence { "_au_wiring_${ordinal++}" }.first { reserved.add(it) }
+                if (name == null) current?.let { declared[alias] = it }
                 val text = source.trim()
                 scalars[alias] =
                     if (symbolic &&
@@ -123,7 +131,13 @@ internal object PreviewWiringValues {
                         )
                         // Until P3 pins callees, neither named capture nor a bare role reference is safe.
                         require(node.args.none { it.name in setOf("rows", "detail") })
-                        val args = node.args.associate { it.name to value(it.value, depth + 1, source) }
+                        val outer = current
+                        val args =
+                            node.args.associate {
+                                current = "$outer.${it.name}"
+                                it.name to value(it.value, depth + 1, source)
+                            }
+                        current = outer
                         return { row ->
                             buildJsonObject {
                                 put("action", node.action)
@@ -175,6 +189,7 @@ internal object PreviewWiringValues {
             val outputs =
                 sources
                     .mapValues { (name, source) ->
+                        current = name
                         val column = action.columns.singleOrNull { it.name == name }
                         val property = wiringProperty(action, name)
                         val isAction = column?.type == "action" || property == "on_due"
@@ -194,6 +209,7 @@ internal object PreviewWiringValues {
                         }
                     }.toMutableMap()
             prepared.defaultDue?.let { data -> outputs["due"] = { data } }
+            current = null
             val projected =
                 PreviewExpressions.project(
                     scalars,
@@ -204,12 +220,15 @@ internal object PreviewWiringValues {
                             scalars
                     },
                     calendar = calendar,
+                    site = site,
+                    declared = declared,
                 )
             projected.rows.map { values ->
                 val row = projected.columns.mapIndexed { i, column -> column.name to scalar(values[i]) }.toMap()
                 outputs.mapValues { it.value(row) }
             }
         }
+    }
 
     /** Callees are not pinned yet: nested property names conservatively use the wiring contract. */
     private fun validateKinds(
@@ -309,20 +328,25 @@ internal object PreviewWiringValues {
             put("unit", unit)
         }
 
-    private inline fun <T> guarded(block: () -> T): T =
+    /** S2.8: names the wiring and the argument being built; a refusal already named inside passes through. */
+    private inline fun <T> guarded(
+        site: PreviewSite?,
+        expression: () -> String?,
+        noinline data: () -> PreviewRefusals.Redaction = { PreviewRefusals.Redaction.NONE },
+        block: () -> T,
+    ): T =
         try {
             block()
-        } catch (_: Exception) {
-            unsupported()
-        } catch (_: StackOverflowError) {
-            unsupported()
+        } catch (e: Exception) {
+            PreviewRefusals.refuse(MESSAGE, site, expression(), e, data)
+        } catch (e: StackOverflowError) {
+            PreviewRefusals.refuse(MESSAGE, site, expression(), e)
         }
+
+    private const val MESSAGE = "unsupported action expression"
 
     private const val PREFIX =
         "recipe { key: preview.id as of: now actions { " +
             "way.preview -> _preview_action { payload: "
     private val SYMBOL = Regex("[A-Za-z_][A-Za-z_0-9]*(?:\\.[A-Za-z_][A-Za-z_0-9]*)*")
-
-    private fun unsupported(): Nothing =
-        throw AutomationException(ErrorCode.PREVIEW_UNSUPPORTED, "unsupported action expression")
 }

@@ -389,25 +389,67 @@ class Ledger(
     fun failActiveRun(
         runId: UUID,
         error: JsonElement? = null,
+        protocol: Boolean = false,
     ): Boolean =
-        transaction {
-            Runs.update({
-                (Runs.id eq runId) and
-                    (Runs.status inList listOf(RunStatus.OPEN.wire, RunStatus.RUNNING.wire, RunStatus.EVALUATED.wire))
-            }) {
-                it[status] = RunStatus.FAILED.wire
-                it[endedAt] = clock.instant().utc()
-                it[Runs.error] = error ?: JsonObject(mapOf("code" to JsonPrimitive("internal")))
-            } == 1
+        // READ COMMITTED (see [appendProtocol]): the UPDATE holds the run row, so the entry's seq cannot clash.
+        transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            val stored = error ?: JsonObject(mapOf("code" to JsonPrimitive("internal")))
+            val now = clock.instant().utc()
+            val failed =
+                Runs.update({
+                    (Runs.id eq runId) and
+                        (
+                            Runs.status inList
+                                listOf(RunStatus.OPEN.wire, RunStatus.RUNNING.wire, RunStatus.EVALUATED.wire)
+                        )
+                }) {
+                    it[status] = RunStatus.FAILED.wire
+                    it[endedAt] = now
+                    it[Runs.error] = stored
+                } == 1
+            if (failed && protocol && !isSealed(runId)) {
+                val seq = nextSeq(runId, ProtocolSection.AUTOMATION)
+                RunProtocol.insert {
+                    it[run] = runId
+                    it[section] = ProtocolSection.AUTOMATION.wire
+                    it[RunProtocol.seq] = seq
+                    it[payload] =
+                        JsonObject(
+                            mapOf(
+                                "event" to JsonPrimitive("failed"),
+                                "status" to JsonPrimitive(RunStatus.FAILED.wire),
+                                "error" to stored,
+                            ),
+                        )
+                    it[at] = now
+                }
+            }
+            failed
         }
 
-    /** Session failure callback: preserve the public code without storing exception text or credentials. */
+    /**
+     * Session failure callback: preserve the public code without storing exception text or credentials. S2.8 (D-239):
+     * a preview refusal's detail (wiring, action, kind, expression, cause — never SQL or a bound value) is stored too
+     * and written into the run's protocol as an `automation` `failed` entry, so the failed evaluation names its cause.
+     */
     fun failExecution(
         runId: UUID,
         cause: Exception,
     ) {
-        val code = (cause as? org.tatrman.automation.api.AutomationException)?.code?.code ?: "internal"
-        failActiveRun(runId, JsonObject(mapOf("code" to JsonPrimitive(code))))
+        val refusal = cause as? org.tatrman.automation.api.AutomationException
+        val code = refusal?.code?.code ?: "internal"
+        val detail =
+            refusal
+                ?.takeIf { it.code == org.tatrman.automation.api.ErrorCode.PREVIEW_UNSUPPORTED }
+                ?.detail as? JsonObject
+        val error =
+            JsonObject(
+                buildMap {
+                    put("code", JsonPrimitive(code))
+                    detail?.let { put("detail", it) }
+                },
+            )
+        failActiveRun(runId, error, protocol = detail != null)
     }
 
     /**

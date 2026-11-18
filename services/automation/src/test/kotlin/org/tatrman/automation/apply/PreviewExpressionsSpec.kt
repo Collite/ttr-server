@@ -13,7 +13,6 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
@@ -185,7 +184,7 @@ class PreviewExpressionsSpec :
             detail.text("action") shouldBe "release"
             detail.text("kind") shouldBe "expression"
             detail.text("expression") shouldBe "value"
-            detail.text("cause") shouldBe "RES_001"
+            detail.text("cause") shouldBe "TTRP-EXP-001"
             detail.keys shouldBe setOf("wiring", "action", "kind", "expression", "cause")
             for (leak in listOf(secret, "SELECT", "select", "au_condition", "FROM", "missing_column")) {
                 error.public() shouldNotContain leak
@@ -198,7 +197,7 @@ class PreviewExpressionsSpec :
             detail.keys shouldBe missing.keys
             detail.text("wiring") shouldBe "#2:way.hold->release"
             detail.text("expression") shouldBe "value"
-            detail.text("cause") shouldBe "FN_001"
+            detail.text("cause") shouldBe "TTRP-FN-001"
             detail.text("cause") shouldNotBe missing.text("cause")
             error.public() shouldNotContain "no_such_function"
         }
@@ -206,7 +205,7 @@ class PreviewExpressionsSpec :
             val error = refusal("key" to "id", "value" to "cast(:code as int)")
             val detail = error.detail as JsonObject
             detail.text("expression") shouldBe "value"
-            detail.text("cause") shouldBe "ConversionException"
+            detail.text("cause") shouldBe "SQLException"
             error.public() shouldNotContain secret
         }
         "(c) a condition names its kind and the wiring" {
@@ -220,7 +219,7 @@ class PreviewExpressionsSpec :
             detail.text("wiring") shouldBe "#2:way.hold->release"
             detail.text("action") shouldBe "release"
             detail.text("expression") shouldBe "when"
-            detail.text("cause") shouldBe "RES_001"
+            detail.text("cause") shouldBe "TTRP-EXP-001"
         }
         "(d) one WARN line per refusal names the run and wiring and carries the cause with bound values as ?" {
             val events = captured { refusal("key" to "id", "value" to "cast(:code as int)") }
@@ -230,7 +229,7 @@ class PreviewExpressionsSpec :
             val text = line.formattedMessage
             text shouldContain "run=run-s28"
             text shouldContain "wiring=#2:way.hold->release"
-            text shouldContain "cause=ConversionException: "
+            text shouldContain "cause=SQLException: "
             text shouldNotContain secret
             text shouldContain "?"
             // The redaction is by the bound values, not a pattern: the rest of the engine's message survives.
@@ -248,7 +247,7 @@ class PreviewExpressionsSpec :
                             roleNames = emptySet(),
                             site = site,
                         )
-                    }.detail.shouldNotBe(null)
+                    }.let { (it.detail as JsonObject).text("expression") shouldBe "value" }
                 }
             events.size shouldBe 1
         }

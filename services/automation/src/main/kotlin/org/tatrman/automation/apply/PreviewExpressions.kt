@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.apply
 
-import org.tatrman.automation.api.AutomationException
-import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.ManifestColumn
 import org.tatrman.automation.runner.*
 import org.tatrman.plan.v1.*
@@ -28,9 +26,16 @@ internal object PreviewExpressions {
     fun constants(
         values: Map<String, BoundValue>,
         expectedTypes: Map<String, String>,
+        site: PreviewSite? = null,
     ): Map<String, Any?> {
         if (values.isEmpty()) return emptyMap()
-        project(values.keys.associateWith { ":$it" }, Table(emptyList(), emptyList()), values, expectedTypes)
+        project(
+            values.keys.associateWith { ":$it" },
+            Table(emptyList(), emptyList()),
+            values,
+            expectedTypes,
+            site = site,
+        )
         val assigned =
             PreviewAssignments.assign(
                 Table(
@@ -44,39 +49,81 @@ internal object PreviewExpressions {
         return values.keys.zip(assigned.rows.single()).toMap()
     }
 
+    /**
+     * S2.8: [site] names the wiring of a refusal; [declared] maps an expression's key to its declared argument name
+     * where the key is a generated alias (a nested wiring value).
+     */
     fun project(
         expressions: Map<String, String>,
         table: Table,
         bindings: Map<String, BoundValue>,
         expectedTypes: Map<String, String> = emptyMap(),
         calendar: CalendarSnapshot? = null,
+        site: PreviewSite? = null,
+        declared: Map<String, String> = emptyMap(),
     ): Table =
-        guarded("unsupported action expression") {
-            val result =
-                execute(
-                    expressions.values.toList(),
-                    table,
-                    bindings,
-                    predicate = false,
-                    expectedTypes = expressions.keys.map { expectedTypes[it] },
-                    calendar = calendar,
-                )
-            PreviewAssignments.assign(
-                Table(
-                    result.columns.drop(1).mapIndexed { i, c -> c.copy(name = expressions.keys.elementAt(i)) },
-                    result.rows.sortedBy { (it.first() as Long) }.map { it.drop(1) },
-                ),
-                expectedTypes,
-            )
+        guarded(
+            "unsupported action expression",
+            site,
+            expression = {
+                // One query evaluates every expression: on a refusal, find the first that also fails alone.
+                val failing =
+                    expressions.keys.singleOrNull() ?: expressions.keys.firstOrNull { key ->
+                        runCatching {
+                            projectOnce(
+                                mapOf(key to expressions.getValue(key)),
+                                table,
+                                bindings,
+                                expectedTypes,
+                                calendar,
+                            )
+                        }.isFailure
+                    }
+                failing?.let { declared[it] ?: it }
+            },
+            data = { values(table, bindings) },
+        ) {
+            projectOnce(expressions, table, bindings, expectedTypes, calendar)
         }
+
+    private fun projectOnce(
+        expressions: Map<String, String>,
+        table: Table,
+        bindings: Map<String, BoundValue>,
+        expectedTypes: Map<String, String>,
+        calendar: CalendarSnapshot?,
+    ): Table {
+        val result =
+            execute(
+                expressions.values.toList(),
+                table,
+                bindings,
+                predicate = false,
+                expectedTypes = expressions.keys.map { expectedTypes[it] },
+                calendar = calendar,
+            )
+        return PreviewAssignments.assign(
+            Table(
+                result.columns.drop(1).mapIndexed { i, c -> c.copy(name = expressions.keys.elementAt(i)) },
+                result.rows.sortedBy { (it.first() as Long) }.map { it.drop(1) },
+            ),
+            expectedTypes,
+        )
+    }
 
     fun select(
         expression: String,
         table: Table,
         bindings: Map<String, BoundValue>,
         calendar: CalendarSnapshot? = null,
+        site: PreviewSite? = null,
     ): Set<Int> =
-        guarded("unsupported action condition") {
+        guarded(
+            "unsupported action condition",
+            site?.copy(kind = "condition"),
+            expression = { "when" },
+            data = { values(table, bindings) },
+        ) {
             execute(listOf(expression), table, bindings, predicate = true, calendar = calendar)
                 .rows
                 .map { (it.single() as Long).toInt() }
@@ -85,14 +132,25 @@ internal object PreviewExpressions {
 
     private inline fun <T> guarded(
         message: String,
+        site: PreviewSite?,
+        expression: () -> String?,
+        noinline data: () -> PreviewRefusals.Redaction,
         block: () -> T,
     ): T =
         try {
             block()
-        } catch (_: Exception) {
-            // Neither generated SQL nor a JDBC error containing bound data belongs in the public error.
-            throw AutomationException(ErrorCode.PREVIEW_UNSUPPORTED, message)
+        } catch (e: Exception) {
+            // Neither generated SQL nor a JDBC error containing bound data belongs in the public error (S2.8:
+            // the error names the wiring and the cause; the log carries the message with bound values redacted).
+            PreviewRefusals.refuse(message, site, runCatching(expression).getOrNull(), e, data)
         }
+
+    /** The values a cause's message could quote: the bindings and the staged route values. */
+    internal fun values(
+        table: Table,
+        bindings: Map<String, BoundValue>,
+    ): PreviewRefusals.Redaction =
+        PreviewRefusals.Redaction(bindings.values.asSequence().map { it.value }, table.rows.asSequence().flatten())
 
     private fun execute(
         sources: List<String>,
@@ -103,7 +161,12 @@ internal object PreviewExpressions {
         calendar: CalendarSnapshot? = null,
     ): Table {
         val parsed = sources.mapIndexed { i, source -> TtrpParser.parseExpression(source, "<action-$i>") }
-        if (parsed.any { result -> result.diagnostics.any { it.severity == Severity.ERROR } }) unsupported()
+        parsed
+            .firstNotNullOfOrNull { result ->
+                result.diagnostics.firstOrNull { it.severity == Severity.ERROR }
+            }?.let {
+                unsupported(it.id.id, it.message)
+            }
         val timed = PreviewTime.lower(parsed.map { it.expression }, bindings)
         val calendarResult = PreviewCalendarGraph.lower(timed.expressions, table, timed.bindings, calendar)
         val columns = calendarResult.table.columns.toMutableList()
@@ -138,7 +201,11 @@ internal object PreviewExpressions {
             calendarResult.expressions.map { result ->
                 NodeExpressions.rewrite(result) {
                     when (it) {
-                        is ParamRef -> constant(timed.bindings[it.name] ?: unsupported(), it.location)
+                        is ParamRef ->
+                            constant(
+                                timed.bindings[it.name] ?: unsupported("unbound-parameter"),
+                                it.location,
+                            )
                         is Literal ->
                             (it.value as? LiteralValue.Num)?.let { number ->
                                 val decimal = BigDecimal(number.raw)
@@ -160,12 +227,8 @@ internal object PreviewExpressions {
         val checker = ExpressionTypechecker()
         expressions.forEachIndexed { i, expression ->
             val checked = checker.check(expression, schema, aggregatesAllowed = false, predicateExpected = predicate)
-            if (checked.diagnostics.any { it.severity == Severity.ERROR } ||
-                predicate &&
-                checked.type != TtrpType.Bool
-            ) {
-                unsupported()
-            }
+            checked.diagnostics.firstOrNull { it.severity == Severity.ERROR }?.let { unsupported(it.id.id, it.message) }
+            if (predicate && checked.type != TtrpType.Bool) unsupported("condition-not-boolean")
             expectedTypes.getOrNull(i)?.let { type ->
                 // Reuse the compiler's result unification, including lossless integer/decimal and
                 // date/timestamp widening. A case with a typed NULL is only checked, never executed.
@@ -179,11 +242,10 @@ internal object PreviewExpressions {
                 val checkedAssignment = checker.check(assignment, schema, aggregatesAllowed = false)
                 // Decimal precision/scale on an authored cast do not change its logical kind;
                 // PreviewWriter separately checks bounds preserved by the target metadata.
-                if (checkedAssignment.diagnostics.any { it.severity == Severity.ERROR } ||
-                    checkedAssignment.type?.canonical != target.canonical
-                ) {
-                    unsupported()
+                checkedAssignment.diagnostics.firstOrNull { it.severity == Severity.ERROR }?.let {
+                    unsupported(it.id.id, it.message)
                 }
+                if (checkedAssignment.type?.canonical != target.canonical) unsupported("assignment-type")
             }
         }
 
@@ -195,7 +257,7 @@ internal object PreviewExpressions {
         ) {
             val left = checker.check(a, schema, aggregatesAllowed = false).type
             val right = checker.check(b, schema, aggregatesAllowed = false).type
-            if (left != null && right != null && left.kind != right.kind) unsupported()
+            if (left != null && right != null && left.kind != right.kind) unsupported("comparison-kinds")
         }
         expressions.flatMap { NodeExpressions.walk(it).toList() }.forEach {
             when (it) {
@@ -294,7 +356,7 @@ internal object PreviewExpressions {
             db.query(sqlFor(expressions, predicate), emptyMap()).also { result ->
                 if (!predicate) {
                     if (result.rows.flatten().any { it is Double && !it.isFinite() || it is Float && !it.isFinite() }) {
-                        unsupported()
+                        unsupported("non-finite")
                     }
                     require(result.rows.size == table.rows.size)
                     require(
@@ -336,7 +398,7 @@ internal object PreviewExpressions {
                 "date" -> PhysicalType.Kind.DATE
                 "timestamp", "timestamptz" -> PhysicalType.Kind.TIMESTAMP
                 "text" -> PhysicalType.Kind.VARCHAR
-                else -> unsupported()
+                else -> unsupported("column-type")
             }
         val physical =
             if (type == "decimal") {
@@ -344,7 +406,7 @@ internal object PreviewExpressions {
                 if (scale > 38 ||
                     values.filterIsInstance<BigDecimal>().any { it.precision() - it.scale() > 38 - scale }
                 ) {
-                    unsupported()
+                    unsupported("decimal-range")
                 }
                 PhysicalType(kind, 38, scale)
             } else {
@@ -353,6 +415,9 @@ internal object PreviewExpressions {
         return ModelColumn(column.name, TypeMapping.surfaceType(type), physicalType = physical)
     }
 
-    private fun unsupported(): Nothing =
-        throw AutomationException(ErrorCode.PREVIEW_UNSUPPORTED, "unsupported action condition")
+    /** S2.8: [reason] is a fixed token (a diagnostic id or the check), [explanation] the compiler's text for the log. */
+    private fun unsupported(
+        reason: String,
+        explanation: String? = null,
+    ): Nothing = throw PreviewRefused(reason, explanation)
 }
