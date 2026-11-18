@@ -16,6 +16,15 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — the `yaml` source kind (MW-P4 S4.2; MW-P4 contracts §1, ✅D-MW-60).** `metadata.sources.<id>.kind`
+  accepts `yaml` (`METADATA_GIT_KIND` / `METADATA_GIT2_KIND`; chart `metadata.gitKind`): a git or filesystem tree of
+  canonical or dialect YAML, read through `ttr-metadata`'s `YamlFileSource` with the profiles of the tree's own
+  `profiles/`. `profile` / `METADATA_PROFILE` (chart `metadata.profile`) applies only to a tree without `ttr.yaml`; both
+  is a startup error on a filesystem source and a `profile_conflict` load failure on a git source. `meta.v1.SourceStatus`
+  gains `kind` (16) and `profile` (17), `/status` `sources[]` gains `kind` and `profile`, and a strict-swap refusal
+  names `ys/*` issues `file:line:col`. A CN promotion source read through a dialect is `409 promotion_target_dialect`.
+  At `grammar/v0.22.7` a `yaml` load retains ~240–400 MB of heap (ttr-core S4.2a cuts it); size the JVM before serving one.
+
 - **automation 0.11.43 — an answer run decides the answered key's held rows at Open (D-159 completed; ttr-server#429).**
   A verified engine answer (`engine.taskId` + `answeredBy`, from the engine client) no longer re-runs the recipe and
   holds the approved key again: it finds the instance's run that held the key (waiting, or closed: a decided key replays

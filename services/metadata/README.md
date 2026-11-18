@@ -508,6 +508,8 @@ Hartland's, so a URI alone would look for `master` and `model/` in your reposito
 | `METADATA_GIT_SUBDIR` | The model's directory inside the repository. Default `model`. Set it together with the URI. |
 | `METADATA_GIT_TOKEN` | A read token for a private repository (`METADATA_GIT_USERNAME` defaults to `x-access-token`). |
 | `METADATA_GIT_CHECKOUT_DIR` | Where to clone (default `<tmp>/metadata-git/github-model`). |
+| `METADATA_GIT_KIND` | The parser kind: `ttr` (default; `.ttr`/`.ttrm`) or `yaml` (canonical or dialect YAML, below). |
+| `METADATA_PROFILE` | `yaml` only: the profile a tree **without** `ttr.yaml` is read through: an identity from the tree's `profiles/` (`<name>/<major>`) or a path relative to the source root. |
 
 **A second repository.** A model whose packages live in two repositories (a public one and a private
 one, say) can be served by one Metadata: set `METADATA_GIT2_REMOTE_URI` and Metadata adds a second git
@@ -522,6 +524,7 @@ them by package as it merges any two sources. Metadata is ready only when both h
 | `METADATA_GIT2_SUBDIR` | Its model's directory. Default `model`. |
 | `METADATA_GIT2_TOKEN` | Its read token. Default: `METADATA_GIT_TOKEN`, so one token that reads both repositories is enough. |
 | `METADATA_GIT2_USERNAME` / `METADATA_GIT2_CHECKOUT_DIR` | As for the first source (checkout default `<tmp>/metadata-git/second-model`). |
+| `METADATA_GIT2_KIND` | Its parser kind, as `METADATA_GIT_KIND`. |
 
 **No fallback model (ttr-server#180).** Metadata bundles no model. When the repository can't be loaded
 (a bad token, a wrong branch or sub-path, no network), Metadata serves no model — the built-in stock
@@ -581,8 +584,26 @@ and CN's registered vocabulary versions remain separate, and cannot satisfy conf
 Each entry requires a unique `id` (`[A-Za-z0-9][A-Za-z0-9._-]*`); `builtin-stock`, `builtin-stock-roles`
 and `cn-vocabularies` are reserved. Duplicate ids, reserved ids, ambiguous legacy key/id aliases and
 unsafe subdirectories fail configuration before telemetry, database initialization or listeners.
-`enabled` defaults true, `priority` defaults 100, and parser `kind` defaults `ttr`. YAML source loading
-belongs to MW-P4. `subdirectory` must be relative, with no parent traversal or backslashes.
+`enabled` defaults true, `priority` defaults 100, and parser `kind` defaults `ttr`. `subdirectory` (and a
+`yaml` entry's `profile`) must be relative, with no parent traversal or backslashes.
+
+**YAML trees (`kind = yaml`, MW-P4).** A `yaml` source reads the same storages as a `ttr` one, through
+`ttr-metadata`'s `YamlFileSource`. Every `.yaml`/`.yml` under the root is content, except dot-segments,
+`agents/`, `model.ignore` matches and a profile's ignores. The root's `ttr.yaml` (the tree declaration) and
+`renames.yaml` are control files. Canonical files load as they are. Dialect files load through their profile:
+the file's own header, else `ttr.yaml`, else the entry's `profile` (`METADATA_PROFILE` for `github-model`).
+- Profiles resolve from the tree's own `profiles/` catalog, read on each load from the fetched checkout. They
+  need an on-disk root, so a git or filesystem tree; an HTTP tree serves canonical YAML only.
+- A `profile` on a tree that declares `ttr.yaml` is refused, with no silent precedence: a filesystem source
+  fails startup, and a git source fails its load with `profile_conflict`.
+- A profile error drops its file with a located `ys/*` issue (`file:line:col`). The strict swap then keeps
+  the last good model; with the strict swap off, the rest is served and `/status.issues[]` names the file.
+- `/status` `sources[]` and gRPC `GetStatus.sources` carry `kind` and `profile` (the profile read, as
+  `<name>/<major>`; `canonical/1` for a tree without a declaration; empty for `ttr`).
+- A CN promotion target must be canonical: a `yaml` source read through a dialect is refused with
+  `409 promotion_target_dialect`.
+- Every other channel (registry, graph, search, layouts, `/model/export`, lexicon, branch gate) sees
+  definitions, not files, and is unchanged.
 
 | Storage `type` | Fields |
 |---|---|
