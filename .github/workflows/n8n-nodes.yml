@@ -1,0 +1,137 @@
+name: n8n custom nodes
+
+# The Tatrman Automation n8n nodes (connectors/n8n-nodes-tatrman), moved from kantheon with their
+# history in OL W6·S1 (OL-C37). PRs check, test, scan, pack and prove the derived image; the tag
+# `n8n-nodes-tatrman/v<x.y.z>` publishes the npm package (GitHub Packages) and the image (GHCR).
+# A standalone pnpm project: its lockfile lives in the folder, not at the repository root.
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing n8n-nodes-tatrman/vX.Y.Z tag: recover npm only, leave the published image unchanged'
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - connectors/n8n-nodes-tatrman/**
+      - .github/workflows/n8n-nodes.yml
+      - justfile
+  push:
+    branches: [master]
+    # Paths filter branch pushes; GitHub ignores paths for tag pushes.
+    paths:
+      - connectors/n8n-nodes-tatrman/**
+      - .github/workflows/n8n-nodes.yml
+      - justfile
+    tags: ['n8n-nodes-tatrman/v*']
+permissions:
+  contents: read
+  packages: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image: ${{ steps.release.outputs.image }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: connectors/n8n-nodes-tatrman/pnpm-lock.yaml
+      - uses: extractions/setup-just@v4
+      - name: Validate release inputs
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+        working-directory: connectors/n8n-nodes-tatrman
+        run: node scripts/release-metadata.cjs >> "$GITHUB_OUTPUT"
+      - run: pnpm install --frozen-lockfile
+        working-directory: connectors/n8n-nodes-tatrman
+      - run: just lint-n8n
+      - run: pnpm test
+        working-directory: connectors/n8n-nodes-tatrman
+      - run: pnpm build
+        working-directory: connectors/n8n-nodes-tatrman
+      - run: pnpm scan
+        working-directory: connectors/n8n-nodes-tatrman
+      - name: Pack checked package
+        working-directory: connectors/n8n-nodes-tatrman
+        run: pnpm pack --pack-destination "$RUNNER_TEMP/n8n-package"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build derived image from packed package
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+        run: just build-n8n-image "$IMAGE" "$RUNNER_TEMP/n8n-package"
+      - name: Prove packaged image and persisted workflows with a fresh PVC
+        timeout-minutes: 8
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+        run: just test-n8n-image "$IMAGE"
+      - name: Prove npm-install workflow type parity
+        timeout-minutes: 8
+        run: just test-n8n-install-parity "$RUNNER_TEMP/n8n-package"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n8n-package
+          path: ${{ runner.temp }}/n8n-package/*.tgz
+          if-no-files-found: error
+  publish:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/n8n-nodes-tatrman/v'))
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: n8n-package
+          path: package
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: https://npm.pkg.github.com
+          scope: '@collite'
+      - uses: extractions/setup-just@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build release image from checked package
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          IMAGE: ${{ needs.check.outputs.image }}
+        run: just build-n8n-image "$IMAGE" "$PWD/package"
+      - name: Prove the exact image before pushing
+        if: github.event_name != 'workflow_dispatch'
+        timeout-minutes: 8
+        env:
+          IMAGE: ${{ needs.check.outputs.image }}
+        run: just test-n8n-image "$IMAGE"
+      - name: Push versioned derived image
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          IMAGE: ${{ needs.check.outputs.image }}
+        run: docker push "$IMAGE"
+      - name: Publish private connector package
+        run: npm publish ./package/*.tgz --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
