@@ -252,6 +252,26 @@ class PreviewExpressionsSpec :
             events.size shouldBe 1
         }
 
+        "S2.8 (review-368 F3): a short bound value is redacted as a whole token only" {
+            PreviewRefusals.redact(
+                "Could not convert string 'abc' to INT32 at row 3",
+                sequenceOf(3L, "abc"),
+            ) shouldBe "Could not convert string '?' to INT32 at row ?"
+        }
+
+        "S2.8 (review-368 F4): a date derived from a binding is redacted too" {
+            val bindings = mapOf("as_of" to BoundValue("datetime", Instant.parse("2026-10-24T12:30:00Z")))
+            val data = PreviewExpressions.values(Table(emptyList(), emptyList()), bindings, listOf(":as_of - days(30)"))
+            val redacted =
+                PreviewRefusals.redact(
+                    "Conversion Error: date field value out of range: \"2026-09-24 12:30:00\" (2026-09-24)",
+                    data.bound,
+                    data.routed,
+                )
+            redacted shouldNotContain "2026-09-24"
+            redacted shouldBe "Conversion Error: date field value out of range: \"?\" (?)"
+        }
+
         "generated projection aliases do not mask source columns or reorder rows" {
             val collision = Table(listOf(ManifestColumn("_au_value_0", "int")), listOf(listOf(8L), listOf(7L)))
             PreviewExpressions.project(mapOf("key" to "_au_value_0 + 1"), collision, emptyMap()).rows shouldBe

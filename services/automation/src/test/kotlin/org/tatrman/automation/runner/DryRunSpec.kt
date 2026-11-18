@@ -1435,6 +1435,105 @@ class DryRunSpec :
             }
         }
 
+        suspend fun refusalLines(block: suspend () -> Unit): List<String> {
+            val logger =
+                org.slf4j.LoggerFactory.getLogger(PreviewRefusals::class.java) as ch.qos.logback.classic.Logger
+            val appender =
+                ch.qos.logback.core.read
+                    .ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>()
+                    .apply { start() }
+            logger.addAppender(appender)
+            try {
+                block()
+            } finally {
+                logger.detachAppender(appender)
+            }
+            return appender.list.map { it.formattedMessage }
+        }
+
+        "S2.8 (review-368 F1a): opposing transitions of one obligation name the later wiring, logged once" {
+            supervisorScope {
+                val f =
+                    PreviewFixture(
+                        this,
+                        fulfilRecipe(listOf(fulfilWiring(), fulfilWiring("cancelled"))),
+                        obligationRows = existingObligations("open"),
+                    )
+                f.runner.use { runner ->
+                    lateinit var error: AutomationException
+                    val lines = refusalLines { error = shouldThrow { runner.evaluate() } }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.detail shouldBe
+                        buildJsonObject {
+                            put("wiring", "#1:way.hold->fulfil")
+                            put("action", "fulfil")
+                            put("kind", "mapping")
+                            put("cause", "obligation-transition")
+                        }
+                    lines.size shouldBe 1
+                    lines.single().startsWith("preview-unsupported run=") shouldBe true
+                    lines.single().contains("wiring=#1:way.hold->fulfil") shouldBe true
+                    lines.single().contains("cause=obligation-transition") shouldBe true
+                    f.journals.get() shouldBe 0
+                }
+            }
+        }
+
+        "S2.8 (review-368 F1b): a malformed obligation snapshot names the snapshot, no wiring" {
+            supervisorScope {
+                val f = PreviewFixture(this, fulfilRecipe(), obligationRows = existingObligations("unknown"))
+                f.runner.use { runner ->
+                    lateinit var error: AutomationException
+                    val lines = refusalLines { error = shouldThrow { runner.evaluate() } }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.detail shouldBe
+                        buildJsonObject {
+                            put("kind", "snapshot")
+                            put("cause", "obligation-snapshot")
+                        }
+                    lines.size shouldBe 1
+                    lines.single().contains("cause=obligation-snapshot") shouldBe true
+                    f.plan shouldBe null
+                    f.journals.get() shouldBe 0
+                }
+            }
+        }
+
+        "S2.8 (review-368 F2): a native writer mapping refusal names its wiring with a fixed cause" {
+            supervisorScope {
+                val original = writerMetadata()
+                val hold = original.actions.getValue("hold")
+                val metadata =
+                    original.copy(
+                        actions =
+                            original.actions + (
+                                "hold" to
+                                    hold.copy(
+                                        columns =
+                                            hold.columns.map {
+                                                if (it.name == "tenant") it.copy(optional = true) else it
+                                            },
+                                    )
+                            ),
+                    )
+                val good = ManifestWiring(listOf("way.release"), "release", mapOf("order" to "order_number"))
+                val bad = writerWiring().let { it.copy(columns = it.columns - "tenant") }
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(good, bad)), metadata)
+                f.runner.use { runner ->
+                    val error = shouldThrow<AutomationException> { runner.evaluate() }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.detail shouldBe
+                        buildJsonObject {
+                            put("wiring", "#1:way.hold->hold")
+                            put("action", "hold")
+                            put("kind", "mapping")
+                            put("cause", "writer-mapping")
+                        }
+                    f.journals.get() shouldBe 0
+                }
+            }
+        }
+
         "compound preview predicates preserve repeated wiring and share one atomic completion" {
             supervisorScope {
                 val wiring =
@@ -1617,6 +1716,14 @@ class DryRunSpec :
                         shouldThrow<AutomationException> { runner.evaluate() }.message shouldBe
                             "unsupported native writer mapping or value"
                     }
+                    // S2.8 (review-368 F2): a writer value refusal names its wiring; its own text stays out.
+                    shouldThrow<AutomationException> { runner.evaluate() }.detail shouldBe
+                        buildJsonObject {
+                            put("wiring", "#1:way.hold->hold")
+                            put("action", "hold")
+                            put("kind", "mapping")
+                            put("cause", "writer-mapping")
+                        }
                     f.journals.get() shouldBe 0
                     f.legacy.get() shouldBe 0
                     f.reads.get() shouldBe 5
