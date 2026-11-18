@@ -372,7 +372,10 @@ data class AutomationConfig(
             return result
         }
 
-        /** `world=Zone` pairs (`demo=Europe/Prague`); a zone must be a region id or `UTC`, never a fixed offset. */
+        /**
+         * `world=Zone` pairs (`demo=Europe/Prague`); a zone must be a region id or `UTC`, never a fixed offset —
+         * neither an offset id (`+01:00`, `GMT+1`) nor a region whose rules are one (`Etc/GMT+1`, `Etc/UTC`).
+         */
         internal fun worldZones(raw: String?): Map<String, java.time.ZoneId> {
             val result = linkedMapOf<String, java.time.ZoneId>()
             val identifier = Regex("[A-Za-z_][A-Za-z_0-9]*")
@@ -390,7 +393,12 @@ data class AutomationConfig(
                 val zone =
                     runCatching { java.time.ZoneId.of(name) }
                         .getOrNull()
-                        ?.takeIf { it.id == "UTC" || it !is java.time.ZoneOffset && '/' in it.id }
+                        ?.takeIf {
+                            it.id == "UTC" ||
+                                it !is java.time.ZoneOffset &&
+                                '/' in it.id &&
+                                !it.rules.isFixedOffset
+                        }
                 require(zone != null) { "automation.worldZones names an unknown zone for world $world" }
                 result[world] = zone
             }

@@ -118,6 +118,10 @@ class AutomationConfigSpec :
                 "demo=Mars/Olympus",
                 "demo=+01:00",
                 "demo=GMT+1",
+                // review-376 B2: region ids whose rules are a fixed offset.
+                "demo=Etc/GMT+1",
+                "demo=Etc/GMT-1",
+                "demo=Etc/UTC",
                 "demo=Europe/Prague,demo=UTC",
                 "de-mo=UTC",
             )) {

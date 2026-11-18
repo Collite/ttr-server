@@ -168,14 +168,18 @@ internal object PreviewWiringValues {
         var current: String? = null
         var values = bindings
         return guarded(site, { current }, { PreviewExpressions.values(table, values) }) {
-            // S2.9a: a `due` duration is added to `as_of`'s local date, bound under a name no source can spell.
+            // S2.9a: a `due` duration is added to `as_of`'s local date, bound under a name no source spells:
+            // a name any authored text contains is skipped, so an unknown authored reference stays unknown.
             val dueBase =
                 prepared.dueDate?.let {
                     current = "due"
                     generateSequence(0) { i -> i + 1 }
                         .map { i -> "_au_due_on_$i" }
-                        .first { name -> name !in bindings && table.columns.none { c -> c.name == name } }
-                        .also { name ->
+                        .first { name ->
+                            name !in bindings &&
+                                table.columns.none { c -> c.name == name } &&
+                                prepared.sources.values.none { source -> name in source }
+                        }.also { name ->
                             values =
                                 bindings +
                                 (name to BoundValue("date", localDate(bindings.getValue("as_of").value, zone)))

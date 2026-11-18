@@ -53,7 +53,7 @@ as its first automation image bump containing #374; there is no default schema.
 
 S2.9a (D-249): configure `automation.worldZones` / `AUTOMATION_WORLD_ZONES` as comma-separated `world=Region/City`
 pairs (bp-dsk: `demo=Europe/Prague`). An `expect` row's `due` date is `as_of`'s date in that zone plus the duration;
-an unmapped world is UTC. A fixed offset or an unknown zone fails at start.
+an unmapped world is UTC. A fixed offset (`+01:00`, `GMT+1`, or a region with fixed rules such as `Etc/GMT+1`) or an unknown zone fails at start.
 `automation.pgDoorRole` / `AUTOMATION_PG_DOOR_ROLE`, when set, grants that database role schema USAGE and
 SELECT/INSERT/UPDATE/DELETE on the created model tables; unset grants no role.
 
