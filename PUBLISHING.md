@@ -68,7 +68,7 @@ release is called; the tag carries no `-RELEASE` marker.
 
 | Version | npm package | Image | Digest |
 |---|---|---|---|
-| *(the first ttr-server release follows W6·S1's merge)* | | | |
+| 0.1.1 (tag `n8n-nodes-tatrman/v0.1.1` on `0af5fba8`, 2026-11-18, run [44356569760](https://github.com/Collite/ttr-server/actions/runs/44356569760)) | `@collite/n8n-nodes-tatrman@0.1.1` | `ghcr.io/collite/n8n-tatrman:2.44.6-0.1.1` | `sha256:632b5f44ce45d9948b2ad4f6cf25dc71d9f43d932937cb3823a08935f71824e7` |
 
 ## The `-RELEASE` marker
 
