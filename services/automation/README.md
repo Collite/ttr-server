@@ -367,6 +367,18 @@ scalar kinds require an explicit cast. Invalid predicates refuse even on empty r
 lowering and local execution failures return `501 preview-unsupported` before decision/batch completion.
 Repeated wiring stays repeated and the selected rows retain original route order.
 
+The refusal names where it happened (S2.8, D-239): `detail` is `{ wiring, action, kind, expression?, cause }` —
+`wiring` is the wiring's key `#<position>:<routes>-><action>` (`#1:way.hold->release`), `kind` is `expression`,
+`condition` or `mapping` (an obligation transition), `expression` the declared argument name (`when` for a condition;
+`on_due.order` for an argument inside a deferred call), and `cause` a compiler diagnostic id (`TTRP-EXP-001` unknown
+column, `TTRP-FN-001` unknown function), the name of a preview check (`comparison-kinds`, `assignment-type`,
+`condition-not-boolean`, `non-finite`, `decimal-range`, `column-type`, `unbound-parameter`, `obligation-transition`) or
+the exception class (`SQLException` from the scratch engine, `IllegalArgumentException` …). It **never** shows generated
+SQL, a bound value or a route value. The failed run keeps the same detail in its `error` and in an `automation`
+protocol entry `{ event: "failed" }`. The cause's full message goes to one WARN line of
+`org.tatrman.automation.apply.PreviewRefusals` with the run id, every bound value (and route value of three characters or
+more) replaced by `?`.
+
 Action-typed wiring calls and explicit `on_due` calls now produce deferred preview evidence, for example
 `{"action":"start","arguments":{"process":"purchasing"},"deferred":true}`. Supplied scalar leaves use
 that same compiler projection over condition-selected rows; omitted partial-call arguments remain absent.
