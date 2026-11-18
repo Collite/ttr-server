@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, it } from 'vitest';
 import { TatrmanAutomationApi } from '../credentials/TatrmanAutomationApi.credentials';
 it('tests the authenticated descriptor and applies bearer authentication', () => {

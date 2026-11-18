@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
 set -eu
 # n8n 2.44.6 scans this directory with its package loader. Keep only a symlink on
 # the PVC; the versioned package and metadata remain immutable in the image.

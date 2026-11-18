@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it, vi } from 'vitest';
 import { NodeApiError } from 'n8n-workflow';
 import { TatrmanRun } from '../nodes/Tatrman/TatrmanRun.node';

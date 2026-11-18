@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Run in the pinned n8n or derived image with --network none. Uses real n8n persistence and execution;
 // only the Automation service is fake. All data and credentials are temporary.
 const assert = require('node:assert/strict');

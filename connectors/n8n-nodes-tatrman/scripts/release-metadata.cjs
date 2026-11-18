@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Validate every version before exposing values to the publishing jobs.
 const fs = require('node:fs');
 try {

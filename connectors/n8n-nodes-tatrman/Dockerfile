@@ -1,5 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
 FROM ghcr.io/collite/n8n:2.44.6
-LABEL org.opencontainers.image.source="https://github.com/Collite/kantheon"
+LABEL org.opencontainers.image.source="https://github.com/Collite/ttr-server"
 USER root
 # Build context is the unpacked pnpm tarball, not the workspace or a PVC directory.
 COPY package.json README.md /opt/tatrman-nodes/node_modules/@collite/n8n-nodes-tatrman/

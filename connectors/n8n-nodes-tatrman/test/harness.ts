@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { vi } from 'vitest';
 import type { IExecuteFunctions, IDataObject, IHttpRequestOptions, INode } from 'n8n-workflow';
 

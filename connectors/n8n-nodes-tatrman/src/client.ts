@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { NodeApiError, NodeOperationError, sleep } from 'n8n-workflow';
 import type { IDataObject, IExecuteFunctions, IHookFunctions, IHttpRequestOptions, ILoadOptionsFunctions, IPollFunctions, IWebhookFunctions, INode, JsonObject } from 'n8n-workflow';
 

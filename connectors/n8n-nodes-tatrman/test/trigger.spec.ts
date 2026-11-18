@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { IHookFunctions, IPollFunctions, IWebhookFunctions } from 'n8n-workflow';

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Run against the derived image with a fresh /home/node/.n8n mount, never a dist bind mount.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

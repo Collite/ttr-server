@@ -1,11 +1,12 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Tatrman Automation for n8n
 
 Governed automation recipes from n8n, using the identity stored in the Tatrman Automation credential.
 
 P0 provides **Tatrman Run** and **Tatrman Trigger**. Platform Logical Query and Golem Question are planned in P1.
 Tested with **n8n 2.44.6**, using its **n8n-workflow 2.44.2** SDK. Node version 1; package version 0.1.0.
-The public package name is reserved for a later licensing decision; this Platform package targets
-`@collite/n8n-nodes-tatrman` on GitHub Packages. It has not been published or certified on hartland yet.
+Apache-2.0. The package `@collite/n8n-nodes-tatrman` is built and published from `ttr-server` to GitHub
+Packages (npmjs only when a public release is called); it moved here from `kantheon` with its history. It has not been published or certified on hartland yet.
 
 ## Install
 
@@ -33,15 +34,15 @@ Restart n8n. Hartland uses the derived image instead, keeping the package outsid
 Build and verify it from the packed package (repository root, Docker required):
 
 ```sh
-pnpm install --frozen-lockfile
+(cd connectors/n8n-nodes-tatrman && pnpm install --frozen-lockfile)
 just build-n8n-image n8n-tatrman:2.44.6-0.1.0
 just test-n8n-image n8n-tatrman:2.44.6-0.1.0
 ```
 
 The image is Linux/amd64, based on the approved `ghcr.io/collite/n8n` mirror. The Dockerfile is the
 single source of the n8n version; release metadata and test recipes read it. The mirror preserves the
-upstream multi-platform digest. The dedicated manual mirror job in `release-image.yml` uses Kantheon's
-workflow token to create the package and establish repository Actions access; PR and release jobs log
+upstream multi-platform digest. The dedicated manual workflow `n8n-base-mirror.yml` uses this
+repository's workflow token, which needs Actions write access on that package; PR and release jobs log
 in to GHCR before pulling it. The connector image remains `ghcr.io/collite/n8n-tatrman:<runtime>-<package>`.
 
 The build context is the unpacked package tarball. Root-owned package metadata and compiled files live in
@@ -144,11 +145,13 @@ creation-versus-commit ordering and the maximum late-commit delay. These client 
 ## Development and checks
 
 ```sh
-pnpm --filter @collite/n8n-nodes-tatrman typecheck
-pnpm --filter @collite/n8n-nodes-tatrman test
-pnpm --filter @collite/n8n-nodes-tatrman lint
-pnpm --filter @collite/n8n-nodes-tatrman build
-pnpm --filter @collite/n8n-nodes-tatrman scan
+# A standalone pnpm project with its own lockfile, in connectors/n8n-nodes-tatrman:
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+pnpm lint
+pnpm build
+pnpm scan
 # From the repository root, with Docker available:
 just lint-n8n
 just test-n8n-runtime
@@ -174,9 +177,9 @@ and runs the same scoped workflow JSON. This proves installation/runtime mechani
 
 `scan` runs the official `@n8n/scan-community-package` rules on source and shipped JS, including `src/` (the public
 scanner's default source glob omits it). Two **package-metadata-only** exceptions are explicit in `scripts/scan.mjs`:
-`community-package-json-license-not-default` (D-43 forbids assuming MIT for Platform code) and
+`community-package-json-license-not-default` (the package is Apache-2.0, OL D-25, not the community default MIT) and
 `valid-peer-dependencies` (AU S0.1 requires the exact runtime SDK pin). Security rules remain enabled; this is not
-a claim of public n8n community verification. The package uses `UNLICENSED` pending the Platform licence decision.
+a claim of public n8n community verification. The package is Apache-2.0.
 
 ## Internal release
 
@@ -207,7 +210,7 @@ If image publication succeeded but npm publication failed, inspect both registri
 from the existing tag after fixing the publishing workflow on master:
 
 ```sh
-gh workflow run n8n-nodes.yml --repo Collite/kantheon --ref master -f release_tag=n8n-nodes-tatrman/v0.1.0
+gh workflow run n8n-nodes.yml --repo Collite/ttr-server --ref master -f release_tag=n8n-nodes-tatrman/v0.1.0
 ```
 
 This manual action checks out `refs/tags/<release_tag>` in both jobs, validates the tag/package version,

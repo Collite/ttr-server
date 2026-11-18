@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeApiError } from 'n8n-workflow';
 import type { IHookFunctions, IPollFunctions } from 'n8n-workflow';

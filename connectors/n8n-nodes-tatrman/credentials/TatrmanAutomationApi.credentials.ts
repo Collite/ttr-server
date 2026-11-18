@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { IAuthenticateGeneric, ICredentialTestRequest, ICredentialType, INodeProperties, Icon } from 'n8n-workflow';
 
 export class TatrmanAutomationApi implements ICredentialType {

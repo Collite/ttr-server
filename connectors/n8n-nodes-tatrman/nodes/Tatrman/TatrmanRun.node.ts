@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 import type { IDataObject, IExecuteFunctions, INodeExecutionData, INodeProperties, INodeType, INodeTypeDescription } from 'n8n-workflow';
 import { AutomationClient, DEFAULT_REQUEST_TIMEOUT_SECONDS, DEFAULT_WAIT_UP_TO_SECONDS, rethrowDoorError } from '../../src/client';

@@ -2,15 +2,15 @@
   "name": "@collite/n8n-nodes-tatrman",
   "version": "0.1.0",
   "description": "Tatrman Automation nodes for n8n",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "author": {
     "name": "Collite",
     "email": "info@collite.com"
   },
-  "homepage": "https://github.com/Collite/kantheon/tree/master/connectors/n8n-nodes-tatrman",
+  "homepage": "https://github.com/Collite/ttr-server/tree/master/connectors/n8n-nodes-tatrman",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Collite/kantheon.git",
+    "url": "https://github.com/Collite/ttr-server.git",
     "directory": "connectors/n8n-nodes-tatrman"
   },
   "keywords": [

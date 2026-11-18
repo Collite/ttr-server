@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { DateTime } from 'luxon';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
