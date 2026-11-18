@@ -14,6 +14,9 @@ import org.tatrman.concept.candidate.Stereo
 import org.slf4j.LoggerFactory
 import org.tatrman.ttr.metadata.source.LocalFsStorage
 import org.tatrman.ttr.metadata.source.ModelStorage
+import org.tatrman.ttr.metadata.source.YamlFileSource
+import org.tatrman.metadata.refresh.TREE_DECLARATION
+import org.tatrman.metadata.refresh.YamlKindSource
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.io.path.invariantSeparatorsPathString
@@ -44,13 +47,18 @@ fun interface PromotionFiles {
 class StoragePromotionFiles(
     private val storage: ModelStorage,
     private val localRoot: Path? = null,
+    /** MW S4.2 — a `yaml` source: only a canonical tree is a promotion target ([dialectGuard]). */
+    private val yaml: Boolean = false,
+    /** The source's configured `profile`, which replaces a tree without `ttr.yaml`. */
+    private val profile: String? = null,
 ) : PromotionFiles {
     override fun read(): ModelText =
         try {
             localRoot?.let { root ->
                 ModelText(storage.fetchVersion(), files(LocalFsStorage(id = "promotion", rootPath = root)))
+                    .also { dialectGuard(LocalFsStorage(id = "promotion", rootPath = root)) }
             }
-                ?: readMoving()
+                ?: readMoving().also { dialectGuard(storage) }
         } catch (e: CnRefused) {
             throw e
         } catch (e: Exception) {
@@ -81,9 +89,33 @@ class StoragePromotionFiles(
             rel.invariantSeparatorsPathString to from.read(f)
         }
 
+    /**
+     * MW-P4 contracts §1 (✅MW-52): a promotion writes canonical model text, so a `yaml` tree read through a dialect
+     * profile — the configured one, else its `ttr.yaml` — is refused with `409 promotion_target_dialect`. A canonical
+     * tree (no profile, or the bundled `canonical`) passes. Read after the fetch: a git tree exists only then.
+     */
+    private fun dialectGuard(tree: ModelStorage) {
+        if (!yaml) return
+        val declaration =
+            tree.listFiles(listOf("yaml")).firstOrNull { f ->
+                f.rootPath?.let { Path.of(f.path).relativeTo(it).invariantSeparatorsPathString } == TREE_DECLARATION
+            }
+        val declared = profile ?: declaration?.let { YamlKindSource.declaredProfile(tree.read(it)) }
+        if (declared != null && !YamlFileSource.isBundledProfile(declared)) {
+            throw CnRefused(
+                HttpStatusCode.Conflict,
+                PROMOTION_TARGET_DIALECT,
+                "the promotion source reads its tree through the dialect profile '$declared'; only a canonical tree " +
+                    "takes a promotion",
+            )
+        }
+    }
+
     companion object {
         /** The loader's model extensions (ttr-metadata reads both). */
         val MODEL_EXTENSIONS = listOf("ttr", "ttrm")
+
+        const val PROMOTION_TARGET_DIALECT = "promotion_target_dialect"
     }
 }
 

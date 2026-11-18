@@ -128,6 +128,8 @@ dependencies {
 
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.tatrman.ttr.metadata.cli)
+    // MW S4.2 — specs write a `.ttrm` fixture as canonical YAML through the library's own writer.
+    testImplementation(libs.tatrman.ttr.yaml)
     testImplementation(libs.mockk)
     // In-process gRPC server (review-004 R3.2 — live GetPrompts round-trip).
     testImplementation(libs.grpc.inprocess)

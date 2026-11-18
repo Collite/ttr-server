@@ -755,6 +755,8 @@ class MetadataServiceImpl(
                     ).setSource(source.origin.source)
                     .setBranch(source.origin.branch)
                     .setCommit(source.origin.commit)
+                    .setKind(source.origin.kind)
+                    .setProfile(source.origin.profile)
                     .setServingFallback(source.servingFallback)
                     .setVersion(source.version)
                     .setLastSuccess(source.lastSuccessAt?.toString().orEmpty())

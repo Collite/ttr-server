@@ -31,8 +31,12 @@ class ContentSourceStartupSpec :
                 StartupRefusal("whitespace branch", listOf("branch=   "), "github-model (blank branch)"),
                 StartupRefusal(
                     "unknown kind with credentials",
-                    listOf("kind=yaml", "remote-uri=https://review-user:review-password@example.invalid/model.git"),
-                    "github-model (unknown kind 'yaml')",
+                    // `yaml` is a kind since MW S4.2; `yaml-legacy` never returns (MW-P4 scope fence).
+                    listOf(
+                        "kind=yaml-legacy",
+                        "remote-uri=https://review-user:review-password@example.invalid/model.git",
+                    ),
+                    "github-model (unknown kind 'yaml-legacy')",
                 ),
                 StartupRefusal("unknown type", listOf("type=typo"), "github-model (unknown type 'typo')"),
                 StartupRefusal(

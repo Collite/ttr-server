@@ -4,6 +4,7 @@ package org.tatrman.metadata.cn
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.ktor.http.HttpStatusCode
 import org.tatrman.ttr.metadata.source.LocalFsStorage
 import org.tatrman.ttr.metadata.source.ModelStorage
@@ -106,5 +107,33 @@ class StoragePromotionFilesSpec :
                 }
             shouldThrow<CnRefused> { StoragePromotionFiles(moving).read() }.code shouldBe
                 Promoter.CN_PROMOTION_SOURCE_MOVING
+        }
+
+        test("MW S4.2 — a yaml source read through a dialect is 409 promotion_target_dialect; canonical passes") {
+            val declared = { profile: String ->
+                tree().also { it.resolve("ttr.yaml").writeText("profile: $profile\ngrammar: '>=0.22 <1.0'\n") }
+            }
+
+            fun refused(files: StoragePromotionFiles) =
+                shouldThrow<CnRefused> { files.read() }.let { it.status to it.code }
+            val dialect = HttpStatusCode.Conflict to StoragePromotionFiles.PROMOTION_TARGET_DIALECT
+            // The tree's ttr.yaml, through the storage and through a checkout's working tree.
+            refused(
+                StoragePromotionFiles(LocalFsStorage(id = "d", rootPath = declared("shop/1")), yaml = true),
+            ) shouldBe
+                dialect
+            val checkout = Counting(generateSequence { "c0ffee" }.iterator())
+            refused(StoragePromotionFiles(checkout, localRoot = declared("shop/1"), yaml = true)) shouldBe dialect
+            // The configured profile, on a tree without ttr.yaml.
+            refused(
+                StoragePromotionFiles(LocalFsStorage(id = "p", rootPath = tree()), yaml = true, profile = "shop/1"),
+            ) shouldBe
+                dialect
+            // Canonical: no declaration, or the bundled identity. A ttr source never reads ttr.yaml.
+            for (root in listOf(tree(), declared("canonical/1"))) {
+                StoragePromotionFiles(LocalFsStorage(id = "c", rootPath = root), yaml = true).read().files.keys shouldBe
+                    setOf("legacy.ttr", "cn/cn.ttrm")
+            }
+            StoragePromotionFiles(LocalFsStorage(id = "t", rootPath = declared("shop/1"))).read().version shouldNotBe ""
         }
     })

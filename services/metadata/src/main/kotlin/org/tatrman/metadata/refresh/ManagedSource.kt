@@ -11,6 +11,9 @@ internal class ManagedSource(
     val kind: String,
     private val primary: ModelSource,
     val git: BranchStorage? = null,
+    /** MW S4.2 — the parser kind (`ttr` / `yaml`) and, for `yaml`, the profile the last load read the tree through. */
+    val parser: String = "ttr",
+    private val profile: () -> String = { "" },
 ) : ModelSource {
     var fallback: ManagedSource? = null
     private var checkpoint: BranchStorage.Checkpoint? = null
@@ -18,8 +21,13 @@ internal class ManagedSource(
     private var preparationFailure: Exception? = null
     var attempted: SourceSnapshot? = null
         private set
-    var origin: SourceOrigin = SourceOrigin(kind)
+    var origin: SourceOrigin = origin()
         private set
+
+    private fun origin(
+        branch: String = "",
+        commit: String = "",
+    ) = SourceOrigin(kind, branch, commit, kind = parser, profile = profile())
 
     fun begin(
         branch: String = "",
@@ -41,7 +49,7 @@ internal class ManagedSource(
             }
         preview = branch.isNotEmpty()
         if (preview) git?.branch = branch
-        origin = SourceOrigin(kind, git?.branch.orEmpty())
+        origin = origin(git?.branch.orEmpty())
         fallback?.begin(initial = initial)
     }
 
@@ -55,7 +63,7 @@ internal class ManagedSource(
             if (isFallback && fb != null) {
                 fb.origin.copy(fallback = true)
             } else {
-                SourceOrigin(kind, git?.branch.orEmpty(), if (git != null) snapshot.version else "")
+                origin(git?.branch.orEmpty(), if (git != null) snapshot.version else "")
             }
         return snapshot
     }
@@ -64,7 +72,7 @@ internal class ManagedSource(
         if (attempted != null) {
             origin
         } else {
-            SourceOrigin(kind, git?.branch.orEmpty(), git?.attemptedCommit.orEmpty())
+            origin(git?.branch.orEmpty(), git?.attemptedCommit.orEmpty())
         }
 
     fun finish(accepted: Boolean): String? {
@@ -89,4 +97,8 @@ data class SourceOrigin(
     val branch: String = "",
     val commit: String = "",
     val fallback: Boolean = false,
+    /** MW S4.2 (contracts §1) — the parser kind, `ttr` or `yaml`; [source] stays the storage type. */
+    val kind: String = "ttr",
+    /** The profile a `yaml` source read its tree through (`<name>/<major>` or the configured path); empty for `ttr`. */
+    val profile: String = "",
 )
