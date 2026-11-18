@@ -30,10 +30,11 @@ import importlib
 from pathlib import Path
 
 _SERVICE_DIR = Path(__file__).resolve().parent
-# The NEWEST stub the generator emits (OL W1c·S1): a tree generated before it lacks this
-# file and has the `org/__init__.py` that shadows the `ttr-plan-proto` wheel, so it must
-# regenerate rather than pass the check on an older marker.
-_MARKER = _SERVICE_DIR / "generated" / "org" / "tatrman" / "llm" / "v1" / "llm_gateway_pb2_grpc.py"
+# The NEWEST stub the generator emits (OL W1c·S1's `query.v1`): a tree generated before it
+# lacks this file and has the `org/__init__.py` that shadows the `ttr-plan-proto` wheel, so
+# it must regenerate rather than pass the check on an older marker. (The `llm.v1` stubs that
+# were the marker until OL W1c·S3a are no longer generated: the gateway is HTTP, D-43.)
+_MARKER = _SERVICE_DIR / "generated" / "org" / "tatrman" / "query" / "v1" / "query_pb2_grpc.py"
 
 
 def _generate() -> None:

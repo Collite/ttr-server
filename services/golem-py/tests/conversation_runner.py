@@ -31,7 +31,7 @@ from golem_py.deps import Deps, GateResult, HypothesisOutcome
 from golem_py.errors import DoorRejected, LaneServiceUnavailable
 from golem_py.graph import run_turn
 from golem_py.ladder import load_default
-from golem_py.llm_client import LlmReply
+from golem_py.llm_client import SERVICE, LlmReply
 from golem_py.model_slice import ModelSlice, SliceAttribute, SliceEntity, SliceRelation
 from golem_py.outputs import TurnOutput
 from golem_py.query_client import QueryResult
@@ -168,7 +168,7 @@ class RecordedGateway:
         assert self.replies, "the lane called the gateway more often than the fixture recorded"
         reply = self.replies.pop(0)
         if "unavailable" in reply:
-            raise LaneServiceUnavailable("llm.v1", reply["unavailable"])
+            raise LaneServiceUnavailable(SERVICE, reply["unavailable"])
         text = reply["raw"] if "raw" in reply else json.dumps(reply, ensure_ascii=False)
         return LlmReply(text=text, model=self.model)
 

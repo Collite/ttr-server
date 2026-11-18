@@ -112,5 +112,19 @@ scoring input, never a source.
 
   The live probes of bp-dsk's `meta.v1`, `query.v1` and gateway ports used this directory's
   own clients.
+- **2026-11-17 · OL W1c·S3a: the HTTP gateway client and the CLI's operator library.**
+  Clean-room observed. No legacy predecessor-platform repository, `EXAMPLES.md`, legacy
+  conversation corpus or Kantheon Golem code was opened, listed or searched in this session, and
+  no prompt text from any other agent was read. The HTTP client was written from the amended
+  OL-C13. What WAS read:
+  - Tatrman project documents: OL `contracts.md` §C (OL-C13 as amended by D-43 and this stage's
+    Found 1 ruling), the OL design / control room (D-43), the stage list and planning Rule 4; the
+    gateway's own `contracts.md` §§1.1–1.3, 1.7 and 2.1–2.3, which OL-C13 names as the wire
+    authority.
+  - This repo's own `services/llm-gateway` `catalog.yaml`, `governance.yaml` and
+    `ModelResolver.kt`, read only to learn how a model class is routed.
+  - This directory's own code and tests, and the installed `httpx` package's behaviour.
+
+  The live probes of bp-dsk's gateway used a throwaway script and then this directory's own client.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.

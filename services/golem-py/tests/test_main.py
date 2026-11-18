@@ -8,13 +8,18 @@ the one end-to-end turn here runs over the recorded fakes of the lane spec.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
+import io
 import json
+import os
+import tarfile
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
+import zstandard
 
 import main
 from golem_py.door_client import LiveSqlDoor
@@ -27,7 +32,9 @@ from golem_py.model_slice import LiveModelSlice
 from golem_py.outputs import Answer, RefusalWithGaps
 from golem_py.query_client import QueryResult, sql_sha256
 from golem_py.settings import GolemSettings
-from tests.helpers import h1_lattice
+from golem_py.skills import LayeredSkillLibrary
+from tests.helpers import RecordedCore, deps, h1_lattice
+from tests.lattice_fixtures import lattice_golden
 from tests.test_llm_lane import (
     PERIOD,
     PERIOD_SQL,
@@ -41,10 +48,13 @@ from tests.test_llm_lane import (
     reply,
 )
 
+KEY = "ttrk-test-0000-not-a-real-key"
+
 LANE_ENV = {
     "GOLEM_QUERY_TARGET": "query:7306",
     "GOLEM_QUERY_WORLD": "hartland_cz",
-    "GOLEM_LLM_TARGET": "llm-gateway:9090",
+    "GOLEM_LLM_TARGET": "http://llm-gateway.ttr-server.svc.cluster.local:7280/v1",
+    "GOLEM_LLM_API_KEY": KEY,
     "GOLEM_LLM_MODEL": "gw-capable-1",
     "GOLEM_META_TARGET": "metadata:7261",
     "GOLEM_META_PACKAGES": "hartland",
@@ -52,7 +62,13 @@ LANE_ENV = {
 
 
 def _settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> GolemSettings:
-    for name in list(LANE_ENV) + ["GOLEM_LLM_LANE_ENABLED", "GOLEM_PROFILE", "GOLEM_LADDER_CONFIG"]:
+    for name in list(LANE_ENV) + [
+        "GOLEM_LLM_LANE_ENABLED",
+        "GOLEM_LLM_MODEL_CLASS",
+        "GOLEM_PROFILE",
+        "GOLEM_LADDER_CONFIG",
+        "GOLEM_LEXICON_ARCHIVE_PATHS",
+    ]:
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
@@ -71,8 +87,11 @@ def test_the_lane_settings_reach_the_three_live_legs(monkeypatch: pytest.MonkeyP
     deps = main.build_deps(_settings(monkeypatch, **LANE_ENV), load_default(), "resolver:7276")
 
     assert isinstance(deps.door, LiveSqlDoor) and deps.door.target == "query:7306"
-    assert isinstance(deps.llm, LiveLlmGateway) and deps.llm.target == "llm-gateway:9090"
-    assert deps.llm.model == "gw-capable-1" and deps.llm.model_class == "capable"
+    assert isinstance(deps.llm, LiveLlmGateway)
+    assert deps.llm.endpoint == (
+        "http://llm-gateway.ttr-server.svc.cluster.local:7280/v1/chat/completions"
+    )
+    assert deps.llm.model == "gw-capable-1" and deps.llm.model_class == "smart"
     assert isinstance(deps.model_slice, LiveModelSlice)
     assert deps.settings.query_world == "hartland_cz"
     assert lane_on(deps)
@@ -246,3 +265,192 @@ def test_the_profile_comes_from_the_environment_when_no_flag_is_given(
 
     assert main.main(["--question", "q"]) == main.EXIT_CONFIG
     assert "NO_SUCH_PROFILE" in capsys.readouterr().err
+
+
+# OL W1c·S3a·T1 — the gateway's URL and key are checked before the turn; the key never shows.
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [
+        ({"GOLEM_LLM_API_KEY": ""}, "GOLEM_LLM_API_KEY is empty"),
+        ({"GOLEM_LLM_API_KEY": "   "}, "GOLEM_LLM_API_KEY is empty"),
+        ({"GOLEM_LLM_TARGET": "llm-gateway:9090"}, "http"),
+        ({"GOLEM_LLM_TARGET": "http://llm-gateway:7280"}, "must end in /v1"),
+        ({"GOLEM_LLM_TARGET": "http://llm-gateway:7280/v1/chat/completions"}, "must end in /v1"),
+        ({"GOLEM_LLM_TARGET": "http://llm-gateway:7280/v1?x=1"}, "no query"),
+        ({"GOLEM_LLM_TARGET": f"http://golem:{KEY}@llm-gateway:7280/v1"}, "credentials"),
+        # review-357 F2: a key in the wrong variable, or in the URL, is never printed back
+        ({"GOLEM_LLM_TARGET": KEY}, "http"),
+        ({"GOLEM_LLM_TARGET": f"http://llm-gateway:7280/v1?api_key={KEY}"}, "no query"),
+        ({"GOLEM_LLM_TARGET": f"http://llm-gateway:7280/{KEY}"}, "must end in /v1"),
+        # review-357 F4: a key no HTTP header can carry
+        ({"GOLEM_LLM_API_KEY": KEY + "\u00a0x"}, "cannot carry"),
+        ({"GOLEM_LLM_API_KEY": KEY + "\u201cx"}, "cannot carry"),
+    ],
+    ids=[
+        "no-key",
+        "blank-key",
+        "grpc-target",
+        "no-v1",
+        "full-path",
+        "query",
+        "userinfo",
+        "key-as-target",
+        "key-in-query",
+        "key-in-path",
+        "key-nbsp",
+        "key-smart-quote",
+    ],
+)
+def test_a_lane_without_a_usable_gateway_url_or_key_exits_2_without_showing_the_key(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    env: dict[str, str],
+    message: str,
+) -> None:
+    _settings(monkeypatch, **(LANE_ENV | env))
+
+    async def no_turn(*_: object, **__: object) -> None:
+        raise AssertionError("a turn ran on an invalid configuration")
+
+    monkeypatch.setattr(main, "run_turn", no_turn)
+
+    assert main.main(["--question", "q"]) == main.EXIT_CONFIG
+    err = capsys.readouterr().err
+    assert message in err
+    assert KEY not in err and "not-a-real-key" not in err
+
+
+def test_a_lane_that_is_off_never_checks_its_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    env = LANE_ENV | {"GOLEM_LLM_TARGET": "llm-gateway:9090", "GOLEM_LLM_LANE_ENABLED": "false"}
+    deps = main.build_deps(_settings(monkeypatch, **env), load_default(), "resolver:7276")
+
+    assert deps.llm is None and not lane_on(deps)
+    main.check_startup(deps, "CHAT_QUICK")
+
+
+def test_the_key_is_in_no_repr_and_a_lane_that_is_off_needs_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings(monkeypatch, **LANE_ENV)
+    deps = main.build_deps(settings, load_default(), "resolver:7276")
+
+    assert KEY not in repr(settings) and KEY not in repr(deps)
+    assert settings.llm_api_key.get_secret_value() == KEY
+
+    off = _settings(
+        monkeypatch, **(LANE_ENV | {"GOLEM_LLM_API_KEY": "", "GOLEM_LLM_LANE_ENABLED": "false"})
+    )
+    main.check_startup(main.build_deps(off, load_default(), "resolver:7276"), "CHAT_QUICK")
+
+
+# OL W1c·S3a·T4 — the CLI reads the estate's operator library from the lexicon archives.
+LIBRARY = Path(__file__).resolve().parent / "fixtures" / "lexicon" / "operator-library.json"
+
+
+def _archive(path: Path, library: object, member: str = "docs/operator-library.json") -> Path:
+    """A `kind: lexicon` archive as `SnapshotWriter` lays it out: zstd over a tar that holds
+    `docs/operator-library.json` (the only document the Golem reads)."""
+    raw = json.dumps(library).encode()
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        info = tarfile.TarInfo(member)
+        info.size = len(raw)
+        tar.addfile(info, io.BytesIO(raw))
+    path.write_bytes(zstandard.ZstdCompressor().compress(buf.getvalue()))
+    return path
+
+
+def _cli_skills(monkeypatch: pytest.MonkeyPatch, **env: str) -> LayeredSkillLibrary:
+    """Run the CLI up to the turn and return the library it would run the turn with."""
+    _settings(monkeypatch, **env)
+    seen: list[LayeredSkillLibrary] = []
+
+    async def capture(_state: object, d: object) -> None:
+        seen.append(d.skills)  # type: ignore[attr-defined]
+        raise SystemExit(0)
+
+    monkeypatch.setattr(main, "run_turn", capture)
+    with pytest.raises(SystemExit):
+        main.main(["--question", "Zobraz tržby za rok 2025"])
+    [skills] = seen
+    return skills
+
+
+async def _h1(skills: LayeredSkillLibrary) -> object:
+    from golem_py.state import ResolutionState
+
+    core = RecordedCore(lattice_golden("h1-cs"))
+    return await run_turn(ResolutionState(question="h1-cs"), deps(core, skills=skills))
+
+
+def test_the_configured_archives_give_the_turn_op_show_estate_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = json.loads(LIBRARY.read_text(encoding="utf-8"))
+    estate = {**library, "operators": {"op:show": library["operators"]["op:show"]}}
+    first = _archive(tmp_path / "estate.tar.zst", estate)
+    second = _archive(tmp_path / "stdlib.tar.zst", library)
+
+    skills = _cli_skills(
+        monkeypatch, GOLEM_LEXICON_ARCHIVE_PATHS=os.pathsep.join([str(first), str(second)])
+    )
+
+    assert [layer.archive_id for layer in skills.layers] == [str(first), str(second)]
+    assert skills.has("op:show") and skills.has("op:trend")
+    out = asyncio.run(_h1(skills))  # main() runs its own loop, so this test is sync
+    assert isinstance(out, Answer), out
+    assert "op:show" in out.envelope.formatting_directives  # type: ignore[union-attr]
+
+
+def test_with_no_archive_configured_an_operator_question_still_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    skills = _cli_skills(monkeypatch)
+
+    assert skills.layers == []
+    out = asyncio.run(_h1(skills))  # main() runs its own loop, so this test is sync
+    assert isinstance(out, RefusalWithGaps)
+    assert out.reason == "NO_CAPABLE_PLUGIN" and "op:show" in out.explanation
+
+
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "missing",
+        "not an archive",
+        "wrong schema",
+        # review-357 F1: these escaped as tracebacks (exit 1)
+        "no operator library",
+        "library not an object",
+        "operator without body",
+    ],
+)
+def test_a_configured_archive_that_cannot_be_read_exits_2_naming_it(
+    problem: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "lexicon.tar.zst"
+    if problem == "not an archive":
+        path.write_bytes(b"this is not zstd")
+    elif problem == "wrong schema":
+        _archive(path, {"schemaVersion": "something-else/v9", "operators": {}})
+    elif problem == "no operator library":  # e.g. a world-only lexicon archive
+        _archive(path, {"world": "hartland_cz"}, member="docs/world.json")
+    elif problem == "library not an object":
+        _archive(path, [])
+    elif problem == "operator without body":
+        library = json.loads(LIBRARY.read_text(encoding="utf-8"))
+        entry = {k: v for k, v in library["operators"]["op:show"].items() if k != "body"}
+        _archive(path, {**library, "operators": {"op:show": entry}})
+    _settings(monkeypatch, GOLEM_LEXICON_ARCHIVE_PATHS=str(path))
+
+    async def no_turn(*_: object, **__: object) -> None:
+        raise AssertionError("a turn ran on an unreadable operator library")
+
+    monkeypatch.setattr(main, "run_turn", no_turn)
+
+    assert main.main(["--question", "q"]) == main.EXIT_CONFIG
+    err = capsys.readouterr().err
+    assert str(path) in err and "GOLEM_LEXICON_ARCHIVE_PATHS" in err

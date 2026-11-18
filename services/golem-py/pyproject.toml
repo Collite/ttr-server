@@ -32,6 +32,9 @@ dependencies = [
     # OL-C12: the door streams Arrow IPC. Pinned exactly, at the version the estate's
     # other Arrow reader (workers/worker-polars) locks.
     "pyarrow==24.0.0",
+    # OL-C13 (D-43): the gateway is HTTP. httpx is the version master already resolved
+    # (via pydantic-ai), declared directly because the lane's client imports it.
+    "httpx==0.28.1",
     "pyyaml>=6.0.3",
     "zstandard>=0.23",
 ]

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, SecretStr, model_validator
 
 from golem_py.errors import ConfigInvalid
 
@@ -52,13 +52,24 @@ class GolemSettings(BaseModel):
     query_world: str = ""  # GOLEM_QUERY_WORLD — the world every lane query runs in
     query_timeout_s: float = 30.0  # GOLEM_QUERY_TIMEOUT_S
     llm_lane_enabled: bool = True  # GOLEM_LLM_LANE_ENABLED (OL-C11: default on)
-    llm_target: str = ""  # GOLEM_LLM_TARGET — `llm.v1` (the open gateway)
+    # GOLEM_LLM_TARGET — the open gateway's HTTP base URL, ending in `/v1` (OL-C13, D-43)
+    llm_target: str = ""
+    # GOLEM_LLM_API_KEY — the team's virtual key, injected from a Secret. A `SecretStr`, so
+    # neither `repr`, a validation error nor a log line ever shows it.
+    llm_api_key: SecretStr = SecretStr("")
     llm_model: str = ""  # GOLEM_LLM_MODEL — empty: the gateway picks within the class
-    llm_model_class: str = "capable"  # GOLEM_LLM_MODEL_CLASS (OL-C13)
+    # GOLEM_LLM_MODEL_CLASS — the gateway tier sent as `model_tags` (OL-C13: `smart`; the
+    # catalog has no `capable` tag, S3a Found 1). The LADDER rung is still named `capable`.
+    llm_model_class: str = "smart"
     llm_model_slice_entities: int = 40  # GOLEM_LLM_MODEL_SLICE_ENTITIES (OL-C14)
     meta_target: str = ""  # GOLEM_META_TARGET — `meta.v1`
     meta_packages: list[str] = []  # GOLEM_META_PACKAGES — comma-separated
     meta_timeout_s: float = 10.0  # GOLEM_META_TIMEOUT_S
+
+    # GOLEM_LEXICON_ARCHIVE_PATHS — the compiled lexicon archives the operator library is read
+    # from, estate first (`os.pathsep`-separated, the `*_LEXICON_ARCHIVE_PATH` mount). Empty:
+    # no library, and a question naming an operator refuses NO_CAPABLE_PLUGIN, as before.
+    lexicon_archive_paths: list[str] = []
 
     @model_validator(mode="after")
     def _ttl_covers_the_token(self) -> GolemSettings:
@@ -105,8 +116,8 @@ class GolemSettings(BaseModel):
                 return False
             raise ValueError(f"{name} must be true or false, got {raw!r}")
 
-        def _list(name: str) -> list[str]:
-            return [part.strip() for part in (os.getenv(name) or "").split(",") if part.strip()]
+        def _list(name: str, sep: str = ",") -> list[str]:
+            return [part.strip() for part in (os.getenv(name) or "").split(sep) if part.strip()]
 
         try:
             return cls(
@@ -122,12 +133,14 @@ class GolemSettings(BaseModel):
                 query_timeout_s=_float("GOLEM_QUERY_TIMEOUT_S", 30.0),
                 llm_lane_enabled=_bool("GOLEM_LLM_LANE_ENABLED", True),
                 llm_target=os.getenv("GOLEM_LLM_TARGET") or "",
+                llm_api_key=SecretStr((os.getenv("GOLEM_LLM_API_KEY") or "").strip()),
                 llm_model=os.getenv("GOLEM_LLM_MODEL") or "",
-                llm_model_class=os.getenv("GOLEM_LLM_MODEL_CLASS") or "capable",
+                llm_model_class=os.getenv("GOLEM_LLM_MODEL_CLASS") or "smart",
                 llm_model_slice_entities=_int("GOLEM_LLM_MODEL_SLICE_ENTITIES", 40),
                 meta_target=os.getenv("GOLEM_META_TARGET") or "",
                 meta_packages=_list("GOLEM_META_PACKAGES"),
                 meta_timeout_s=_float("GOLEM_META_TIMEOUT_S", 10.0),
+                lexicon_archive_paths=_list("GOLEM_LEXICON_ARCHIVE_PATHS", os.pathsep),
             )
         except ValueError as exc:
             raise ConfigInvalid(str(exc)) from exc

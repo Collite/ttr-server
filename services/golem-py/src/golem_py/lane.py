@@ -16,7 +16,7 @@ The sequence, and every way out of it (OL-C16):
                       │       │                      │       │        └ rejected ▶ QUERY_NOT_WRITTEN
                       │       └ rule broken ▶ QUERY_NOT_WRITTEN (no repair: the door never saw it)
                       └ budget spent ▶ QUERY_NOT_WRITTEN
-    any leg unreachable (meta.v1 · llm.v1 · query.v1) ▶ LANE_UNAVAILABLE
+    any leg unreachable (meta.v1 · llm-gateway · query.v1) ▶ LANE_UNAVAILABLE
 
 Each call counts one against `max_llm_invocations` on the state, the same counter the
 ladder spends — a lane call is an LLM invocation like any other. A refusal carries the

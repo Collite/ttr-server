@@ -35,6 +35,33 @@ outside this repo could notice is in.
   0.14.1 transitively). The `yaml` source kind and `MetadataLoader.of` arrive in the reader. `grounding-lexicon`'s next
   server-libs POM names ttr-lexicon/ttr-snapshot 0.22.7. The three readers' fat jars are built with Zip64 (✅D-MW-86).
 
+- **golem-py: the LLM lane calls the gateway over HTTP; the CLI loads the operator library
+  (OL W1c·S3a, D-43).**
+  - Gateway 2.0 is REST-only, so the lane's client now sends one non-streaming
+    `POST {GOLEM_LLM_TARGET}/chat/completions`: system and user messages, `temperature: 0`,
+    `response_format: json_object`, and the team key as `Authorization: Bearer`. It no longer
+    calls `llm.v1 CreateResponse` (nothing served it), and golem-py no longer generates
+    `llm.v1` stubs. The shared `proto-llm` module is unchanged.
+  - **Migration:** `GOLEM_LLM_TARGET` is now an HTTP(S) base URL ending in `/v1` (bp-dsk:
+    `http://llm-gateway.ttr-server.svc.cluster.local:7280/v1`), not `host:port`. The new
+    `GOLEM_LLM_API_KEY` carries the team's `ttrk-` key from a Secret; it is required when the
+    lane is on and never printed. `GOLEM_LLM_MODEL_CLASS` defaults to `smart`, sent as
+    `model_tags` (the gateway's catalog has no `capable` tag), and an explicit `GOLEM_LLM_MODEL`
+    is sent instead. The ladder rung keeps the name `capable`.
+  - A target that is not such a URL, or a key with characters no HTTP header can carry, exits
+    2 when the gateway client is built. The error names the wrong part and at most the
+    `scheme://host:port`, never the value. With the lane switched off the target is not read.
+  - Failures:
+    - No answer, a timeout or a non-2xx status refuses `LANE_UNAVAILABLE`. The refusal
+      carries only the status and the gateway's error code, else its type
+      (`HTTP 401 invalid_api_key`, `HTTP 400 invalid_request_error`).
+    - A 2xx reply with no completion text, or one cut off (`finish_reason` `length` or
+      `content_filter`), refuses `QUERY_NOT_WRITTEN`.
+    - The whole call is bounded by the `capable` rung's timeout, with no client retry.
+  - `GOLEM_LEXICON_ARCHIVE_PATHS` (`os.pathsep`-separated, estate first) loads the operator
+    library from the estate's lexicon archive, such as bp-dsk's `hartland-lexicon` ConfigMap.
+    An archive that cannot be read, has no operator library or holds a malformed one exits 2.
+    With none configured, questions naming an operator still refuse `NO_CAPABLE_PLUGIN`.
 - **golem-py: the CLI takes the LLM lane's settings, and four lane-on conversations join the
   conformance tier (OL W1c·S3).**
   - `src/main.py` builds the door, the gateway and the model slice from `GOLEM_*`. Before

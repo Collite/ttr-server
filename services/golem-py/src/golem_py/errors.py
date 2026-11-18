@@ -116,8 +116,9 @@ class LaneServiceUnavailable(GolemError):
     """A service the LLM lane needs (the query door, the LLM gateway, the metadata
     service) could not be reached or would not answer (OL-C16: ``LANE_UNAVAILABLE``).
 
-    Names the service by its wire package (``query.v1`` · ``llm.v1`` · ``meta.v1``), so the
-    refusal the lane builds from it says WHICH leg failed rather than "something did".
+    Names the leg (``query.v1`` · ``meta.v1`` by their wire packages, ``llm-gateway`` for the
+    HTTP gateway of OL-C13), so the refusal the lane builds from it says WHICH leg failed
+    rather than "something did".
     """
 
     def __init__(self, service: str, detail: str = ""):
@@ -145,7 +146,8 @@ class LaneReplyRefused(GolemError):
     with ``QUERY_NOT_WRITTEN`` (OL-C16); the query is never sent.
 
     ``rule`` is the machine token (``invalid_object`` · ``invalid_sql`` · ``not_select`` ·
-    ``parameter`` · ``outside_slice`` · ``literal_unsourced`` · ``handled_span_not_carried``)
+    ``parameter`` · ``outside_slice`` · ``literal_unsourced`` · ``handled_span_not_carried``;
+    ``no_completion`` when the gateway answered 2xx with no completion text, OL-C13)
     and ``detail`` says what broke it."""
 
     def __init__(self, rule: str, detail: str):
