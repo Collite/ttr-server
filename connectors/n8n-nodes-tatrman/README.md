@@ -4,7 +4,7 @@
 Governed automation recipes from n8n, using the identity stored in the Tatrman Automation credential.
 
 P0 provides **Tatrman Run** and **Tatrman Trigger**. Platform Logical Query and Golem Question are planned in P1.
-Tested with **n8n 2.44.6**, using its **n8n-workflow 2.44.2** SDK. Node version 1; package version 0.1.0.
+Tested with **n8n 2.44.6**, using its **n8n-workflow 2.44.2** SDK. Node version 1; package version 0.1.1.
 Apache-2.0. The package `@collite/n8n-nodes-tatrman` is built and published from `ttr-server` to GitHub
 Packages (npmjs only when a public release is called); it moved here from `kantheon` with its history. It has not been published or certified on hartland yet.
 
@@ -17,10 +17,10 @@ then install that artifact in the self-hosted n8n community-package directory:
 npm config set @collite:registry https://npm.pkg.github.com
 # Configure a read:packages credential for npm.pkg.github.com using your secret manager.
 mkdir -p /tmp/n8n-package
-npm pack @collite/n8n-nodes-tatrman@0.1.0 --pack-destination /tmp/n8n-package
+npm pack @collite/n8n-nodes-tatrman@0.1.1 --pack-destination /tmp/n8n-package
 mkdir -p ~/.n8n/nodes
 cd ~/.n8n/nodes
-npm install --offline --ignore-scripts --legacy-peer-deps --no-audit --no-fund /tmp/n8n-package/collite-n8n-nodes-tatrman-0.1.0.tgz
+npm install --offline --ignore-scripts --legacy-peer-deps --no-audit --no-fund /tmp/n8n-package/collite-n8n-nodes-tatrman-0.1.1.tgz
 export NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules
 n8n start
 ```
@@ -35,8 +35,8 @@ Build and verify it from the packed package (repository root, Docker required):
 
 ```sh
 (cd connectors/n8n-nodes-tatrman && pnpm install --frozen-lockfile)
-just build-n8n-image n8n-tatrman:2.44.6-0.1.0
-just test-n8n-image n8n-tatrman:2.44.6-0.1.0
+just build-n8n-image n8n-tatrman:2.44.6-0.1.1
+just test-n8n-image n8n-tatrman:2.44.6-0.1.1
 ```
 
 The image is Linux/amd64, based on the approved `ghcr.io/collite/n8n` mirror. The Dockerfile is the
@@ -187,14 +187,14 @@ PRs build, check, scan and pack the connector, then build/test the derived image
 After review and merge, from a clean current master with the tag still free, the agent cuts the exact tag:
 
 ```sh
-just publish n8n-nodes-tatrman set 0.1.0
+just publish n8n-nodes-tatrman set 0.1.1
 ```
 
-`n8n-nodes-tatrman/v0.1.0` runs the dedicated `n8n-nodes.yml` workflow. Before any registry write it
+`n8n-nodes-tatrman/v0.1.1` runs the dedicated `n8n-nodes.yml` workflow. Before any registry write it
 checks that the tag equals the package version, derives the image tag from the Dockerfile runtime pin
 plus that version, and runs the package/image proofs. The publishing job rebuilds from the checked
 package artifact and repeats the actual-image proof before pushing that exact local image as
-`ghcr.io/collite/n8n-tatrman:2.44.6-0.1.0`; it then publishes the private scoped npm package to GitHub
+`ghcr.io/collite/n8n-tatrman:2.44.6-0.1.1`; it then publishes the private scoped npm package to GitHub
 Packages. Both writes use the job's `GITHUB_TOKEN` with `packages: write`; base pulls authenticate before builds. No public registry release
 is required. The generic `release-image.yml` excludes these tags to avoid a competing publisher.
 Local build/test recipes do not cut tags or publish.
@@ -210,7 +210,7 @@ If image publication succeeded but npm publication failed, inspect both registri
 from the existing tag after fixing the publishing workflow on master:
 
 ```sh
-gh workflow run n8n-nodes.yml --repo Collite/ttr-server --ref master -f release_tag=n8n-nodes-tatrman/v0.1.0
+gh workflow run n8n-nodes.yml --repo Collite/ttr-server --ref master -f release_tag=n8n-nodes-tatrman/v0.1.1
 ```
 
 This manual action checks out `refs/tags/<release_tag>` in both jobs, validates the tag/package version,
