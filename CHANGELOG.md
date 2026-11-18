@@ -22,10 +22,20 @@ outside this repo could notice is in.
   action's own `due:` default when the wiring omits `due` — now previews the **date** `as_of` + the duration, where it
   used to refuse with `cause: TtrpEmitException`. `as_of`'s date is taken in the world's zone: new setting
   `automation.worldZones` / `AUTOMATION_WORLD_ZONES`, comma-separated `world=Region/City` pairs (`demo=Europe/Prague`);
-  an unmapped world is UTC; a fixed offset (`+01:00`, `GMT+1`) or an unknown zone fails at start. A `working_days` due
+  an unmapped world is UTC; a fixed offset (`+01:00`, `GMT+1`, a fixed-rule region such as `Etc/GMT+1`) or an unknown zone fails at start. A `working_days` due
   needs the calendar, and no recipe declares that read yet: it is refused by name — `501 preview-unsupported`,
   `detail.cause: "working-days-due-needs-calendar"`, `expression: "due"` — even on an empty or unselected route.
   S2.9b computes it. Undeclared `due` (wiring evidence) and every non-duration date expression are unchanged.
+
+- **Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.22.7 → 0.22.9; translator/plan-proto 0.14.3 → 0.14.4
+  (MW S4.2b, ✅D-MW-99; absorbs AU S2.7).** ttr-core 0.22.9 (Collite/ttr-core#426): the YAML schemas are no longer
+  preloaded, so a `yaml` load no longer holds ~240 MB of schema validators for the life of the process (16 MB retained
+  after a canonical demo-cs load, measured in ttr-core); a dialect file over 6 000 000 code points is refused at read
+  with `ys/profile-invalid` "Canonical document <file> exceeds 6000000 code points" and the source loads the rest; the
+  typed `er2db_entity` mapping carries its `whereFilter`; an explicit `er2db_attribute` with a bare column anchors
+  under a standalone entity's table. Translator 0.14.4 (Collite/ttr-core#424) types a CASE/UNION of ragged string
+  literals as VARCHAR. grammar 0.22.9 was built on translator 0.14.4, so both lines move together: one translator line
+  across metadata, resolver, automation and translate.
 
 - **automation 0.11.44 — `preview-unsupported` names the wiring and logs its cause (ttr-server#443).**
   A dry run's `501 preview-unsupported` from an action expression, a condition, a native writer, obligation or
