@@ -190,6 +190,11 @@ data class AutomationConfig(
     /** Explicit logical world → physical schema on the service-owned automation database. */
     val pgSchemas: Map<String, String> = emptyMap(),
     /**
+     * S2.9a (D-249): logical world → the zone an `expect` row's `due` date is computed in (`as_of`'s local date plus
+     * the duration). An unmapped world is UTC.
+     */
+    val worldZones: Map<String, java.time.ZoneId> = emptyMap(),
+    /**
      * `AUTOMATION_DEV_ROUTES` (Amendment 2026-11-03, §8): mounts `/automation/dev/…` (P2's held commit/reject),
      * default off. The routes still require `role.ops`.
      */
@@ -289,6 +294,7 @@ data class AutomationConfig(
                 runner = RunnerConfig(if (c.hasPath("runner.workers")) c.getInt("runner.workers") else 4),
                 pgDoorRole = env["AUTOMATION_PG_DOOR_ROLE"]?.ifBlank { null } ?: c.optString("pgDoorRole"),
                 pgSchemas = pgSchemas(env["AUTOMATION_PG_SCHEMAS"] ?: c.optString("pgSchemas")),
+                worldZones = worldZones(env["AUTOMATION_WORLD_ZONES"] ?: c.optString("worldZones")),
                 devRoutes = c.hasPath("devRoutes") && c.getBoolean("devRoutes"),
                 query =
                     QueryConfig(
@@ -362,6 +368,31 @@ data class AutomationConfig(
                     "automation.pgSchemas names a reserved schema"
                 }
                 result[world] = schema
+            }
+            return result
+        }
+
+        /** `world=Zone` pairs (`demo=Europe/Prague`); a zone must be a region id or `UTC`, never a fixed offset. */
+        internal fun worldZones(raw: String?): Map<String, java.time.ZoneId> {
+            val result = linkedMapOf<String, java.time.ZoneId>()
+            val identifier = Regex("[A-Za-z_][A-Za-z_0-9]*")
+            for (pair in raw
+                .orEmpty()
+                .split(',')
+                .map(String::trim)
+                .filter(String::isNotEmpty)) {
+                val parts = pair.split('=').map(String::trim)
+                require(parts.size == 2 && identifier.matches(parts[0]) && parts[0].length <= 63) {
+                    "automation.worldZones requires world=zone pairs"
+                }
+                val (world, name) = parts
+                require(world !in result) { "automation.worldZones repeats world $world" }
+                val zone =
+                    runCatching { java.time.ZoneId.of(name) }
+                        .getOrNull()
+                        ?.takeIf { it.id == "UTC" || it !is java.time.ZoneOffset && '/' in it.id }
+                require(zone != null) { "automation.worldZones names an unknown zone for world $world" }
+                result[world] = zone
             }
             return result
         }

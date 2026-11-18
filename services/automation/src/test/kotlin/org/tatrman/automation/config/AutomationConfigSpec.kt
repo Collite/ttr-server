@@ -103,6 +103,30 @@ class AutomationConfigSpec :
             }
         }
 
+        "S2.9a: world zones are explicit configuration; an unmapped world is UTC and a fixed offset is refused" {
+            load(required).worldZones shouldBe emptyMap()
+            load(
+                required + "\nautomation.worldZones = \"demo=UTC\"",
+                mapOf("AUTOMATION_WORLD_ZONES" to "demo=Europe/Prague, us=America/New_York"),
+            ).worldZones shouldBe
+                mapOf("demo" to java.time.ZoneId.of("Europe/Prague"), "us" to java.time.ZoneId.of("America/New_York"))
+            load(required + "\nautomation.worldZones = \"demo=UTC\"").worldZones shouldBe
+                mapOf("demo" to java.time.ZoneId.of("UTC"))
+            for (value in listOf(
+                "demo",
+                "demo=",
+                "demo=Mars/Olympus",
+                "demo=+01:00",
+                "demo=GMT+1",
+                "demo=Europe/Prague,demo=UTC",
+                "de-mo=UTC",
+            )) {
+                shouldThrow<IllegalArgumentException> {
+                    load(required, mapOf("AUTOMATION_WORLD_ZONES" to value))
+                }.message shouldContain "worldZones"
+            }
+        }
+
         "a missing required key fails at load, and the message names every missing key at once" {
             val e = shouldThrow<IllegalArgumentException> { load("""automation.door.queryUrl = "query:7240"""") }
             e.message shouldContain "automation.db.host"

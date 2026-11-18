@@ -186,7 +186,7 @@ class ApplyPlanner(
                             // Presence wins, including explicit NULL. Defaults do not read other arguments.
                             val argumentNames =
                                 (defaults.expressions.keys + wiring.columns.keys) + defaults.values.keys +
-                                    defaults.generated + if (values.defaultDue != null) setOf("due") else emptySet()
+                                    defaults.generated + if (values.suppliesDue) setOf("due") else emptySet()
                             val writer =
                                 if (action.sinks[Bundle.NATIVE] ==
                                     "writer"
@@ -239,6 +239,7 @@ class ApplyPlanner(
                                     roleNames = roleNames,
                                     calendar = calendar,
                                     site = site,
+                                    zone = zones[context.world] ?: java.time.ZoneOffset.UTC,
                                 )
                             PreparedWiring(
                                 wiring,

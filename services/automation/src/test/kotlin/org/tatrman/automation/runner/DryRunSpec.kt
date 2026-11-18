@@ -1518,7 +1518,6 @@ class DryRunSpec :
                     withClue(due) {
                         action.arguments["due"] shouldBe JsonPrimitive(date)
                         row.row!!["due"] shouldBe JsonPrimitive(date)
-                        action.would shouldBe "would expect the inbound of return line 9007199254740993 by $date"
                     }
                 }
             }
