@@ -16,7 +16,7 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-- **automation 0.11.45 — `expect.due` days/weeks/literal lowered; working_days named (S2.9a, D-249).**
+- **automation 0.11.45 — `expect.due` days/weeks/literal lowered; working_days named (S2.9a, D-249; refs #449).**
   An action whose declared `due` column is a `date` (the stock `expect`) and whose wiring gives `due` a duration —
   `days(n)`, `weeks(n)`, the juxtaposed `2 days`, a bound parameter in either (`days(:inbound_reminder)`), or the
   action's own `due:` default when the wiring omits `due` — now previews the **date** `as_of` + the duration, where it
