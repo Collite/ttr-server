@@ -59,11 +59,11 @@ from golem_py.gate_client import LiveGate  # noqa: E402
 from golem_py.graph import run_turn  # noqa: E402
 from golem_py.ladder import ConfigError, LadderConfig, load_default  # noqa: E402
 from golem_py.lane import check_lane_config, lane_on  # noqa: E402
-from golem_py.llm_client import LiveLlmGateway, chat_endpoint  # noqa: E402
+from golem_py.llm_client import LiveLlmGateway  # noqa: E402
 from golem_py.model_slice import LiveModelSlice  # noqa: E402
 from golem_py.outputs import Answer, Ask, RefusalWithGaps, TurnOutput  # noqa: E402
 from golem_py.settings import GolemSettings  # noqa: E402
-from golem_py.skills import LayeredSkillLibrary, SkillError, load_library  # noqa: E402
+from golem_py.skills import LayeredSkillLibrary, SkillError, SkillLibrary  # noqa: E402
 from golem_py.state import ResolutionState  # noqa: E402
 
 # Exit code for a configuration that must not run a turn (the `ConfigInvalid` convention).
@@ -101,12 +101,24 @@ def load_operator_library(paths: list[str]) -> LayeredSkillLibrary:
     """The operator library from `GOLEM_LEXICON_ARCHIVE_PATHS`, estate first (`load_library`'s
     layering). No path: an empty library, so a question naming an operator keeps refusing
     NO_CAPABLE_PLUGIN. A configured archive that cannot be read is `ConfigInvalid`, naming
-    it — a typo in a mount must not degrade every turn into that refusal."""
+    it — a typo in a mount must not degrade every turn into that refusal. That includes an
+    archive with no operator-library doc (the tar's `KeyError`) and a doc of the wrong shape
+    (`AttributeError`/`KeyError`/`TypeError` from the parser): this boundary classifies them,
+    the parser stays as it is (review-357 F1)."""
     layers = []
     for path in paths:
         try:
-            layers.extend(load_library(path).layers)
-        except (OSError, SkillError, ValueError, tarfile.TarError, zstandard.ZstdError) as exc:
+            layers.append(SkillLibrary.from_archive(path))
+        except (
+            OSError,
+            SkillError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TypeError,
+            tarfile.TarError,
+            zstandard.ZstdError,
+        ) as exc:
             raise ConfigInvalid(
                 f"the operator library {path!r} (GOLEM_LEXICON_ARCHIVE_PATHS): "
                 f"{type(exc).__name__}: {exc}"
@@ -141,7 +153,8 @@ def build_deps(
                 model=settings.llm_model,
                 model_class=settings.llm_model_class,
             )
-            if settings.llm_target
+            # A switched-off lane needs no gateway, so its target is never checked (OL-C11).
+            if settings.llm_target and settings.llm_lane_enabled
             else None
         ),
         model_slice=(
@@ -179,7 +192,8 @@ def check_startup(deps: Deps, profile: str) -> None:
         raise ConfigInvalid(f"{exc}; the ladder defines: {known}") from exc
     if not lane_on(deps):
         return
-    chat_endpoint(deps.settings.llm_target)  # an http(s) URL ending in /v1 (OL-C13)
+    # The target and the key's characters were checked when `build_deps` built the gateway
+    # (`LiveLlmGateway`, OL-C13); what is left here is that the key is there at all.
     if not deps.settings.llm_api_key.get_secret_value():
         raise ConfigInvalid(
             "the LLM lane is on and GOLEM_LLM_API_KEY is empty: inject the team's gateway key "

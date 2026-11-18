@@ -36,15 +36,20 @@ outside this repo could notice is in.
     lane is on and never printed. `GOLEM_LLM_MODEL_CLASS` defaults to `smart`, sent as
     `model_tags` (the gateway's catalog has no `capable` tag), and an explicit `GOLEM_LLM_MODEL`
     is sent instead. The ladder rung keeps the name `capable`.
+  - A target that is not such a URL, or a key with characters no HTTP header can carry, exits
+    2 when the gateway client is built. The error names the wrong part and at most the
+    `scheme://host:port`, never the value. With the lane switched off the target is not read.
   - Failures:
     - No answer, a timeout or a non-2xx status refuses `LANE_UNAVAILABLE`. The refusal
-      carries only the status and the gateway's error code (`HTTP 401 invalid_api_key`).
-    - A 2xx reply with no completion text refuses `QUERY_NOT_WRITTEN`.
+      carries only the status and the gateway's error code, else its type
+      (`HTTP 401 invalid_api_key`, `HTTP 400 invalid_request_error`).
+    - A 2xx reply with no completion text, or one cut off (`finish_reason` `length` or
+      `content_filter`), refuses `QUERY_NOT_WRITTEN`.
     - The whole call is bounded by the `capable` rung's timeout, with no client retry.
   - `GOLEM_LEXICON_ARCHIVE_PATHS` (`os.pathsep`-separated, estate first) loads the operator
     library from the estate's lexicon archive, such as bp-dsk's `hartland-lexicon` ConfigMap.
-    An archive that cannot be read exits 2. With none configured, questions naming an
-    operator still refuse `NO_CAPABLE_PLUGIN`.
+    An archive that cannot be read, has no operator library or holds a malformed one exits 2.
+    With none configured, questions naming an operator still refuse `NO_CAPABLE_PLUGIN`.
 - **golem-py: the CLI takes the LLM lane's settings, and four lane-on conversations join the
   conformance tier (OL W1c·S3).**
   - `src/main.py` builds the door, the gateway and the model slice from `GOLEM_*`. Before

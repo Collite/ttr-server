@@ -278,8 +278,28 @@ def test_the_profile_comes_from_the_environment_when_no_flag_is_given(
         ({"GOLEM_LLM_TARGET": "http://llm-gateway:7280/v1/chat/completions"}, "must end in /v1"),
         ({"GOLEM_LLM_TARGET": "http://llm-gateway:7280/v1?x=1"}, "no query"),
         ({"GOLEM_LLM_TARGET": f"http://golem:{KEY}@llm-gateway:7280/v1"}, "credentials"),
+        # review-357 F2: a key in the wrong variable, or in the URL, is never printed back
+        ({"GOLEM_LLM_TARGET": KEY}, "http"),
+        ({"GOLEM_LLM_TARGET": f"http://llm-gateway:7280/v1?api_key={KEY}"}, "no query"),
+        ({"GOLEM_LLM_TARGET": f"http://llm-gateway:7280/{KEY}"}, "must end in /v1"),
+        # review-357 F4: a key no HTTP header can carry
+        ({"GOLEM_LLM_API_KEY": KEY + "\u00a0x"}, "cannot carry"),
+        ({"GOLEM_LLM_API_KEY": KEY + "\u201cx"}, "cannot carry"),
     ],
-    ids=["no-key", "blank-key", "grpc-target", "no-v1", "full-path", "query", "userinfo"],
+    ids=[
+        "no-key",
+        "blank-key",
+        "grpc-target",
+        "no-v1",
+        "full-path",
+        "query",
+        "userinfo",
+        "key-as-target",
+        "key-in-query",
+        "key-in-path",
+        "key-nbsp",
+        "key-smart-quote",
+    ],
 )
 def test_a_lane_without_a_usable_gateway_url_or_key_exits_2_without_showing_the_key(
     monkeypatch: pytest.MonkeyPatch,
@@ -297,7 +317,15 @@ def test_a_lane_without_a_usable_gateway_url_or_key_exits_2_without_showing_the_
     assert main.main(["--question", "q"]) == main.EXIT_CONFIG
     err = capsys.readouterr().err
     assert message in err
-    assert KEY not in err
+    assert KEY not in err and "not-a-real-key" not in err
+
+
+def test_a_lane_that_is_off_never_checks_its_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    env = LANE_ENV | {"GOLEM_LLM_TARGET": "llm-gateway:9090", "GOLEM_LLM_LANE_ENABLED": "false"}
+    deps = main.build_deps(_settings(monkeypatch, **env), load_default(), "resolver:7276")
+
+    assert deps.llm is None and not lane_on(deps)
+    main.check_startup(deps, "CHAT_QUICK")
 
 
 def test_the_key_is_in_no_repr_and_a_lane_that_is_off_needs_none(
@@ -319,13 +347,13 @@ def test_the_key_is_in_no_repr_and_a_lane_that_is_off_needs_none(
 LIBRARY = Path(__file__).resolve().parent / "fixtures" / "lexicon" / "operator-library.json"
 
 
-def _archive(path: Path, library: dict[str, object]) -> Path:
+def _archive(path: Path, library: object, member: str = "docs/operator-library.json") -> Path:
     """A `kind: lexicon` archive as `SnapshotWriter` lays it out: zstd over a tar that holds
     `docs/operator-library.json` (the only document the Golem reads)."""
     raw = json.dumps(library).encode()
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
-        info = tarfile.TarInfo("docs/operator-library.json")
+        info = tarfile.TarInfo(member)
         info.size = len(raw)
         tar.addfile(info, io.BytesIO(raw))
     path.write_bytes(zstandard.ZstdCompressor().compress(buf.getvalue()))
@@ -385,7 +413,18 @@ def test_with_no_archive_configured_an_operator_question_still_refuses(
     assert out.reason == "NO_CAPABLE_PLUGIN" and "op:show" in out.explanation
 
 
-@pytest.mark.parametrize("problem", ["missing", "not an archive", "no operator library"])
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "missing",
+        "not an archive",
+        "wrong schema",
+        # review-357 F1: these escaped as tracebacks (exit 1)
+        "no operator library",
+        "library not an object",
+        "operator without body",
+    ],
+)
 def test_a_configured_archive_that_cannot_be_read_exits_2_naming_it(
     problem: str,
     tmp_path: Path,
@@ -395,8 +434,16 @@ def test_a_configured_archive_that_cannot_be_read_exits_2_naming_it(
     path = tmp_path / "lexicon.tar.zst"
     if problem == "not an archive":
         path.write_bytes(b"this is not zstd")
-    elif problem == "no operator library":
+    elif problem == "wrong schema":
         _archive(path, {"schemaVersion": "something-else/v9", "operators": {}})
+    elif problem == "no operator library":  # e.g. a world-only lexicon archive
+        _archive(path, {"world": "hartland_cz"}, member="docs/world.json")
+    elif problem == "library not an object":
+        _archive(path, [])
+    elif problem == "operator without body":
+        library = json.loads(LIBRARY.read_text(encoding="utf-8"))
+        entry = {k: v for k, v in library["operators"]["op:show"].items() if k != "body"}
+        _archive(path, {**library, "operators": {"op:show": entry}})
     _settings(monkeypatch, GOLEM_LEXICON_ARCHIVE_PATHS=str(path))
 
     async def no_turn(*_: object, **__: object) -> None:

@@ -19,9 +19,14 @@ budget (OL-C16), and a retry inside the client would spend calls the budget neve
 
 What can go wrong, and what the lane makes of it (OL-C13):
 - no answer (transport error, timeout) or a non-2xx status → `LaneServiceUnavailable`,
-  carrying the status and the gateway's error CODE only (`HTTP 401 invalid_api_key`) —
-  never its message, which may echo the request;
-- a 2xx reply with no usable completion text → `LaneReplyRefused("no_completion", …)`.
+  carrying the status and the gateway's error CODE (else its TYPE) only
+  (`HTTP 401 invalid_api_key`, `HTTP 400 invalid_request_error`) — never its message,
+  which may echo the request;
+- a 2xx reply with no usable completion text, or one the gateway says stopped early
+  (`finish_reason` `length` or `content_filter`) → `LaneReplyRefused("no_completion", …)`.
+
+A target that is not an http(s) URL ending in `/v1`, or a key no HTTP header can carry, is
+`ConfigInvalid` when the client is built — never a failure in the middle of a turn.
 
 What comes back is the model's TEXT, unparsed. Whether it is a valid object, and whether it
 keeps the rules of OL-C15, is the lane's call — a client that "repaired" a reply here would
@@ -47,9 +52,12 @@ DEFAULT_MODEL_CLASS = "smart"
 CHAT_PATH = "/chat/completions"
 JSON_OBJECT = "json_object"
 
-# The gateway's error codes are short snake_case tokens (contracts §1.7). Anything else in
-# the `code` slot is not reported, so a refusal can never carry text the gateway echoed.
-_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+# The gateway's error codes and types, and a reply's `finish_reason`, are short snake_case
+# tokens (contracts §1.7). Anything else in those slots is not reported, so a refusal can
+# never carry text the gateway echoed.
+_TOKEN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+# A completion that stopped before it was finished: half an object, or none (review-357 F5).
+_STOPPED_EARLY = frozenset({"length", "content_filter"})
 
 
 @dataclass(frozen=True)
@@ -76,23 +84,40 @@ def chat_endpoint(base_url: str) -> str:
     """`GOLEM_LLM_TARGET` → the one URL the client posts to, or `ConfigInvalid`.
 
     The target is an explicit HTTP(S) base URL ending in `/v1` (OL-C13); `/chat/completions`
-    is appended once. The URL itself is not repeated in the error when it carries
-    credentials, so a key pasted into the wrong variable is not printed back."""
+    is appended once. An error never repeats the value: it names the part that is wrong and
+    at most the `scheme://host[:port]` it parsed. The path, query, fragment and userinfo are
+    never shown, so a key pasted into this variable, or into its URL, is not printed back
+    (review-357 F2)."""
     url = base_url.strip()
+    name = "GOLEM_LLM_TARGET"
     try:
         parsed = httpx.URL(url)
     except (httpx.InvalidURL, TypeError) as exc:
-        raise ConfigInvalid("GOLEM_LLM_TARGET is not a URL") from exc
+        raise ConfigInvalid(f"{name} is not a URL") from exc
     if parsed.userinfo:
-        raise ConfigInvalid("GOLEM_LLM_TARGET must not carry credentials; use GOLEM_LLM_API_KEY")
-    shown = repr(url)
+        raise ConfigInvalid(f"{name} must not carry credentials; use GOLEM_LLM_API_KEY")
     if parsed.scheme not in ("http", "https") or not parsed.host:
-        raise ConfigInvalid(f"GOLEM_LLM_TARGET must be an http(s) URL, got {shown}")
+        scheme = parsed.scheme if _TOKEN.match(parsed.scheme) else ""
+        raise ConfigInvalid(
+            f"{name} must be an http(s) URL with a host"
+            + (f" (scheme {scheme!r})" if scheme else "")
+        )
+    origin = f"{parsed.scheme}://{parsed.netloc.decode('ascii', 'replace')}"
     if parsed.query or parsed.fragment:
-        raise ConfigInvalid(f"GOLEM_LLM_TARGET must have no query or fragment, got {shown}")
+        raise ConfigInvalid(f"{name} must have no query or fragment (host {origin})")
     if not parsed.path.rstrip("/").endswith("/v1"):
-        raise ConfigInvalid(f"GOLEM_LLM_TARGET must end in /v1, got {shown}")
+        raise ConfigInvalid(f"{name}: the path must end in /v1 (host {origin})")
     return url.rstrip("/") + CHAT_PATH
+
+
+def check_api_key(key: str) -> None:
+    """An HTTP header carries printable ASCII only. A key with anything else in it (an inner
+    NBSP or a smart quote, copied from a document) would pass the emptiness check and then
+    fail the first gateway call; this refuses it at startup, without quoting the key or the
+    offending character (review-357 F4). Emptiness is the CLI's check: a lane that is off
+    needs no key."""
+    if key and not (key.isascii() and key.isprintable() and not any(c.isspace() for c in key)):
+        raise ConfigInvalid("GOLEM_LLM_API_KEY contains characters an HTTP header cannot carry")
 
 
 def build_body(
@@ -126,22 +151,37 @@ def reply_from_json(doc: Any) -> LlmReply:
         raise LaneReplyRefused(
             "no_completion", "the gateway's reply has no choices[0].message.content"
         ) from exc
+    reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+    if reason in _STOPPED_EARLY:
+        # Whatever text there is, it is not the whole answer: refuse as cut off rather than
+        # let the lane blame the model's format (still QUERY_NOT_WRITTEN, OL-C13/C16).
+        raise LaneReplyRefused(
+            "no_completion", f"the completion stopped early (finish_reason {reason})"
+        )
     if not isinstance(content, str) or not content.strip():
         raise LaneReplyRefused("no_completion", "the gateway's completion text is empty")
     return LlmReply(
         text=content,
         model=str(doc.get("model") or ""),
         response_id=str(doc.get("id") or ""),
-        status=str(choice.get("finish_reason") or ""),
+        status=str(reason or ""),
     )
 
 
 def _error_code(resp: httpx.Response) -> str:
+    """The error's `code`, else its `type` (a validation error renders `code: null`) — only
+    when it is a safe token (review-357 F5). Never its `message`, which may echo the request."""
     try:
-        code = resp.json()["error"]["code"]
+        error = resp.json()["error"]
     except (ValueError, KeyError, TypeError):
         return ""
-    return code if isinstance(code, str) and _ERROR_CODE.match(code) else ""
+    if not isinstance(error, dict):
+        return ""
+    for slot in ("code", "type"):
+        value = error.get(slot)
+        if isinstance(value, str) and _TOKEN.match(value):
+            return value
+    return ""
 
 
 class LiveLlmGateway:
@@ -156,9 +196,12 @@ class LiveLlmGateway:
         model_class: str = DEFAULT_MODEL_CLASS,
         transport: httpx.AsyncBaseTransport | None = None,
     ):
+        # One derivation of the URL, checked here, so no caller can build a gateway on an
+        # unchecked target or a key no header can carry (review-357 F3/F4): `ConfigInvalid`.
+        self.endpoint = chat_endpoint(target)
         self.target = target
-        self.endpoint = target.strip().rstrip("/") + CHAT_PATH
         self._api_key = api_key if isinstance(api_key, SecretStr) else SecretStr(api_key)
+        check_api_key(self._api_key.get_secret_value())
         self.model = model
         self.model_class = model_class
         self._transport = transport

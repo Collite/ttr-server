@@ -29,9 +29,9 @@ from typing import Any
 
 import pytest
 
-from golem_py.errors import LaneReplyRefused, LaneServiceUnavailable
+from golem_py.errors import ConfigInvalid, LaneReplyRefused, LaneServiceUnavailable
 from golem_py.graph import run_turn
-from golem_py.llm_client import SERVICE, LiveLlmGateway, LlmPort
+from golem_py.llm_client import SERVICE, LiveLlmGateway, LlmPort, chat_endpoint
 from golem_py.outputs import RefusalWithGaps
 from tests.grpc_fakes import unused_target
 from tests.helpers import h1_lattice
@@ -41,7 +41,9 @@ KEY = "ttrk-test-0000-not-a-real-key"
 CONTENT = '{"sql": "SELECT 1", "handled_spans": [], "note": ""}'
 
 
-def completion(content: Any = CONTENT, *, model: str = "gpt-6.1-sol-2026-09-29") -> bytes:
+def completion(
+    content: Any = CONTENT, *, model: str = "gpt-6.1-sol-2026-09-29", finish: str = "stop"
+) -> bytes:
     return json.dumps(
         {
             "id": "chatcmpl-1",
@@ -51,14 +53,14 @@ def completion(content: Any = CONTENT, *, model: str = "gpt-6.1-sol-2026-09-29")
                 {
                     "index": 0,
                     "message": {"role": "assistant", "content": content},
-                    "finish_reason": "stop",
+                    "finish_reason": finish,
                 }
             ],
         }
     ).encode()
 
 
-def gateway_error(status: int, code: str, message: str) -> tuple[int, bytes]:
+def gateway_error(status: int, code: str | None, message: str) -> tuple[int, bytes]:
     body = {"error": {"message": message, "type": "invalid_request_error", "code": code}}
     return status, json.dumps(body).encode()
 
@@ -178,11 +180,15 @@ async def test_a_completion_returns_its_text_and_the_served_model(fake: FakeGate
             "HTTP 404 model_not_found",
         ),
         (gateway_error(502, "upstream_error", "azure said no"), "HTTP 502 upstream_error"),
+        (
+            gateway_error(400, None, "prompt too long: SYS USER …"),
+            "HTTP 400 invalid_request_error",  # `code: null` → the type (review-357 F5)
+        ),
         ((500, b"<html>proxy error</html>"), "HTTP 500"),
         ((503, json.dumps({"error": {"code": "Bearer ttrk-echo"}}).encode()), "HTTP 503"),
         (("sleep", 1.5), "timeout after 0.5s"),
     ],
-    ids=["401", "404", "502", "500-not-json", "503-odd-code", "timeout"],
+    ids=["401", "404", "502", "400-null-code", "500-not-json", "503-odd-code", "timeout"],
 )
 async def test_no_answer_or_a_non_2xx_status_is_lane_unavailable_and_sanitized(
     fake: FakeGateway, answer: Any, detail: str
@@ -194,7 +200,8 @@ async def test_no_answer_or_a_non_2xx_status_is_lane_unavailable_and_sanitized(
 
     assert caught.value.service == SERVICE
     assert caught.value.detail == detail
-    assert KEY not in str(caught.value) and "revoked" not in str(caught.value)
+    assert KEY not in str(caught.value)
+    assert "revoked" not in str(caught.value) and "too long" not in str(caught.value)
 
 
 async def test_a_refused_connection_is_lane_unavailable() -> None:
@@ -217,17 +224,20 @@ async def test_the_whole_call_is_bounded_by_the_timeout(fake: FakeGateway) -> No
 
 # 4 ------------------------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    "body",
+    ("body", "detail"),
     [
-        json.dumps({"id": "x", "model": "m", "choices": []}).encode(),
-        completion(""),
-        completion(None),
-        b"not json at all",
+        (json.dumps({"id": "x", "model": "m", "choices": []}).encode(), "no choices"),
+        (completion(""), "empty"),
+        (completion(None), "empty"),
+        (b"not json at all", "not JSON"),
+        # valid-looking text, but cut off or filtered: named as such (review-357 F5)
+        (completion(finish="length"), "stopped early (finish_reason length)"),
+        (completion(finish="content_filter"), "stopped early (finish_reason content_filter)"),
     ],
-    ids=["no-choices", "empty-content", "null-content", "body-not-json"],
+    ids=["no-choices", "empty-content", "null-content", "body-not-json", "length", "filtered"],
 )
 async def test_a_2xx_reply_without_completion_text_is_no_completion(
-    fake: FakeGateway, body: bytes
+    fake: FakeGateway, body: bytes, detail: str
 ) -> None:
     fake.answers.append((200, body))
 
@@ -235,6 +245,7 @@ async def test_a_2xx_reply_without_completion_text_is_no_completion(
         await ask(client(fake.base))
 
     assert caught.value.rule == "no_completion"
+    assert detail in caught.value.detail
 
 
 @pytest.mark.parametrize(
@@ -279,3 +290,42 @@ def test_the_live_client_satisfies_the_port_and_never_shows_its_key() -> None:
 
     assert isinstance(gw, LlmPort)
     assert KEY not in repr(gw) and KEY not in str(vars(gw))
+
+
+# Config — refused when the client is built, never mid-turn, never echoing a secret ----------
+SENTINEL = "ttrk-SENTINEL"
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        f"http://gw:7280/v1?api_key={SENTINEL}",
+        SENTINEL,  # the two variables swapped
+        f"http://gw:7280/v1#{SENTINEL}",
+        f"http://gw:7280/{SENTINEL}",
+        f"http://golem:{SENTINEL}@gw:7280/v1",
+    ],
+    ids=["query", "swapped", "fragment", "path", "userinfo"],
+)
+def test_a_bad_target_is_refused_without_echoing_it(target: str) -> None:
+    for build in (chat_endpoint, lambda t: LiveLlmGateway(t, api_key=KEY)):
+        with pytest.raises(ConfigInvalid) as caught:
+            build(target)
+        assert "SENTINEL" not in str(caught.value)
+        assert "GOLEM_LLM_TARGET" in str(caught.value)
+
+
+def test_the_client_checks_its_own_target() -> None:
+    # A `Deps` built in code, with no CLI startup check, still cannot hold an unchecked URL
+    # (review-357 F3): the old gRPC `host:port` form is refused, not a `ValueError` mid-turn.
+    with pytest.raises(ConfigInvalid, match="http"):
+        LiveLlmGateway("llm-gateway:9090", api_key="k")
+
+
+@pytest.mark.parametrize("key", ["ttrk-ab\u00a0cd", "ttrk-ab\u201ccd", "ttrk-ab cd"])
+def test_a_key_no_header_can_carry_is_refused_without_quoting_it(key: str) -> None:
+    with pytest.raises(ConfigInvalid) as caught:
+        LiveLlmGateway("http://gw:7280/v1", api_key=key)
+
+    assert "GOLEM_LLM_API_KEY" in str(caught.value)
+    assert "ab" not in str(caught.value) and "cd" not in str(caught.value)
