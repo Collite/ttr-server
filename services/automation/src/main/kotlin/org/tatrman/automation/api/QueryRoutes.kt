@@ -87,7 +87,7 @@ fun Route.queryRoutes(
                 "any" -> null
                 else -> RunStatus.entries.firstOrNull { it.wire == s } ?: bad("unknown status $s")
             }
-        val kind = p["kind"]?.also { if (it !in setOf("recipe", "query", "perform")) bad("unknown kind $it") }
+        val kind = p["kind"]?.also { if (it !in RUN_KINDS) bad("unknown kind $it") }
         val since = p["since"]?.let { instant(it, "since") }
         val before = p["cursor"]?.let(::cursor)
         val limit =
@@ -174,3 +174,12 @@ private fun cursor(raw: String): Pair<Instant, UUID> =
     }
 
 private fun bad(message: String): Nothing = throw AutomationException(ErrorCode.BAD_REQUEST, message)
+
+/** The run kinds `GET /automation/runs?kind=` filters on (review-354 F3: S3.5's answer runs included). */
+private val RUN_KINDS =
+    setOf(
+        org.tatrman.automation.ledger.RUN_KIND_RECIPE,
+        org.tatrman.automation.ledger.RUN_KIND_QUERY,
+        org.tatrman.automation.ledger.RUN_KIND_PERFORM,
+        org.tatrman.automation.ledger.RUN_KIND_ANSWER,
+    )

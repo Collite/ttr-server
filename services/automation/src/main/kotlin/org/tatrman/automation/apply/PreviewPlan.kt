@@ -147,6 +147,11 @@ data class DryRunAction(
     val would: String? = null,
     @EncodeDefault val event: String = "preview",
     @EncodeDefault val dryRun: Boolean = true,
+    /**
+     * S3.5 (contract 4): on `GET /runs/{id}`, the decision on the action's held rows — `{ decision, by, at, answer? }`;
+     * null while undecided or never held. Status evidence, never journaled with the preview ([payload]).
+     */
+    val decided: JsonObject? = null,
 ) {
     init {
         // S2.2: a wet run journals the same evidence at evaluate (dryRun false); its rows apply at close.

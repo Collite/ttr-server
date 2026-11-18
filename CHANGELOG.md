@@ -16,6 +16,18 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation 0.11.43 — an answer run decides the answered key's held rows at Open (D-159 completed; ttr-server#429).**
+  A verified engine answer (`engine.taskId` + `answeredBy`, from the engine client) no longer re-runs the recipe and
+  holds the approved key again: it finds the instance's run that held the key (waiting, or closed: a decided key replays
+  `200`), commits that key's held group (D-99 first; no `role.ops`), records `{ decision, by, at, answer }` on the rows
+  and closes at Open — a run of the new kind `answer`
+  (migration V14), `201 { status: "closed", answer: {…} }`. Its `evaluate`, part reads and `close` are
+  `409 close-not-ready · answer-run`; unmatched answers are the new `409 answer-unmatched`; `engine.decision` other than
+  `approve` is `400 engine · decision-unsupported`; a bare-scalar `port.key` is `400 port · key-not-object`, and `port.key` is matched verbatim (`no-held-key` lists the held keys). Run status
+  gains `kind`, `answer`, `actions[].decided` and `batch.held`. V14 only widens the `kind` check and adds two indexes;
+  Flyway's default ignores it as a future migration on a rollback below 0.11.43, whose service then reads `answer` runs
+  as closed runs and runs an answer Open as an ordinary run again (the pre-S3.5 behaviour).
+
 - **Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.22.3 → 0.22.7; translator/plan-proto stay 0.14.3 (MW S4.1).**
   Load diagnostics in metadata's `/health` and in refresh warnings now report 1-based columns: the same file shows a
   column one higher than before (`x.ttrm:12:5` where 0.22.3 showed `x.ttrm:12:4`; `:0:0` still means "no position").
