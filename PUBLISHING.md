@@ -16,6 +16,8 @@ action; no workflow publishes anything from a branch.
 | *(manual dispatch only)* | the four `nlp-<backend>` images | `ghcr.io/collite/nlp-*` | `release-nlp-backends.yml` | human dispatch + FI-4 legal gate |
 | `superset/v<superset>-ttr<N>` | the operated Superset image (official + `ttr-sqlalchemy`) | `ghcr.io/collite/superset` | `release-image.yml` | every tag; the version must be `<x.y.z>-ttr<N>` |
 | `python-sqlalchemy/v<x.y.z>[-RELEASE]` | `ttr-sqlalchemy` wheel | PyPI on `-RELEASE` | `publish-python.yml` | as `python-nlp` |
+| `n8n-nodes-tatrman/v<x.y.z>` | `@collite/n8n-nodes-tatrman` + the derived n8n image `n8n-tatrman:<n8n>-<x.y.z>` | GitHub Packages (npm) + `ghcr.io/collite/n8n-tatrman` | `n8n-nodes.yml` | every tag; the version must equal `package.json` |
+| *(manual dispatch only)* | the n8n base mirror `n8n:<n8n>` | `ghcr.io/collite/n8n` | `n8n-base-mirror.yml` | the requested version must equal the Dockerfile pin |
 
 ### The `server-libs` set
 
@@ -39,6 +41,34 @@ on published artefacts rather than `project()` edges (OL-C28). CI's `build` job
 checks both from a consumer's side on every PR: it publishes them to Maven Local,
 and [`scripts/verify-grounding-kernel`](./scripts/verify-grounding-kernel/) compiles
 against them as artefacts.
+
+## `n8n-nodes-tatrman/v*` — the n8n nodes
+
+`connectors/n8n-nodes-tatrman` moved here from `kantheon` in OL W6·S1 (OL-C37); the package name,
+the image name and the version line did not change, and versions up to `0.1.0` were published from
+`kantheon`. The tag publishes two artefacts from one checked tarball: the npm package
+`@collite/n8n-nodes-tatrman` on GitHub Packages and `ghcr.io/collite/n8n-tatrman:<n8n>-<x.y.z>`,
+where `<n8n>` is the base pinned in the folder's `Dockerfile`. npmjs is not a lane until a public
+release is called; the tag carries no `-RELEASE` marker.
+
+- **Cutting a release:** bump `version` in the folder's `package.json` in a PR; after the merge,
+  from a clean current master, `just publish n8n-nodes-tatrman set <x.y.z>`. The workflow refuses
+  a tag that differs from the package version before any registry write.
+- **Access:** both writes use the job's `GITHUB_TOKEN` (`packages: write`); the PR and release jobs
+  pull `ghcr.io/collite/n8n` with it. The three packages were created by `kantheon`'s workflows, so
+  each needs `Collite/ttr-server` in its *Manage Actions access* list: `n8n` (Read; Write for
+  `n8n-base-mirror.yml`), `n8n-tatrman` (Write), npm `n8n-nodes-tatrman` (Write).
+- **Recovery:** if the image was pushed but npm publication failed, `gh workflow run n8n-nodes.yml
+  --repo Collite/ttr-server --ref master -f release_tag=n8n-nodes-tatrman/v<x.y.z>` republishes the
+  npm package only. Never move a released tag.
+- **A new n8n base:** dispatch `n8n-base-mirror.yml` with the new version on a ref whose
+  `Dockerfile` pins it, then release.
+
+### Released from this repository
+
+| Version | npm package | Image | Digest |
+|---|---|---|---|
+| *(the first ttr-server release follows W6·S1's merge)* | | | |
 
 ## The `-RELEASE` marker
 

@@ -64,6 +64,8 @@ on:
       - '!morph/v*'
       # A connector folder released as an archive by platform-question.yml, not an image.
       - '!platform-question/v*'
+      # The n8n connector's npm package + derived n8n image have their own tested lane (n8n-nodes.yml).
+      - '!n8n-nodes-tatrman/v*'
   workflow_dispatch:
     inputs:
       version:

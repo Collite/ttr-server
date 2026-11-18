@@ -2162,6 +2162,14 @@ artifact.
   archive, test it unpacked, and publish the GitHub release; the image lane excludes it.
   This release contains the contract and template; the bridge follows separately.
 
+- **n8n-nodes-tatrman 0.1.1 — the n8n nodes move to `ttr-server` (OL W6·S1).**
+  `connectors/n8n-nodes-tatrman` arrives from `kantheon` with its history (freeze commit
+  `9b886085`); nodes, credential and behaviour are unchanged from 0.1.0. The package is now
+  Apache-2.0, its `homepage` and `repository` point here, and it is a standalone pnpm project with
+  its own lockfile (the same resolved versions). `n8n-nodes.yml` runs the same checks; the tag
+  `n8n-nodes-tatrman/v0.1.1` publishes `@collite/n8n-nodes-tatrman@0.1.1` to GitHub Packages and
+  `ghcr.io/collite/n8n-tatrman:2.44.6-0.1.1`; the image lane excludes it.
+
 ## chrono 0.11.32 — 2026-11-12
 
 - **chrono — calendar-year ranges (TS S0.5).** Ground reads `2024-2025`, `2024–2025`, `od 2024 do 2025`
