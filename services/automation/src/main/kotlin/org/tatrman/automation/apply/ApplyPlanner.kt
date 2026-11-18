@@ -32,6 +32,8 @@ data class PreviewMetadata(
 /** Preview synthesis over verified staged results and the runner's explicitly governed obligation snapshot. */
 class ApplyPlanner(
     private val clock: Clock,
+    /** S2.9a (D-249): world → the zone `as_of`'s date is taken in for a `due` duration; an unmapped world is UTC. */
+    private val zones: Map<String, java.time.ZoneId> = emptyMap(),
 ) {
     private data class DetailSnapshot(
         val table: Table,

@@ -5,6 +5,7 @@ import io.kotest.assertions.withClue
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import org.tatrman.automation.api.AutomationException
@@ -1451,6 +1452,169 @@ class DryRunSpec :
             return appender.list.map { it.formattedMessage }
         }
 
+        // S2.9a (D-249): an `expect` row's `due` duration becomes a date: `as_of`'s date in the world's zone plus the
+        // duration; a working-days `due` is refused by name until the calendar read is declared (S2.9b).
+        val dueBindings =
+            mapOf(
+                "inbound_reminder" to BoundValue("days", 3L),
+                "settlement" to BoundValue("working_days", 5L),
+                "count" to BoundValue("int", 1L),
+            )
+
+        suspend fun CoroutineScope.dueOf(
+            due: String?,
+            asOf: Instant = PREVIEW_NOW,
+            zones: Map<String, java.time.ZoneId> = emptyMap(),
+            metadata: PreviewMetadata = legacyPreviewMetadata(BundleFixture.load()),
+        ): Pair<DryRunAction, ApplyRow> {
+            val base = obligationWiring()
+            val wiring = base.copy(columns = if (due == null) base.columns - "due" else base.columns + ("due" to due))
+            val f =
+                PreviewFixture(
+                    this,
+                    previewRecipe().withWiring(listOf(wiring)),
+                    metadata,
+                    asOf = asOf,
+                    extraBindings = dueBindings,
+                    zones = zones,
+                )
+            return f.runner.use { runner ->
+                runner.evaluate()
+                val plan = f.plan!!
+                plan.actions.single() to plan.rows.single { it.entity == "er.entity.obligation" }
+            }
+        }
+
+        fun dueDefault(duration: AutomationDuration): PreviewMetadata {
+            val metadata = legacyPreviewMetadata(BundleFixture.load())
+            val expect = metadata.actions.getValue("expect")
+            return metadata.copy(
+                actions =
+                    metadata.actions +
+                        (
+                            "expect" to
+                                expect.copy(
+                                    columns =
+                                        expect.columns.map {
+                                            if (it.name == "due") it.copy(optional = true) else it
+                                        },
+                                    due = duration,
+                                )
+                        ),
+            )
+        }
+
+        "S2.9a T1'(a)(b)(c)(g): an expect due duration is projected as the date as_of plus the duration" {
+            supervisorScope {
+                // PREVIEW_NOW = 2026-10-23T12:00Z (a Friday).
+                for ((due, date) in listOf(
+                    "days(:inbound_reminder)" to "2026-10-26",
+                    "2 days" to "2026-10-25",
+                    "days(2)" to "2026-10-25",
+                    "weeks(1)" to "2026-10-30",
+                    "weeks(:count)" to "2026-10-30",
+                )) {
+                    val (action, row) = dueOf(due)
+                    withClue(due) {
+                        action.arguments["due"] shouldBe JsonPrimitive(date)
+                        row.row!!["due"] shouldBe JsonPrimitive(date)
+                        action.would shouldBe "would expect the inbound of return line 9007199254740993 by $date"
+                    }
+                }
+            }
+        }
+
+        "S2.9a T1'(d): the action-default due lowers the same way when the wiring omits due" {
+            supervisorScope {
+                val (action, row) = dueOf(null, metadata = dueDefault(AutomationDuration(2.0, "days")))
+                action.arguments["due"] shouldBe JsonPrimitive("2026-10-25")
+                row.row!!["due"] shouldBe JsonPrimitive("2026-10-25")
+                // presence wins: an explicit due overrides the default
+                dueOf("weeks(1)", metadata = dueDefault(AutomationDuration(2.0, "days")))
+                    .first
+                    .arguments["due"] shouldBe JsonPrimitive("2026-10-30")
+            }
+        }
+
+        "S2.9a T1'(e): a working-days due is refused by name, on empty and unselected routes too" {
+            for (source in listOf("working_days(:settlement)", "2 working_days", "working_days(5)", null)) {
+                for ((routes, condition) in listOf(
+                    listOf("way.hold") to null,
+                    listOf("way.empty") to null,
+                    listOf("way.hold") to "false",
+                )) {
+                    supervisorScope {
+                        val base = obligationWiring(routes).copy(whenCondition = condition)
+                        val wiring =
+                            base.copy(
+                                columns =
+                                    if (source ==
+                                        null
+                                    ) {
+                                        base.columns - "due"
+                                    } else {
+                                        base.columns + ("due" to source)
+                                    },
+                            )
+                        val metadata =
+                            if (source == null) {
+                                dueDefault(AutomationDuration(2.0, "working_days"))
+                            } else {
+                                legacyPreviewMetadata(BundleFixture.load())
+                            }
+                        val f =
+                            PreviewFixture(
+                                this,
+                                previewRecipe().withWiring(listOf(wiring)),
+                                metadata,
+                                extraBindings = dueBindings,
+                            )
+                        f.runner.use { runner ->
+                            var error: AutomationException? = null
+                            val lines = refusalLines { error = shouldThrow { runner.evaluate() } }
+                            withClue("$source $routes $condition") {
+                                error!!.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                                error!!.detail shouldBe
+                                    buildJsonObject {
+                                        put("wiring", "#0:${routes.single()}->expect")
+                                        put("action", "expect")
+                                        put("kind", "expression")
+                                        put("expression", "due")
+                                        put("cause", "working-days-due-needs-calendar")
+                                    }
+                                lines.size shouldBe 1
+                                lines.single() shouldContain "cause=working-days-due-needs-calendar"
+                                f.journals.get() shouldBe 0
+                                f.plan shouldBe null
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        "S2.9a T1'(f): the as_of date is taken in the world's zone" {
+            supervisorScope {
+                val late = Instant.parse("2026-11-18T23:30:00Z")
+                val prague = mapOf("demo" to java.time.ZoneId.of("Europe/Prague"))
+                dueOf("days(0)", asOf = late, zones = prague).first.arguments["due"] shouldBe
+                    JsonPrimitive("2026-11-19")
+                dueOf("2 days", asOf = late, zones = prague).first.arguments["due"] shouldBe
+                    JsonPrimitive("2026-11-21")
+                // an unmapped world keeps UTC
+                dueOf("days(0)", asOf = late).first.arguments["due"] shouldBe JsonPrimitive("2026-11-18")
+                dueOf("days(0)", asOf = late, zones = mapOf("other" to java.time.ZoneId.of("Europe/Prague")))
+                    .first
+                    .arguments["due"] shouldBe JsonPrimitive("2026-11-18")
+            }
+        }
+
+        "S2.9a: a due that is not a duration keeps its typed date projection" {
+            supervisorScope {
+                dueOf("cast(:as_of + days(14) as date)").first.arguments["due"] shouldBe JsonPrimitive("2026-11-06")
+            }
+        }
+
         "S2.8 (review-368 F1a): opposing transitions of one obligation name the later wiring, logged once" {
             supervisorScope {
                 val f =
@@ -2814,6 +2978,8 @@ private class PreviewFixture(
     filterLookup: Boolean = false,
     readCeiling: Int = 100_000,
     orderNumbers: List<Any> = listOf("4711", "4712", "4713"),
+    extraBindings: Map<String, BoundValue> = emptyMap(),
+    zones: Map<String, java.time.ZoneId> = emptyMap(),
 ) {
     val reads = AtomicInteger()
     val obligationReads = mutableListOf<DoorRead>()
@@ -2851,7 +3017,7 @@ private class PreviewFixture(
                         "as_of" to BoundValue("datetime", asOf),
                         "threshold" to BoundValue("decimal", BigDecimal("4.560")),
                         "unused_secret" to BoundValue("text", "must-not-forward"),
-                    ),
+                    ) + extraBindings,
             ),
             Door { read ->
                 reads.incrementAndGet()
@@ -2914,7 +3080,7 @@ private class PreviewFixture(
             Staging(store) {},
             scope,
             { _, _ -> legacy.incrementAndGet() },
-            preview = ApplyPlanner(Clock.fixed(PREVIEW_NOW.plusSeconds(1), ZoneOffset.UTC))::preview,
+            preview = ApplyPlanner(Clock.fixed(PREVIEW_NOW.plusSeconds(1), ZoneOffset.UTC), zones)::preview,
             recordPreview = { _, _, value ->
                 journals.incrementAndGet()
                 if (refuseJournal) error("journal refused")
