@@ -16,6 +16,17 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation 0.11.45 — `expect.due` days/weeks/literal lowered; working_days named (S2.9a, D-249).**
+  An action whose declared `due` column is a `date` (the stock `expect`) and whose wiring gives `due` a duration —
+  `days(n)`, `weeks(n)`, the juxtaposed `2 days`, a bound parameter in either (`days(:inbound_reminder)`), or the
+  action's own `due:` default when the wiring omits `due` — now previews the **date** `as_of` + the duration, where it
+  used to refuse with `cause: TtrpEmitException`. `as_of`'s date is taken in the world's zone: new setting
+  `automation.worldZones` / `AUTOMATION_WORLD_ZONES`, comma-separated `world=Region/City` pairs (`demo=Europe/Prague`);
+  an unmapped world is UTC; a fixed offset (`+01:00`, `GMT+1`) or an unknown zone fails at start. A `working_days` due
+  needs the calendar, and no recipe declares that read yet: it is refused by name — `501 preview-unsupported`,
+  `detail.cause: "working-days-due-needs-calendar"`, `expression: "due"` — even on an empty or unselected route.
+  S2.9b computes it. Undeclared `due` (wiring evidence) and every non-duration date expression are unchanged.
+
 - **automation 0.11.44 — `preview-unsupported` names the wiring and logs its cause (ttr-server#443).**
   A dry run's `501 preview-unsupported` from an action expression, a condition, a native writer, obligation or
   obligation transition mapping, or the obligation snapshot now carries `detail: { wiring, action, kind, expression?,
