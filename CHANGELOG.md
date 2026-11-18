@@ -16,6 +16,21 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation 0.11.44 — `preview-unsupported` names the wiring and logs its cause (ttr-server#443).**
+  A dry run's `501 preview-unsupported` from an action expression, a condition, a native writer, obligation or
+  obligation transition mapping, or the obligation snapshot now carries `detail: { wiring, action, kind, expression?,
+  cause }` — the wiring's key (`#<position>:<routes>-><action>`), `kind` (`expression` · `condition` · `mapping` ·
+  `snapshot`; a snapshot names no wiring), the expression's declared argument name (`when` for a condition) and the
+  cause: the compiler diagnostic id (`TTRP-EXP-001`, `TTRP-FN-001` …), the check's name (`comparison-kinds`,
+  `non-finite`, `writer-mapping`, `obligation-mapping`, `obligation-transition`, `obligation-snapshot` …) or the
+  exception class (`SQLException` …). The message is unchanged; generated SQL and bound values are still never shown.
+  The failed run stores the same detail in its `error` (`GET /automation/runs/{id}`) and its protocol gains one
+  `automation` entry `{ event: "failed", status: "failed", error }`; every other failure stays code-only, as before. One
+  WARN line per refusal (`org.tatrman.automation.apply.PreviewRefusals`) names the run id and the wiring and carries the
+  cause's message with bound values, dates derived from them, and route values of three characters or more replaced by
+  `?` (a bound value under three characters only where it stands alone). No migration; nothing that was supported
+  changes.
+
 - **automation 0.11.43 — an answer run decides the answered key's held rows at Open (D-159 completed; ttr-server#429).**
   A verified engine answer (`engine.taskId` + `answeredBy`, from the engine client) no longer re-runs the recipe and
   holds the approved key again: it finds the instance's run that held the key (waiting, or closed: a decided key replays

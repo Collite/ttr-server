@@ -389,25 +389,63 @@ class Ledger(
     fun failActiveRun(
         runId: UUID,
         error: JsonElement? = null,
-    ): Boolean =
-        transaction {
-            Runs.update({
-                (Runs.id eq runId) and
-                    (Runs.status inList listOf(RunStatus.OPEN.wire, RunStatus.RUNNING.wire, RunStatus.EVALUATED.wire))
-            }) {
-                it[status] = RunStatus.FAILED.wire
-                it[endedAt] = clock.instant().utc()
-                it[Runs.error] = error ?: JsonObject(mapOf("code" to JsonPrimitive("internal")))
-            } == 1
+        protocol: Boolean = false,
+    ): Boolean {
+        outermost("failActiveRun")
+        // READ COMMITTED (see [appendProtocol]): the UPDATE holds the run row, so the entry's seq cannot clash.
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            val stored = error ?: JsonObject(mapOf("code" to JsonPrimitive("internal")))
+            val now = clock.instant().utc()
+            val failed =
+                Runs.update({
+                    (Runs.id eq runId) and
+                        (
+                            Runs.status inList
+                                listOf(RunStatus.OPEN.wire, RunStatus.RUNNING.wire, RunStatus.EVALUATED.wire)
+                        )
+                }) {
+                    it[status] = RunStatus.FAILED.wire
+                    it[endedAt] = now
+                    it[Runs.error] = stored
+                } == 1
+            if (failed && protocol && !isSealed(runId)) {
+                val entry =
+                    JsonObject(
+                        mapOf(
+                            "event" to JsonPrimitive("failed"),
+                            "status" to JsonPrimitive(RunStatus.FAILED.wire),
+                            "error" to stored,
+                        ),
+                    )
+                insertProtocol(runId, ProtocolSection.AUTOMATION, entry, now)
+            }
+            failed
         }
+    }
 
-    /** Session failure callback: preserve the public code without storing exception text or credentials. */
+    /**
+     * Session failure callback: preserve the public code without storing exception text or credentials. S2.8 (D-239):
+     * a preview refusal's detail (wiring, action, kind, expression, cause — never SQL or a bound value) is stored too
+     * and written into the run's protocol as an `automation` `failed` entry, so the failed evaluation names its cause.
+     */
     fun failExecution(
         runId: UUID,
         cause: Exception,
     ) {
-        val code = (cause as? org.tatrman.automation.api.AutomationException)?.code?.code ?: "internal"
-        failActiveRun(runId, JsonObject(mapOf("code" to JsonPrimitive(code))))
+        val refusal = cause as? org.tatrman.automation.api.AutomationException
+        val code = refusal?.code?.code ?: "internal"
+        val detail =
+            refusal
+                ?.takeIf { it.code == org.tatrman.automation.api.ErrorCode.PREVIEW_UNSUPPORTED }
+                ?.detail as? JsonObject
+        val error =
+            JsonObject(
+                buildMap {
+                    put("code", JsonPrimitive(code))
+                    detail?.let { put("detail", it) }
+                },
+            )
+        failActiveRun(runId, error, protocol = detail != null)
     }
 
     /**
@@ -805,16 +843,26 @@ class Ledger(
         return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
             lockRun(runId)
             if (isSealed(runId)) throw ProtocolSealed(runId)
-            val seq = nextSeq(runId, section)
-            RunProtocol.insert {
-                it[run] = runId
-                it[RunProtocol.section] = section.wire
-                it[RunProtocol.seq] = seq
-                it[RunProtocol.payload] = payload
-                it[at] = clock.instant().utc()
-            }
-            seq
+            insertProtocol(runId, section, payload, clock.instant().utc())
         }
+    }
+
+    /** One protocol entry at the section's next seq; the caller holds the run row (READ COMMITTED). */
+    private fun insertProtocol(
+        runId: UUID,
+        section: ProtocolSection,
+        payload: JsonElement,
+        at: java.time.OffsetDateTime,
+    ): Int {
+        val seq = nextSeq(runId, section)
+        RunProtocol.insert {
+            it[run] = runId
+            it[RunProtocol.section] = section.wire
+            it[RunProtocol.seq] = seq
+            it[RunProtocol.payload] = payload
+            it[RunProtocol.at] = at
+        }
+        return seq
     }
 
     /** Seals the protocol at close: a `{"sealed": true}` entry in `automation`, after which nothing appends. */
