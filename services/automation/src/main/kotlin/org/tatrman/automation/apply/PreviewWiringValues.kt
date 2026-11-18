@@ -119,6 +119,8 @@ internal object PreviewWiringValues {
                 "a working-days due is computed over the calendar, which this recipe does not declare (S2.9b)",
             )
         }
+        // A date plus hours or minutes is a moment, not a due date.
+        require(duration == null || duration.unit in DATE_UNITS) { "a due date is days, weeks or months away" }
         return duration
     }
 
@@ -164,20 +166,22 @@ internal object PreviewWiringValues {
         zone: ZoneId = ZoneOffset.UTC,
     ): List<Map<String, JsonElement>> {
         var current: String? = null
-        // S2.9a: a `due` duration is added to `as_of`'s local date, bound under a name no source can spell.
-        val dueBase =
-            prepared.dueDate?.let {
-                generateSequence(0) { i -> i + 1 }
-                    .map { i -> "_au_due_on_$i" }
-                    .first { name -> name !in bindings && table.columns.none { c -> c.name == name } }
-            }
-        val values =
-            if (dueBase == null) {
-                bindings
-            } else {
-                bindings + (dueBase to BoundValue("date", localDate(bindings.getValue("as_of").value, zone)))
-            }
+        var values = bindings
         return guarded(site, { current }, { PreviewExpressions.values(table, values) }) {
+            // S2.9a: a `due` duration is added to `as_of`'s local date, bound under a name no source can spell.
+            val dueBase =
+                prepared.dueDate?.let {
+                    current = "due"
+                    generateSequence(0) { i -> i + 1 }
+                        .map { i -> "_au_due_on_$i" }
+                        .first { name -> name !in bindings && table.columns.none { c -> c.name == name } }
+                        .also { name ->
+                            values =
+                                bindings +
+                                (name to BoundValue("date", localDate(bindings.getValue("as_of").value, zone)))
+                        }
+                }
+            current = null
             val action = prepared.action
             val sources = prepared.sources
             val scalars = linkedMapOf<String, String>()
@@ -445,6 +449,8 @@ internal object PreviewWiringValues {
 
     /** S2.9a (D-249): the cause token of a working-days `due` refused before the calendar read exists. */
     internal const val WORKING_DAYS_DUE = "working-days-due-needs-calendar"
+
+    private val DATE_UNITS = setOf(DurationUnit.DAYS, DurationUnit.WEEKS, DurationUnit.MONTHS)
 
     private const val PREFIX =
         "recipe { key: preview.id as of: now actions { " +

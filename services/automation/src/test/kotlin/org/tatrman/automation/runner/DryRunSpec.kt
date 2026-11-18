@@ -1608,9 +1608,18 @@ class DryRunSpec :
             }
         }
 
-        "S2.9a: a due that is not a duration keeps its typed date projection" {
+        "S2.9a: a due that is not a duration keeps its typed date projection; months lower, hours refuse" {
             supervisorScope {
                 dueOf("cast(:as_of + days(14) as date)").first.arguments["due"] shouldBe JsonPrimitive("2026-11-06")
+                dueOf("months(1)").first.arguments["due"] shouldBe JsonPrimitive("2026-11-23")
+                for (source in listOf("hours(2)", "30 minutes")) {
+                    val error = shouldThrow<AutomationException> { dueOf(source) }
+                    withClue(source) {
+                        error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                        error.detail!!.jsonObject["expression"] shouldBe JsonPrimitive("due")
+                        error.detail!!.jsonObject["cause"] shouldBe JsonPrimitive("IllegalArgumentException")
+                    }
+                }
             }
         }
 
