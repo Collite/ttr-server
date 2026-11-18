@@ -3,11 +3,11 @@
 # https://docs.gradle.org/current/userguide/version_catalogs.html
 
 [versions]
-tatrman-grammar           = "0.22.7"
+tatrman-grammar           = "0.22.9"
 # Moves WITH the grammar ref, always: they are one `api` closure (ttr-snapshot api's
 # ttr-metadata, ttr-lexicon-compile's POM names it exactly), and the `bundle grammar` lane
 # publishes them at one version. Two versions here is the 0.10.3/0.10.4 failure.
-tatrman-ttr-metadata      = "0.22.7"
+tatrman-ttr-metadata      = "0.22.9"
 # Lockstep pair (`translator/v*` cuts both). DQ: 0.11.4 carries MJ's ModelJoinRewriter — a bare
 # ER `JOIN` with no `ON` (the form the Golem's LLM lane and its query door write) is conditioned
 # from the model's relations; on 0.10.3 Calcite refused it ("join requires a condition").
@@ -15,11 +15,12 @@ tatrman-ttr-metadata      = "0.22.7"
 # Never 0.12.5 with the option on: it made a WHERE filter reading both sides of an FK-only bare join the join's
 # whole ON, dropping the foreign key (ttr-core#223).
 # AU S2.4 / Core#407: 0.14.3 preserves bounded way plans across REL_NODE re-entry (and carries 0.14.2's SQL rails).
-# Keep the translator/plan-proto pair aligned with the grammar's emitter: grammar 0.22.7 was cut after
-# translator/v0.14.3, so its ttrp-emit / ttr-concept POMs name 0.14.3 — one translator line across every module
-# (MW S4.1 realigned them; 0.22.3 still named 0.14.1).
-tatrman-ttr-translator    = "0.14.3"
-tatrman-ttr-plan-proto    = "0.14.3"
+# AU S2.4d / Core#424: 0.14.4 types a CASE/UNION of ragged string literals as VARCHAR.
+# Keep the translator/plan-proto pair aligned with the grammar's emitter: grammar 0.22.9 was cut after
+# translator/v0.14.4, so its ttrp-emit / ttr-concept POMs name 0.14.4 — one translator line across every module
+# (MW S4.2b moved both with the grammar, ✅D-MW-99; 0.22.3 still named 0.14.1).
+tatrman-ttr-translator    = "0.14.4"
+tatrman-ttr-plan-proto    = "0.14.4"
 # SV-P1 S4 — Maven Central publishing via the Central Portal.
 vanniktech-publish        = "0.36.0"
 
