@@ -208,6 +208,61 @@ class LedgerSpec :
             ledger.failActiveRun(UUID.randomUUID()) shouldBe false
         }
 
+        "S2.8: a preview refusal's detail is stored with the failed run and written into its protocol once" {
+            val id = ledger.claimRun(open("failed-preview")).runId
+            val detail =
+                JsonObject(
+                    mapOf(
+                        "wiring" to JsonPrimitive("#1:way.hold->release"),
+                        "action" to JsonPrimitive("release"),
+                        "kind" to JsonPrimitive("expression"),
+                        "expression" to JsonPrimitive("order"),
+                        "cause" to JsonPrimitive("RES_001"),
+                    ),
+                )
+            val refusal =
+                org.tatrman.automation.api.AutomationException(
+                    org.tatrman.automation.api.ErrorCode.PREVIEW_UNSUPPORTED,
+                    "unsupported action expression",
+                    detail,
+                )
+            ledger.failExecution(id, refusal)
+            ledger.failExecution(id, refusal)
+            statusOf(id) shouldBe "failed"
+            val error = JsonObject(mapOf("code" to JsonPrimitive("preview-unsupported"), "detail" to detail))
+            transaction {
+                Runs.selectAll().where { Runs.id eq id }.single()[Runs.error] shouldBe error
+                RunProtocol
+                    .selectAll()
+                    .where { (RunProtocol.run eq id) and (RunProtocol.section eq "automation") }
+                    .map { it[RunProtocol.payload] } shouldBe
+                    listOf(
+                        JsonObject(
+                            mapOf(
+                                "event" to JsonPrimitive("failed"),
+                                "status" to JsonPrimitive("failed"),
+                                "error" to error,
+                            ),
+                        ),
+                    )
+            }
+            // Every other failure keeps the code-only record and writes no protocol entry.
+            val other = ledger.claimRun(open("failed-other")).runId
+            ledger.failExecution(
+                other,
+                org.tatrman.automation.api.AutomationException(
+                    org.tatrman.automation.api.ErrorCode.DOOR_REFUSED,
+                    "refused",
+                    JsonObject(mapOf("reason" to JsonPrimitive("x"))),
+                ),
+            )
+            transaction {
+                Runs.selectAll().where { Runs.id eq other }.single()[Runs.error] shouldBe
+                    JsonObject(mapOf("code" to JsonPrimitive("door-refused")))
+                RunProtocol.selectAll().where { RunProtocol.run eq other }.count() shouldBe 0L
+            }
+        }
+
         "opening policy evidence is atomic with the claim and never duplicated on a retry" {
             val evidence = JsonObject(mapOf("approvals" to JsonPrimitive("development-off")))
             val input =

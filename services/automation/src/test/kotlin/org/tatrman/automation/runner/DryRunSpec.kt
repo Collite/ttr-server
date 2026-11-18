@@ -1393,6 +1393,37 @@ class DryRunSpec :
             }
         }
 
+        "S2.8: an assembled refusal names the failing wiring by position, routes and action" {
+            supervisorScope {
+                val good = ManifestWiring(listOf("way.release"), "release", mapOf("order" to "order_number"))
+                val variants =
+                    listOf(
+                        ManifestWiring(listOf("way.hold"), "release", mapOf("order" to "no_such_column + 1")) to
+                            ("expression" to "order"),
+                        ManifestWiring(
+                            listOf("way.hold", "way.release"),
+                            "release",
+                            mapOf("order" to "order_number"),
+                            "no_such_column > 1",
+                        ) to ("condition" to "when"),
+                    )
+                for ((bad, expected) in variants) {
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(good, bad)))
+                    f.runner.use { runner ->
+                        val error = shouldThrow<AutomationException> { runner.evaluate() }
+                        error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                        val detail = error.detail!!.jsonObject
+                        detail["wiring"] shouldBe JsonPrimitive("#1:${bad.routes.joinToString(",")}->release")
+                        detail["action"] shouldBe JsonPrimitive("release")
+                        detail["kind"] shouldBe JsonPrimitive(expected.first)
+                        detail["expression"] shouldBe JsonPrimitive(expected.second)
+                        detail["cause"] shouldBe JsonPrimitive("RES_001")
+                        f.journals.get() shouldBe 0
+                    }
+                }
+            }
+        }
+
         "compound preview predicates preserve repeated wiring and share one atomic completion" {
             supervisorScope {
                 val wiring =
