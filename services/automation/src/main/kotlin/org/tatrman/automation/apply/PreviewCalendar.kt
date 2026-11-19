@@ -104,7 +104,11 @@ internal object PreviewCalendar {
                                 recipe.bindings.associate { it.name to it.type } + ("as_of" to "timestamp"),
                         )
                 }
-        if (calls.isEmpty()) return null
+        val workingDue =
+            recipe.wiring.any { wiring ->
+                PreviewWiringValues.workingDaysDue(wiring.columns, actions.getValue(wiring.action))
+            }
+        if (calls.isEmpty() && !workingDue) return null
         val plan =
             bundle.prepared.calendarPlans
                 .computeIfAbsent(worldName) {
@@ -117,7 +121,7 @@ internal object PreviewCalendar {
         if (plan.entity !in recipe.objectsRead) {
             throw AutomationException(ErrorCode.OUT_OF_SCOPE_READ, "calendar lookup requires declared ER scope")
         }
-        if (calls.any { it.function.name == "working_days" } &&
+        if ((workingDue || calls.any { it.function.name == "working_days" }) &&
             plan.columns.none { it.name == "working_day" && it.type in setOf("bool", "boolean") }
         ) {
             unsupported()

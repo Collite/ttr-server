@@ -92,7 +92,7 @@ internal object PreviewWiringValues {
 
     /**
      * S2.9a: a declared `due` of type `date` whose value (or, when the wiring omits it, the action's default) is a
-     * duration. A working-days duration needs the calendar and is refused by name until its read is declared (S2.9b).
+     * duration. Working days use the governed calendar snapshot; other date units keep the compiler lowering.
      * Any other value keeps its typed date projection.
      */
     private fun dueDate(
@@ -113,15 +113,54 @@ internal object PreviewWiringValues {
                     DurationLiteral(it.amount.toLong(), unit, SourceLocation.UNKNOWN)
                 }
             }
-        if (duration?.unit == DurationUnit.WORKING_DAYS) {
-            throw PreviewRefused(
-                WORKING_DAYS_DUE,
-                "a working-days due is computed over the calendar, which this recipe does not declare (S2.9b)",
-            )
-        }
         // A date plus hours or minutes is a moment, not a due date.
-        require(duration == null || duration.unit in DATE_UNITS) { "a due date is days, weeks or months away" }
+        require(duration == null || duration.unit in DATE_UNITS) { "a due date requires a date duration" }
         return duration
+    }
+
+    /** Only an actual date-valued due triggers this read; deferred engine due properties stay evidence. */
+    fun workingDaysDue(
+        sources: Map<String, String>,
+        action: AutomationAction,
+    ): Boolean = runCatching { dueDate(sources, action)?.unit == DurationUnit.WORKING_DAYS }.getOrDefault(false)
+
+    /** n = 0 and n = 1 both mean the first working day strictly after the world's local date. */
+    private fun workingDay(
+        after: LocalDate,
+        duration: DurationExpr,
+        bindings: Map<String, BoundValue>,
+        calendar: CalendarSnapshot?,
+    ): LocalDate {
+        val amount =
+            when (duration) {
+                is DurationLiteral -> duration.amount
+                is DurationParam -> requireNotNull(RecipeBindings.integralAmount(bindings.getValue(duration.param)))
+            }
+        require(amount >= 0)
+        val snapshot =
+            calendar
+                ?: throw PreviewRefused(WORKING_DAYS_DUE, "a working-days due requires the governed calendar snapshot")
+        val dateName =
+            snapshot.plan.columns
+                .first()
+                .name
+        val date = snapshot.table.columns.indexOfFirst { it.name == dateName && it.type == "date" }
+        val flag =
+            snapshot.table.columns.indexOfFirst {
+                it.name == "working_day" && it.type in setOf("bool", "boolean")
+            }
+        require(date >= 0 && flag >= 0) { "calendar snapshot requires date and working_day" }
+        val dates =
+            snapshot.table.rows
+                .filter { it[flag] == true }
+                .map { it[date] as LocalDate }
+                .filter { it > after }
+                .sorted()
+        val ordinal = maxOf(1L, amount)
+        if (ordinal > dates.size.toLong()) {
+            throw PreviewRefused("calendar-horizon", "the governed calendar does not reach the due day")
+        }
+        return dates[(ordinal - 1).toInt()]
     }
 
     /** `:<base> + <unit>(<count>)` — the call spelling of a duration, valid in an expression. */
@@ -130,6 +169,7 @@ internal object PreviewWiringValues {
         duration: DurationExpr,
         bindings: Map<String, BoundValue>,
     ): String {
+        if (duration.unit == DurationUnit.WORKING_DAYS) return ":$base"
         val count =
             when (duration) {
                 is DurationLiteral -> duration.amount.toString()
@@ -171,8 +211,15 @@ internal object PreviewWiringValues {
             // S2.9a: a `due` duration is added to `as_of`'s local date, bound under a name no source spells:
             // a name any authored text contains is skipped, so an unknown authored reference stays unknown.
             val dueBase =
-                prepared.dueDate?.let {
+                prepared.dueDate?.let { duration ->
                     current = "due"
+                    val after = localDate(bindings.getValue("as_of").value, zone)
+                    val date =
+                        if (duration.unit == DurationUnit.WORKING_DAYS) {
+                            workingDay(after, duration, bindings, calendar)
+                        } else {
+                            after
+                        }
                     generateSequence(0) { i -> i + 1 }
                         .map { i -> "_au_due_on_$i" }
                         .first { name ->
@@ -180,9 +227,7 @@ internal object PreviewWiringValues {
                                 table.columns.none { c -> c.name == name } &&
                                 prepared.sources.values.none { source -> name in source }
                         }.also { name ->
-                            values =
-                                bindings +
-                                (name to BoundValue("date", localDate(bindings.getValue("as_of").value, zone)))
+                            values = bindings + (name to BoundValue("date", date))
                         }
                 }
             current = null
@@ -451,10 +496,11 @@ internal object PreviewWiringValues {
 
     private const val MESSAGE = "unsupported action expression"
 
-    /** S2.9a (D-249): the cause token of a working-days `due` refused before the calendar read exists. */
+    /** Refuse without a governed snapshot; this path never grants a calendar read itself. */
     internal const val WORKING_DAYS_DUE = "working-days-due-needs-calendar"
 
-    private val DATE_UNITS = setOf(DurationUnit.DAYS, DurationUnit.WEEKS, DurationUnit.MONTHS)
+    private val DATE_UNITS =
+        setOf(DurationUnit.DAYS, DurationUnit.WEEKS, DurationUnit.MONTHS, DurationUnit.WORKING_DAYS)
 
     private const val PREFIX =
         "recipe { key: preview.id as of: now actions { " +
