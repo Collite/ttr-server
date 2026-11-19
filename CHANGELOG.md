@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata 0.12.9 — GET /model/layout?tags= (MW S4.3b).** Tag sets now select a computed layout from the same
+  `ResolveTags` closure as the service, with `schema=er|db` (default `er`); callers wanting both make two calls.
+  Layouts cache by normalized tag set and schema until the next registry snapshot, with a stable ETag per response.
+  `name` plus `tags`, unknown schemas and blank tag members return 400. The grammar/metadata family moves from
+  0.22.9 to internal Core 0.22.12, which also serves authored YAML layouts; translator/plan-proto remain 0.14.4.
+  Rebuild JVM consumers together for Core's `LayoutFileRef` changes; the old-arity `copy` remains incompatible.
+
 - **automation 0.11.46 — working_days due over the calendar (S2.9b, closes ttr-server#449).**
   A declared date-valued `due: working_days(n)` (literal, bound parameter or action default) becomes the n-th
   working day strictly after `as_of`'s date in the world's configured zone. `n = 0` means the first working day
