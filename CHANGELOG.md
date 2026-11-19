@@ -23,6 +23,11 @@ outside this repo could notice is in.
   is a startup error on a filesystem source and a `profile_conflict` load failure on a git source. `meta.v1.SourceStatus`
   gains `kind` (16) and `profile` (17), `/status` `sources[]` gains `kind` and `profile`, and a strict-swap refusal
   names `ys/*` issues `file:line:col`. A CN promotion source read through a dialect is `409 promotion_target_dialect`.
+  `metadata.yaml.maxInputCodePoints` (`METADATA_YAML_MAX_INPUT_CODE_POINTS`, default half the heap at ~500 B per code
+  point) fails a profile run's load with `yaml_input_budget` before the engine reads an oversized tree. For every
+  source kind, an `er2db_entity` with `whereFilter: {sql: <c>}` is served as the query `<entity>__filter`
+  (`SELECT * FROM <table> WHERE <c>`) and its mapping as that query; another form is a located warning, a name clash
+  a load error (✅D-MW-67 (c′)).
 
 - **automation 0.11.45 — `expect.due` days/weeks/literal lowered; working_days named (S2.9a, D-249; refs #449).**
   An action whose declared `due` column is a `date` (the stock `expect`) and whose wiring gives `due` a duration —

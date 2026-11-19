@@ -510,6 +510,7 @@ Hartland's, so a URI alone would look for `master` and `model/` in your reposito
 | `METADATA_GIT_CHECKOUT_DIR` | Where to clone (default `<tmp>/metadata-git/github-model`). |
 | `METADATA_GIT_KIND` | The parser kind: `ttr` (default; `.ttr`/`.ttrm`) or `yaml` (canonical or dialect YAML, below). |
 | `METADATA_PROFILE` | `yaml` only: the profile a tree **without** `ttr.yaml` is read through: an identity from the tree's `profiles/` (`<name>/<major>`) or a path relative to the source root. |
+| `METADATA_YAML_MAX_INPUT_CODE_POINTS` | HOCON `metadata.yaml.maxInputCodePoints`: the most code points of dialect YAML one `yaml` source may read through a profile (the profile engine holds ~500 B of heap per code point); over it the load fails with `yaml_input_budget`. `0` (default) is half the JVM heap at that rate: 536 870 on 512 MiB. Canonical trees are not counted. |
 
 **A second repository.** A model whose packages live in two repositories (a public one and a private
 one, say) can be served by one Metadata: set `METADATA_GIT2_REMOTE_URI` and Metadata adds a second git
@@ -602,8 +603,22 @@ the file's own header, else `ttr.yaml`, else the entry's `profile` (`METADATA_PR
   `<name>/<major>`; `canonical/1` for a tree without a declaration; empty for `ttr`).
 - A CN promotion target must be canonical: a `yaml` source read through a dialect is refused with
   `409 promotion_target_dialect`.
+- A tree read through a profile may hold at most `metadata.yaml.maxInputCodePoints` code points of dialect
+  input (`METADATA_YAML_MAX_INPUT_CODE_POINTS`; by default half the heap at ~500 B per code point). Over it, the
+  load fails with `yaml_input_budget` before anything is read, instead of the engine exhausting the heap.
+- A `.ttrm` tree converted to canonical YAML must list its other YAML files in `model.ignore` (hartland's
+  `model/reports/`): a `ttr` source never reads them, a `yaml` source reads every `.yaml` as a model document.
+  The two exports then differ only in the entry order of mapping-valued attributes such as `transitions`, which
+  the canonical writer sorts (MW S4.2 T5).
 - Every other channel (registry, graph, search, layouts, `/model/export`, lexicon, branch gate) sees
   definitions, not files, and is unchanged.
+
+**Filtered bindings (every source kind, MW-P4 contracts §1).** An `er2db_entity` with `whereFilter: {sql: <c>}`
+and a table or view target is served as the db query `<entity>__filter` in the entity's package:
+`SELECT * FROM <table> WHERE <c>`, tagged `synthetic`/`where-filter`, parsed with the other queries. The entity's
+mapping targets that query (`sql_query` in `Er2DbEntityMappingDetail`). Another `whereFilter` form, or one on a
+query target, is a warning in `/status.issues[]` at the authored span. A synthesized name that is already a
+query is a load error, and nothing is synthesized over it.
 
 | Storage `type` | Fields |
 |---|---|
