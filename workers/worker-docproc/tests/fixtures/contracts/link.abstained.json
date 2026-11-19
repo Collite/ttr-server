@@ -1,0 +1,59 @@
+{
+  "annotations": [
+    {
+      "derivedFrom": [
+        5001
+      ],
+      "id": 7001,
+      "payloadJson": "{\"candidates\":[{\"code\":\"Voltaic Sluchátka MX-A6C\",\"label\":\"Voltaic Sluchátka MX-A6C\",\"score\":1.0058787560842721,\"source\":\"lexicon\",\"system\":\"cn.Item\"},{\"code\":\"Voltaic Sluchátka MX-B61\",\"label\":\"Voltaic Sluchátka MX-B61\",\"score\":1.0058787560842721,\"source\":\"lexicon\",\"system\":\"cn.Item\"},{\"code\":\"Voltaic Sluchátka MX-CRG\",\"label\":\"Voltaic Sluchátka MX-CRG\",\"score\":1.0058787560842721,\"source\":\"lexicon\",\"system\":\"cn.Item\"},{\"code\":\"Voltaic Sluchátka MX-TOA\",\"label\":\"Voltaic Sluchátka MX-TOA\",\"score\":1.0058787560842721,\"source\":\"lexicon\",\"system\":\"cn.Item\"},{\"code\":\"Voltaic Sluchátka MX-YO9\",\"label\":\"Voltaic Sluchátka MX-YO9\",\"score\":1.0058787560842721,\"source\":\"lexicon\",\"system\":\"cn.Item\"}],\"kind\":\"item\",\"linkMethod\":\"abstain\",\"surface\":\"sluchátka\"}",
+      "producer": "link-mentions",
+      "producerVersion": "sha256:3c6e271cdb65c7597051703adaff7239c65bfac571a6acf4fba4994f57ed57e3",
+      "runId": "link-mentions-review-001.en.json/1",
+      "spans": [
+        {
+          "end": 9,
+          "unitId": 201
+        }
+      ],
+      "type": "Mention",
+      "unitId": 201
+    },
+    {
+      "derivedFrom": [
+        5002
+      ],
+      "id": 7002,
+      "payloadJson": "{\"candidates\":[{\"code\":\"Marrowgate Lampa MX-2JT\",\"label\":\"Marrowgate Lampa MX-2JT\",\"score\":0.3477499940677678,\"source\":\"lexicon\",\"system\":\"cn.Item\"},{\"code\":\"Marrowgate Lampa MX-91M\",\"label\":\"Marrowgate Lampa MX-91M\",\"score\":0.3477499940677678,\"source\":\"lexicon\",\"system\":\"cn.Item\"},{\"code\":\"Marrowgate Lampa MX-M2X\",\"label\":\"Marrowgate Lampa MX-M2X\",\"score\":0.3477499940677678,\"source\":\"lexicon\",\"system\":\"cn.Item\"},{\"code\":\"Marrowgate Lampa MX-OZR\",\"label\":\"Marrowgate Lampa MX-OZR\",\"score\":0.3477499940677678,\"source\":\"lexicon\",\"system\":\"cn.Item\"},{\"code\":\"Marrowgate Lampa MX-PLB\",\"label\":\"Marrowgate Lampa MX-PLB\",\"score\":0.3477499940677678,\"source\":\"lexicon\",\"system\":\"cn.Item\"}],\"kind\":\"item\",\"linkMethod\":\"abstain\",\"surface\":\"Aurora lamp\"}",
+      "producer": "link-mentions",
+      "producerVersion": "sha256:3c6e271cdb65c7597051703adaff7239c65bfac571a6acf4fba4994f57ed57e3",
+      "runId": "link-mentions-review-001.en.json/1",
+      "spans": [
+        {
+          "end": 11,
+          "unitId": 202
+        }
+      ],
+      "type": "Mention",
+      "unitId": 202
+    },
+    {
+      "derivedFrom": [
+        5003
+      ],
+      "id": 7003,
+      "payloadJson": "{\"candidates\":[{\"code\":\"HL-2040\",\"label\":\"Breeze Tower Fan\",\"score\":0.95,\"source\":\"lexicon\",\"system\":\"cn.Item\"}],\"concept\":\"cn.Item\",\"kind\":\"item\",\"linkMethod\":\"lexicon\",\"member\":{\"category\":\"er.entity.item.product_name\",\"display\":\"Breeze Tower Fan\",\"id\":\"HL-2040\"},\"surface\":\"ventilátor Breeze\"}",
+      "producer": "link-mentions",
+      "producerVersion": "sha256:3c6e271cdb65c7597051703adaff7239c65bfac571a6acf4fba4994f57ed57e3",
+      "runId": "link-mentions-review-002.cs.json/1",
+      "spans": [
+        {
+          "end": 48,
+          "start": 31,
+          "unitId": 10001
+        }
+      ],
+      "type": "Mention",
+      "unitId": 10001
+    }
+  ]
+}
