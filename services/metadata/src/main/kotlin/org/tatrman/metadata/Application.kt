@@ -370,6 +370,9 @@ internal fun buildSources(
         slot
     }
 
+/** ✅D-MW-96 (2): the config key of [YamlKindSource.inputBudget]. */
+private const val YAML_INPUT_LIMIT = "metadata.yaml.maxInputCodePoints"
+
 private fun configuredSources(
     config: Config,
     lexiconSourceIds: MutableSet<String>,
@@ -381,6 +384,9 @@ private fun configuredSources(
     // qnames are enforced separately by the reconciler regardless of priority.
     val builtins = listOf(SourceSlot(BuiltinStockSource.SOURCE_ID, BuiltinStockSource(), "built-in stock roles"))
     val declarations = sourceDeclarations(config)
+    // ✅D-MW-96 (2): the service caps what a `yaml` source may feed the profile engine, from its own heap.
+    val yamlInputBudget =
+        YamlKindSource.inputBudget(config.takeIf { it.hasPath(YAML_INPUT_LIMIT) }?.getLong(YAML_INPUT_LIMIT) ?: 0)
     val configured =
         declarations.mapNotNull { declaration ->
             val sub = declaration.config
@@ -401,6 +407,7 @@ private fun configuredSources(
                     lexiconSourceIds,
                     servedSidecars,
                     skippedSources,
+                    yamlInputBudget,
                 )?.let { SourceSlot(id, it, describeSource(sub)) }
             }
 
@@ -413,9 +420,11 @@ private fun configuredSources(
                         lexiconSourceIds,
                         servedSidecars,
                         skippedSources,
+                        yamlInputBudget,
                     )
                 }
-            val primary = buildSourceFromConfig(sub, id, lexiconSourceIds, servedSidecars, skippedSources)
+            val primary =
+                buildSourceFromConfig(sub, id, lexiconSourceIds, servedSidecars, skippedSources, yamlInputBudget)
             when {
                 fallbackSource == null -> {
                     skipSource(id, "unbuildable fallback '$fallbackId'", skippedSources)
@@ -513,6 +522,7 @@ private fun buildSourceFromConfig(
     lexiconSourceIds: MutableSet<String>,
     servedSidecars: () -> Map<String, String>,
     skippedSources: MutableList<String>,
+    yamlInputBudget: Long = Long.MAX_VALUE,
 ): ManagedSource? {
     val kind = if (sub.hasPath("kind")) sub.getString("kind") else "ttr"
     val priority = if (sub.hasPath("priority")) sub.getInt("priority") else 100
@@ -534,12 +544,16 @@ private fun buildSourceFromConfig(
             // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked.
             // MW S4.2: a `yaml` source reads the same storages, canonical or dialect YAML, and is wrapped alike.
             "ttr", "yaml" -> {
+                // MW S4.2 T2b (contracts §1): `whereFilter: {sql}` bindings are served as `<entity>__filter`, every kind.
                 val source: ModelSource =
-                    if (kind == "yaml") {
-                        YamlKindSource(id, priority, storage, profile).also { created -> yaml = created }
-                    } else {
-                        FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
-                    }
+                    org.tatrman.metadata.read.FilteredBindingSource(
+                        if (kind == "yaml") {
+                            YamlKindSource(id, priority, storage, profile, maxInputCodePoints = yamlInputBudget)
+                                .also { created -> yaml = created }
+                        } else {
+                            FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
+                        },
+                    )
                 if (storage is BranchStorage) {
                     lexiconSourceIds.add(id)
                     GitLexiconSource(

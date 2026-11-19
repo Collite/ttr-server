@@ -35,13 +35,14 @@ internal class YamlKindSource(
     private val storage: ModelStorage,
     val profile: String?,
     private val layouts: Boolean = true,
+    private val maxInputCodePoints: Long = Long.MAX_VALUE,
 ) : ModelSource {
     @Volatile
     var profileName: String = profile ?: ""
         private set
 
     override fun load(): SourceSnapshot {
-        val view = TreeView(storage, sourceId, profile)
+        val view = TreeView(storage, sourceId, profile, maxInputCodePoints)
         return YamlFileSource(sourceId, priority, view, profile, view.catalog, layouts).load().also {
             profileName = view.identity(view.declared ?: profile) ?: CANONICAL_PROFILE
         }
@@ -52,7 +53,10 @@ internal class YamlKindSource(
         private val storage: ModelStorage,
         private val sourceId: String,
         private val profile: String?,
+        private val maxInputCodePoints: Long,
     ) : ModelStorage by storage {
+        private var budgetChecked = false
+
         @Volatile
         private var root: Path? = null
 
@@ -81,16 +85,70 @@ internal class YamlKindSource(
             extensions: List<String>,
             prefixes: List<String>,
         ): List<StorageFile> =
-            storage.listFiles(extensions, prefixes).also { listed ->
-                root = root ?: listed.firstNotNullOfOrNull { it.rootPath }
-                val declaration = listed.firstOrNull { it.underRoot() == TREE_DECLARATION } ?: return@also
-                if (profile != null) throw IllegalStateException(conflict(sourceId, profile))
-                declared = runCatching { declaredProfile(storage.read(declaration)) }.getOrNull()
-            }
+            storage
+                .listFiles(extensions, prefixes)
+                .also { listed ->
+                    root = root ?: listed.firstNotNullOfOrNull { it.rootPath }
+                    val declaration = listed.firstOrNull { it.underRoot() == TREE_DECLARATION } ?: return@also
+                    if (profile != null) throw IllegalStateException(conflict(sourceId, profile))
+                    declared = runCatching { declaredProfile(storage.read(declaration)) }.getOrNull()
+                }.also { listed -> checkInputBudget(listed) }
+
+        /**
+         * ✅D-MW-96 (2): a tree read through a profile runs the engine over its inputs, at ≈ 500 B of heap per input
+         * code point (S4.2a's measurements), so the service refuses one whose dialect inputs (every listed YAML file
+         * outside `profiles/` and `layouts/`, without the declaration) total more than [maxInputCodePoints] before the
+         * library reads them. A canonical tree runs no engine and is not counted.
+         */
+        private fun checkInputBudget(listed: List<StorageFile>) {
+            if (budgetChecked || maxInputCodePoints == Long.MAX_VALUE) return
+            if (listed.none { it.underRoot().endsWith(".yaml") || it.underRoot().endsWith(".yml") }) return
+            budgetChecked = true
+            if (profile == null && listed.none { it.underRoot() == TREE_DECLARATION }) return
+            var total = 0L
+            listed
+                .filter { file ->
+                    val path = file.underRoot()
+                    (path.endsWith(".yaml") || path.endsWith(".yml")) &&
+                        path != TREE_DECLARATION &&
+                        !path.startsWith("profiles/") &&
+                        !path.startsWith("layouts/")
+                }.forEach { file ->
+                    val text = storage.read(file)
+                    total += text.codePointCount(0, text.length)
+                    if (total >
+                        maxInputCodePoints
+                    ) {
+                        throw IllegalStateException(overBudget(sourceId, maxInputCodePoints))
+                    }
+                }
+        }
     }
 
     companion object {
         const val PROFILE_CONFLICT = "profile_conflict"
+        const val INPUT_BUDGET = "yaml_input_budget"
+
+        /** Heap the profile engine holds per dialect input code point (S4.2a: ≈ 450–500 B, measured). */
+        const val ENGINE_BYTES_PER_CODE_POINT = 500L
+
+        /**
+         * `metadata.yaml.maxInputCodePoints`: [configured] when positive, else half of [maxHeapBytes] at
+         * [ENGINE_BYTES_PER_CODE_POINT] — 536 870 on a 512 MiB heap, room for a dfp-sized tree (~300 k) beside the
+         * TTR sources the same JVM serves.
+         */
+        fun inputBudget(
+            configured: Long,
+            maxHeapBytes: Long = Runtime.getRuntime().maxMemory(),
+        ): Long = if (configured > 0) configured else maxHeapBytes / 2 / ENGINE_BYTES_PER_CODE_POINT
+
+        fun overBudget(
+            sourceId: String,
+            limit: Long,
+        ): String =
+            "$INPUT_BUDGET: source '$sourceId' reads more than $limit code points of YAML through a profile; the " +
+                "profile engine holds ~$ENGINE_BYTES_PER_CODE_POINT B of heap per code point. Raise " +
+                "metadata.yaml.maxInputCodePoints (METADATA_YAML_MAX_INPUT_CODE_POINTS) with the heap, or split the tree"
 
         /** `profile:` as [ProfileCatalog] reads a profile's identity; the library reports a malformed declaration. */
         private val PROFILE_KEY = Regex("""^profile:\s*['"]?([^'"\s#]+)""", RegexOption.MULTILINE)

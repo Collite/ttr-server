@@ -192,6 +192,38 @@ class YamlSourceKindSpec :
                 listOf(tree, ttrm).forEach { it.toFile().deleteRecursively() }
             }
         }
+
+        "a tree read through a profile over metadata.yaml.maxInputCodePoints fails its load; canonical is not counted" {
+            val dialect = Files.createTempDirectory("yaml-kind-budget")
+            val canonical = Files.createTempDirectory("yaml-kind-budget-canonical")
+            try {
+                dialectTree(dialect, declared = true)
+                canonicalTwin(MV_ROOT, canonical)
+
+                fun fixture(
+                    root: Path,
+                    limit: Int,
+                ) = Fixture(
+                    listOf(mapOf("id" to "shop", "type" to "filesystem", "path" to "$root", "kind" to "yaml")),
+                    extra = mapOf("metadata.yaml.maxInputCodePoints" to limit),
+                )
+                // sklad.yaml is the one input (69 code points): profiles/, model.ignore and ttr.yaml are not inputs.
+                val over = fixture(dialect, 68)
+                over.ref.refreshOutcome("", true).status shouldBe "failed"
+                over.board
+                    .states()
+                    .single()
+                    .lastError shouldContain "${YamlKindSource.INPUT_BUDGET}: source 'shop' reads more than 68"
+                fixture(dialect, 69).ref.refreshOutcome("", true).status shouldBe "ok"
+                // A canonical tree runs no engine: the same limit does not apply to it.
+                fixture(canonical, 68).ref.refreshOutcome("", true).status shouldBe "ok"
+                // 0 (the default) derives the limit from the heap: half of it at ~500 B per code point.
+                YamlKindSource.inputBudget(0, 512L shl 20) shouldBe 536_870
+                YamlKindSource.inputBudget(42, 512L shl 20) shouldBe 42
+            } finally {
+                listOf(dialect, canonical).forEach { it.toFile().deleteRecursively() }
+            }
+        }
     })
 
 private val MV_ROOT: Path = Path.of("src/test/resources/fixture-member-vocab")
@@ -286,8 +318,9 @@ private fun git(
 private class Fixture(
     entries: List<Map<String, Any>>,
     strict: Boolean = true,
+    extra: Map<String, Any> = emptyMap(),
 ) {
-    val config = ConfigFactory.parseMap(mapOf("metadata.sources" to entries))
+    val config = ConfigFactory.parseMap(mapOf("metadata.sources" to entries) + extra)
     val registry = MetadataRegistry()
     val board = SourceLoadBoard(strictSwap = strict)
     val index = PackageIndex().commitOnSwap(registry)
