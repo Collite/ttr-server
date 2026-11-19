@@ -1059,6 +1059,8 @@ message SourceStatus {
   string branch = 13;
   string commit = 14;
   bool serving_fallback = 15;
+  string kind = 16;                                         // parser kind: "ttr" | "yaml" (MW-P4 contracts §1)
+  string profile = 17;                                      // yaml: the profile read (`<name>/<major>`); empty for ttr
 }
 
 message DependencyStatus {

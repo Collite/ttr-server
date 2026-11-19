@@ -71,6 +71,10 @@ class DeclaredSourcesSpec :
                     "METADATA_GIT_TOKEN",
                     "METADATA_GIT2_TOKEN",
                     "METADATA_TTR_ROOT",
+                    // MW S4.2 (MW-P4 contracts §1): the parser kind per git slot and the primary slot's profile.
+                    "METADATA_GIT_KIND",
+                    "METADATA_GIT2_KIND",
+                    "METADATA_PROFILE",
                 ).forEach {
                     raw shouldContain it
                 }

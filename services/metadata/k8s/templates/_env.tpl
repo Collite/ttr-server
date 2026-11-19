@@ -19,6 +19,14 @@
 - name: METADATA_GIT_SUBDIR
   value: {{ .Values.metadata.gitSubdirectory | quote }}
 {{- end }}
+{{- if and .Values.metadata.gitKind (not (has "METADATA_GIT_KIND" $extraNames)) }}
+- name: METADATA_GIT_KIND
+  value: {{ .Values.metadata.gitKind | quote }}
+{{- end }}
+{{- if and .Values.metadata.profile (not (has "METADATA_PROFILE" $extraNames)) }}
+- name: METADATA_PROFILE
+  value: {{ .Values.metadata.profile | quote }}
+{{- end }}
 - name: OTEL_SERVICE_NAME
   value: {{ .Values.telemetry.serviceName | quote }}
 - name: OTEL_ENABLED_METADATA

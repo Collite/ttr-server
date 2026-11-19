@@ -16,6 +16,21 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata — the `yaml` source kind (MW-P4 S4.2; MW-P4 contracts §1, ✅D-MW-60).** `metadata.sources.<id>.kind`
+  accepts `yaml` (`METADATA_GIT_KIND` / `METADATA_GIT2_KIND`; chart `metadata.gitKind`): a git or filesystem tree of
+  canonical or dialect YAML, read through `ttr-metadata`'s `YamlFileSource` with the profiles of the tree's own
+  `profiles/`. `profile` / `METADATA_PROFILE` (chart `metadata.profile`) applies only to a tree without `ttr.yaml`; both
+  is a startup error on a filesystem source and a `profile_conflict` load failure on a git source. `meta.v1.SourceStatus`
+  gains `kind` (16) and `profile` (17), `/status` `sources[]` gains `kind` and `profile`, and a strict-swap refusal
+  names `ys/*` issues `file:line:col`. A CN promotion source whose tree profile or any content file's own `ttr` header names a dialect is
+  `409 promotion_target_dialect`.
+  `metadata.yaml.maxInputCodePoints` (`METADATA_YAML_MAX_INPUT_CODE_POINTS`, default half the heap at ~500 B per code
+  point) fails the load with `yaml_input_budget` before the engine runs when the files dialect profiles read exceed it
+  (a file's own header counts; canonical and `model.ignore`d files do not). For every
+  source kind, an `er2db_entity` with `whereFilter: {sql: <c>}` is served as the query `<entity>__filter`
+  (`SELECT * FROM <table> WHERE <c>`) and its mapping as that query; another form is a located warning, a name clash
+  a load error (✅D-MW-67 (c′)).
+
 - **automation 0.11.45 — `expect.due` days/weeks/literal lowered; working_days named (S2.9a, D-249; refs #449).**
   An action whose declared `due` column is a `date` (the stock `expect`) and whose wiring gives `due` a duration —
   `days(n)`, `weeks(n)`, the juxtaposed `2 days`, a bound parameter in either (`days(:inbound_reminder)`), or the

@@ -30,6 +30,7 @@ import org.tatrman.metadata.refresh.SourceDeclaration
 import org.tatrman.metadata.refresh.BranchStorage
 import org.tatrman.metadata.refresh.SourceOrigin
 import org.tatrman.metadata.refresh.ManagedSource
+import org.tatrman.metadata.refresh.YamlKindSource
 import org.tatrman.metadata.refresh.GuardedRefresher
 import org.tatrman.metadata.refresh.RefreshScheduler
 import org.tatrman.ttr.metadata.source.BuiltinStockSource
@@ -369,6 +370,9 @@ internal fun buildSources(
         slot
     }
 
+/** ✅D-MW-96 (2): the config key of [YamlKindSource.inputBudget]. */
+private const val YAML_INPUT_LIMIT = "metadata.yaml.maxInputCodePoints"
+
 private fun configuredSources(
     config: Config,
     lexiconSourceIds: MutableSet<String>,
@@ -380,6 +384,9 @@ private fun configuredSources(
     // qnames are enforced separately by the reconciler regardless of priority.
     val builtins = listOf(SourceSlot(BuiltinStockSource.SOURCE_ID, BuiltinStockSource(), "built-in stock roles"))
     val declarations = sourceDeclarations(config)
+    // ✅D-MW-96 (2): the service caps what a `yaml` source may feed the profile engine, from its own heap.
+    val yamlInputBudget =
+        YamlKindSource.inputBudget(config.takeIf { it.hasPath(YAML_INPUT_LIMIT) }?.getLong(YAML_INPUT_LIMIT) ?: 0)
     val configured =
         declarations.mapNotNull { declaration ->
             val sub = declaration.config
@@ -400,6 +407,7 @@ private fun configuredSources(
                     lexiconSourceIds,
                     servedSidecars,
                     skippedSources,
+                    yamlInputBudget,
                 )?.let { SourceSlot(id, it, describeSource(sub)) }
             }
 
@@ -412,9 +420,11 @@ private fun configuredSources(
                         lexiconSourceIds,
                         servedSidecars,
                         skippedSources,
+                        yamlInputBudget,
                     )
                 }
-            val primary = buildSourceFromConfig(sub, id, lexiconSourceIds, servedSidecars, skippedSources)
+            val primary =
+                buildSourceFromConfig(sub, id, lexiconSourceIds, servedSidecars, skippedSources, yamlInputBudget)
             when {
                 fallbackSource == null -> {
                     skipSource(id, "unbuildable fallback '$fallbackId'", skippedSources)
@@ -512,16 +522,38 @@ private fun buildSourceFromConfig(
     lexiconSourceIds: MutableSet<String>,
     servedSidecars: () -> Map<String, String>,
     skippedSources: MutableList<String>,
+    yamlInputBudget: Long = Long.MAX_VALUE,
 ): ManagedSource? {
     val kind = if (sub.hasPath("kind")) sub.getString("kind") else "ttr"
     val priority = if (sub.hasPath("priority")) sub.getInt("priority") else 100
+    // MW S4.2 (contracts §1): `profile` / METADATA_PROFILE, a path relative to the source root; `yaml` only.
+    val profile = sourceProfile(sub)
+    if (profile != null && kind != "yaml") {
+        throw IllegalArgumentException(
+            "source '$id' names a profile but its kind is '$kind'; a profile needs kind yaml",
+        )
+    }
     val storage = buildStorage(sub, id, skippedSources = skippedSources) ?: return null
+    if (kind == "yaml" && storage is LocalFsStorage) {
+        YamlKindSource.checkProfileConflict(id, filesystemRoot(sub), profile)
+    }
+    var yaml: YamlKindSource? = null
 
     val source =
         when (kind) {
-            // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked
-            "ttr" -> {
-                val source = FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
+            // VL V-37: Metadata serves the layouts committed next to the model — a source collects them only when asked.
+            // MW S4.2: a `yaml` source reads the same storages, canonical or dialect YAML, and is wrapped alike.
+            "ttr", "yaml" -> {
+                // MW S4.2 T2b (contracts §1): `whereFilter: {sql}` bindings are served as `<entity>__filter`, every kind.
+                val source: ModelSource =
+                    org.tatrman.metadata.read.FilteredBindingSource(
+                        if (kind == "yaml") {
+                            YamlKindSource(id, priority, storage, profile, maxInputCodePoints = yamlInputBudget)
+                                .also { created -> yaml = created }
+                        } else {
+                            FileBasedSource(sourceId = id, priority = priority, storage = storage, layouts = true)
+                        },
+                    )
                 if (storage is BranchStorage) {
                     lexiconSourceIds.add(id)
                     GitLexiconSource(
@@ -555,8 +587,24 @@ private fun buildSourceFromConfig(
         },
         source,
         storage as? BranchStorage,
+        parser = kind,
+        profile = { yaml?.profileName.orEmpty() },
     )
 }
+
+/** `profile` of a source block, null when absent or blank: an identity (`dfp/1`) or a path under the source root. */
+private fun sourceProfile(sub: Config): String? {
+    val value = if (sub.hasPath("profile")) sub.getString("profile").trim() else ""
+    require(
+        !value.contains('\\') && !Path.of(value.ifEmpty { "." }).isAbsolute && value.split('/').none { it == ".." },
+    ) {
+        "invalid_source_config: profile must be relative to the source root without parent traversal"
+    }
+    return value.ifEmpty { null }
+}
+
+/** A filesystem source's tree root, as [buildStorage] resolves it. */
+private fun filesystemRoot(sub: Config): Path = Path.of(sub.getString("path")).resolve(sourceSubdirectory(sub))
 
 /**
  * CN-P5 S5.3 (A-CN-93) — the promotion source: the `metadata.sources` block named [sourceId], read through a storage
@@ -584,6 +632,8 @@ internal fun promotionTarget(
                     if (subdirectory.isBlank()) dir else dir.resolve(subdirectory.trim('/'))
                 }
             },
+        kind = str("kind").ifBlank { "ttr" },
+        profile = sourceProfile(sub),
     )
 }
 

@@ -655,7 +655,9 @@ class GuardedRefresher(
                     .toSet()
         val errors =
             report.issues.filter { it.severity == LoadIssue.Severity.ERROR }.map {
-                redactCredentials("${it.code} ${it.file}:${it.line}: ${it.message}") to owners(it.file, it.message)
+                // MW S4.2 T3: located file:line:col when the issue has a column (the profile engine's `ys/*` do).
+                val at = if (it.column > 0) "${it.line}:${it.column}" else "${it.line}"
+                redactCredentials("${it.code} ${it.file}:$at: ${it.message}") to owners(it.file, it.message)
             }
         val dropped = report.droppedFiles.map { redactCredentials("dropped-file $it") to owners(it, "") }
         return (errors + dropped).distinct()
