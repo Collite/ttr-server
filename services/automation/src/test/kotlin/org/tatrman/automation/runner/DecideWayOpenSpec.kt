@@ -23,7 +23,19 @@ import org.tatrman.ttr.metadata.model.RunAsRef as ModelRunAs
 class DecideWayOpenSpec :
     StringSpec({
         "decide_return opens on the 20-shape fixture: decide_way's second entity is context, not a write target" {
-            val loaded = BundleFixture.load()
+            val legacy = BundleFixture.load()
+            val original = legacy.recipes.getValue("decide_return")
+            // The 0.22.3 fixture predates Core S2.4f; explicitly supply its P3J read declaration for this Open test.
+            val scoped = original.recipe.copy(objectsRead = original.recipe.objectsRead + "er.entity.date_dim")
+            val loaded =
+                legacy.copy(
+                    recipes =
+                        legacy.recipes +
+                            (
+                                "decide_return" to
+                                    original.copy(recipe = scoped, manifest = original.manifest.copy(recipe = scoped))
+                            ),
+                )
             val b =
                 loaded.copy(
                     deployments =
@@ -44,6 +56,7 @@ class DecideWayOpenSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    doorRoutes = setOf("demo/erp_db"),
                     engineClient = "process-engine",
                 ).open(
                     "decide_return",

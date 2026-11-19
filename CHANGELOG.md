@@ -16,6 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **automation 0.11.46 — working_days due over the calendar (S2.9b, closes ttr-server#449).**
+  A declared date-valued `due: working_days(n)` (literal, bound parameter or action default) becomes the n-th
+  working day strictly after `as_of`'s date in the world's configured zone. `n = 0` means the first working day
+  after that date. The Server reuses the governed calendar snapshot and requires its entity in `objectsRead`;
+  no implicit read is granted. A short horizon refuses with `501 preview-unsupported`, `cause: calendar-horizon`,
+  naming the wiring and `due`. Mixed-unit `case` due expressions remain named refusals (D-254).
+
 - **metadata — the `yaml` source kind (MW-P4 S4.2; MW-P4 contracts §1, ✅D-MW-60).** `metadata.sources.<id>.kind`
   accepts `yaml` (`METADATA_GIT_KIND` / `METADATA_GIT2_KIND`; chart `metadata.gitKind`): a git or filesystem tree of
   canonical or dialect YAML, read through `ttr-metadata`'s `YamlFileSource` with the profiles of the tree's own

@@ -54,6 +54,12 @@ as its first automation image bump containing #374; there is no default schema.
 S2.9a (D-249): configure `automation.worldZones` / `AUTOMATION_WORLD_ZONES` as comma-separated `world=Region/City`
 pairs (bp-dsk: `demo=Europe/Prague`). An `expect` row's `due` date is `as_of`'s date in that zone plus the duration;
 an unmapped world is UTC. A fixed offset (`+01:00`, `GMT+1`, or a region with fixed rules such as `Etc/GMT+1`) or an unknown zone fails at start.
+S2.9b: a date-valued `due: working_days(n)` uses the same governed calendar snapshot as working-day counts.
+It is the n-th working day strictly after that local date; `n = 0` also means the first working day after it.
+Literal, parameter and action-default counts are nonnegative integers. The manifest must declare the calendar
+entity in `objectsRead`; otherwise Open refuses `out-of-scope-read`. An insufficient snapshot horizon refuses
+`501 preview-unsupported` with `detail.expression: due`, `detail.cause: calendar-horizon`.
+
 `automation.pgDoorRole` / `AUTOMATION_PG_DOOR_ROLE`, when set, grants that database role schema USAGE and
 SELECT/INSERT/UPDATE/DELETE on the created model tables; unset grants no role.
 

@@ -455,40 +455,87 @@ class RunRuntimeComponentSpec :
             }
         }
 
-        fun obligationFixture(conflict: Boolean = false): DurableRuntimeFixture {
+        fun obligationFixture(
+            conflict: Boolean = false,
+            workingDue: Boolean = false,
+        ): DurableRuntimeFixture {
             val root =
                 ApprovalFixture.copyTo(
                     tempdir(prefix = "automation-bundles-").toPath().resolve("branch"),
                     obligations = true,
                     obligationConflict = conflict,
                 )
-            val source =
+            if (workingDue) CalendarFixture.add(root)
+            val loaded =
                 BundleLoader(AuthorMap(emptyMap())).load(
                     Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
                     BundleKind.SERVED,
                 )
-            return DurableRuntimeFixture(transformBundle = {
-                source.copy(
-                    deployments =
-                        source.deployments + (
-                            "release_native_event" to
-                                source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
-                        ),
-                )
-            }, queryTable = { request ->
-                if ("approved writer fixture" in request.source) {
-                    Table(
-                        listOf(
-                            ManifestColumn("order_number", "text"),
-                            ManifestColumn("route", "text"),
-                            ManifestColumn("verdict_reason", "text"),
-                        ),
-                        listOf(listOf("4711", "release", "approved writer fixture")),
+            val source =
+                if (workingDue) {
+                    val original = loaded.recipes.getValue("release_order")
+                    val recipe =
+                        original.recipe.copy(
+                            objectsRead = original.recipe.objectsRead + "er.entity.date_dim",
+                            wiring =
+                                original.recipe.wiring.map { wiring ->
+                                    if (wiring.action ==
+                                        "expect"
+                                    ) {
+                                        wiring.copy(columns = wiring.columns + ("due" to "working_days(5)"))
+                                    } else {
+                                        wiring
+                                    }
+                                },
+                        )
+                    loaded.copy(
+                        recipes =
+                            loaded.recipes +
+                                (
+                                    "release_order" to
+                                        original.copy(
+                                            recipe = recipe,
+                                            manifest = original.manifest.copy(recipe = recipe),
+                                        )
+                                ),
                     )
                 } else {
-                    Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                    loaded
                 }
-            })
+            return DurableRuntimeFixture(
+                calendarReads = listOf("er.entity.date_dim"),
+                transformBundle = {
+                    source.copy(
+                        deployments =
+                            source.deployments + (
+                                "release_native_event" to
+                                    source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                            ),
+                    )
+                },
+                queryTable = { request ->
+                    if (workingDue && "FROM er.entity.date_dim cal" in request.source) {
+                        Table(
+                            listOf(ManifestColumn("cal_date", "date"), ManifestColumn("working_day", "bool")),
+                            (16..30).map { day ->
+                                val date = java.time.LocalDate.of(2026, 11, day)
+                                listOf(date, date.dayOfWeek.value <= 5 && day != 17)
+                            },
+                        )
+                    } else if ("approved writer fixture" in request.source) {
+                        Table(
+                            listOf(
+                                ManifestColumn("order_number", "text"),
+                                ManifestColumn("route", "text"),
+                                ManifestColumn("verdict_reason", "text"),
+                            ),
+                            listOf(listOf("4711", "release", "approved writer fixture")),
+                        )
+                    } else {
+                        Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                    }
+                },
+            )
         }
 
         fun fulfilmentFixture(
@@ -947,6 +994,58 @@ class RunRuntimeComponentSpec :
                 } finally {
                     restarted.shutdown()
                 }
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
+        "S2.9b T1f: the dated obligation survives in the batch and protocol linked evidence" {
+            val f = obligationFixture(workingDue = true)
+            f.base.now = Instant.parse("2026-11-16T12:00:00Z")
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                opened.httpStatus shouldBe 201
+                val id = UUID.fromString(opened.response.runId)
+                runtime.sessions.evaluate(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                val obligation = batch.rows.single { it.entity == "er.entity.obligation" }
+                obligation.row!!["due"] shouldBe JsonPrimitive("2026-11-24")
+                java.time.LocalDate
+                    .parse(
+                        obligation.row!!
+                            .getValue("due")
+                            .jsonPrimitive.content,
+                    ).toString() shouldBe
+                    "2026-11-24"
+                val entries = runtime.protocol.read(id, f.caller).sections
+                val writes =
+                    entries
+                        .getValue("writes")
+                        .single()
+                        .payload.jsonObject
+                writes["batch"] shouldBe JsonPrimitive(batch.batch)
+                writes.getValue("entities").jsonObject["er.entity.obligation"] shouldBe JsonPrimitive(1)
+                val actions =
+                    entries
+                        .getValue("actions")
+                        .map { it.payload.jsonObject }
+                        .filter { it["sink"] == JsonPrimitive("obligation") }
+                actions.size shouldBe 2
+                actions.forEach { action ->
+                    action.getValue("arguments").jsonObject["due"] shouldBe JsonPrimitive("2026-11-24")
+                    action.getValue("batchRows").jsonArray shouldBe JsonArray(listOf(JsonPrimitive(obligation.seq)))
+                }
+                runtime.closer.close(id, f.caller)
+                runtime.status
+                    .batch(
+                        id,
+                        f.caller,
+                    ).rows
+                    .single { it.entity == "er.entity.obligation" }
+                    .row!!["due"] shouldBe
+                    JsonPrimitive("2026-11-24")
             } finally {
                 runtime.shutdown()
                 f.close()
@@ -2122,6 +2221,7 @@ internal class DurableRuntimeFixture(
     private val queryTable: ((RunRequest) -> Table)? = null,
     private val approvalReader: ApprovalReader? = null,
     private val lookupReads: List<String> = listOf("er.entity.obligation"),
+    private val calendarReads: List<String> = lookupReads,
     private val queryWarnings: (RunRequest) -> Set<String> = { emptySet() },
     /** S2.2: AUTOMATION_DOOR_WRITE_ROUTES, and the row_writes seam (the component fake). */
     writeRoutes: String = "",
@@ -2269,13 +2369,10 @@ internal class DurableRuntimeFixture(
                     .setPlan(PlanNode.newBuilder().setValues(ValuesNode.getDefaultInstance()))
                     .setErReads(
                         ErReadScope.newBuilder().addAllObjects(
-                            if ("_au_obligation_entity_" in
-                                request.source ||
-                                "FROM er.entity.date_dim cal" in request.source
-                            ) {
-                                lookupReads
-                            } else {
-                                emptyList()
+                            when {
+                                "_au_obligation_entity_" in request.source -> lookupReads
+                                "FROM er.entity.date_dim cal" in request.source -> calendarReads
+                                else -> emptyList()
                             },
                         ),
                     ).build()
