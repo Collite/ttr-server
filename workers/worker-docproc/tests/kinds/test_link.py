@@ -8,12 +8,12 @@ from docproc.kinds.common import annotation
 from docproc.kinds.link import Link
 from docproc.kinds.nlp_pipeline import NlpPipeline
 from docproc.runtime.registry import RunContext
-from docproc.sdk.models import Span, Unit, UnitKind
+from docproc.sdk.models import Annotation, Span, Unit, UnitKind
 from tests.extraction import registry
 from tests.fakes import FakeWarehouse, concept_page, page_hit
 from tests.fakes_lexmatcher import RecordedLexMatcher, recorded_lexmatcher
 from tests.fakes_nlp import recorded_nlp
-from tests.pack import assert_golden, context, new_context
+from tests.pack import assert_golden, context, golden_rows, new_context
 
 #: findSimilar.json's page hit, printed by docwh-store: a sentence-to-concept-page cosine as the route answers it
 #: (≥ 0.11.13: the raw cosine, never normalized to the best hit's — review-244 F1). Below `abstain_below`.
@@ -329,3 +329,125 @@ def test_a_chunk_hit_proposes_no_concept_and_reads_no_page() -> None:
     assert store.page_reads == [(9001, "hartland-public")]
     candidates = [c for item in result.sections["candidates"]["items"] for c in item["items"]]
     assert {c["score"] for c in candidates} == {CLOSE}
+
+
+class _Ambiguous:
+    """lex-matcher's answer for "Aurora": three `cn.Item` members, every one below `abstain_below`, out of score
+    order."""
+
+    def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
+        hits = [
+            pb.FuzzyMatch(candidate_id=i, candidate=n, score=s, source=pb.MEMBER, category="er.entity.item.name")
+            for i, n, s in [
+                ("HL-1002", "Aurora mini", 0.31),
+                ("HL-1001", "Aurora", 0.45),
+                ("HL-1003", "Aurora XL", 0.38),
+            ]
+        ]
+        return pb.BatchMatchResponse(results=[pb.FuzzyMatchResponse(matches=hits) for _ in queries])
+
+
+def _aurora(engine: dict[str, object] | None = None) -> tuple[Unit, Annotation, RunContext]:
+    unit = Unit(id=1, content_text="Aurora")
+    mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"}, [Span(unit_id=1, start=0, end=6)])
+    mention.id = 7
+    ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
+    if engine is not None:
+        ctx = new_context(ctx, kind="link", engine={**ctx.manifest["engine"], **engine})
+    return unit, mention, ctx
+
+
+@pytest.mark.parametrize(
+    "engine,codes",
+    [
+        ({}, ["HL-1001", "HL-1003", "HL-1002"]),  # default 5, three found
+        ({"candidates_on_abstain": 2}, ["HL-1001", "HL-1003"]),
+        ({"candidates_on_abstain": 5, "k": 1}, ["HL-1001"]),  # never more than the linker ranked (k)
+    ],
+    ids=["default", "on-abstain-2", "k-1"],
+)
+def test_an_abstaining_link_writes_its_top_candidates_on_a_derived_mention(
+    engine: dict[str, object], codes: list[str]
+) -> None:
+    """DX-D42 (S4.1f): link-pick reads candidates off a Mention, so an abstaining linker writes one: no `concept`, no
+    `member`, `linkMethod: abstain`, its top min(candidates_on_abstain, k, found) candidates by score, each with its
+    source. The abstaining Decision is unchanged and the run still abstains."""
+    _, mention, ctx = _aurora(engine)
+    result = Link(_Ambiguous(), FakeWarehouse(list(ctx.units.values()))).run(ctx)
+    assert result.abstained
+    [abstained] = [a for a in result.annotations if a.type == "Mention"]
+    payload = abstained.payload()
+    assert "concept" not in payload and "member" not in payload and payload["linkMethod"] == "abstain"
+    assert payload["surface"] == "Aurora" and payload["kind"] == "item"
+    assert [c["code"] for c in payload["candidates"]] == codes
+    assert [c["score"] for c in payload["candidates"]] == sorted(
+        (c["score"] for c in payload["candidates"]), reverse=True
+    )
+    assert all(c["source"] == "lexicon" and c["system"] == "cn.Item" for c in payload["candidates"])
+    assert abstained.derived_from == [mention.id] and abstained.spans == mention.spans
+    registry().schema_for("Mention").validate(payload)
+    decision = next(a.payload() for a in result.annotations if a.type == "Decision")
+    assert "chosen" not in decision and decision["score"] == 0.45
+
+
+def test_a_margin_abstain_carries_both_sources() -> None:
+    """Two options too close to choose between (margin < 0.05): a lexicon member of one target and a concept page of
+    another. Both are ≥ `abstain_below`, so the kNN one survives `_knn`'s floor and keeps its `knn` source."""
+
+    class Lex:
+        def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
+            hit = pb.FuzzyMatch(
+                candidate_id="C-7",
+                candidate="Aurora s.r.o.",
+                score=0.64,
+                source=pb.MEMBER,
+                category="er.entity.customer.name",
+            )
+            return pb.BatchMatchResponse(results=[pb.FuzzyMatchResponse(matches=[hit])])
+
+    unit, _, ctx = _aurora({"targets": {"er.entity.item": "cn.Item", "er.entity.customer": "cn.Customer"}})
+    result = Link(Lex(), with_page([unit], "cn.Item", 0.62)).run(ctx)
+    assert result.abstained
+    [abstained] = [a for a in result.annotations if a.type == "Mention"]
+    assert abstained.payload()["linkMethod"] == "abstain" and "concept" not in abstained.payload()
+    assert [(c["system"], c["code"], c["score"], c["source"]) for c in abstained.payload()["candidates"]] == [
+        ("cn.Customer", "C-7", 0.64, "lexicon"),
+        ("cn.Item", "cn.Item", 0.62, "knn"),
+    ]
+
+
+def test_candidates_on_abstain_zero_is_todays_abstain_and_no_candidates_writes_no_mention() -> None:
+    """`candidates_on_abstain: 0` restores the pre-S4.1f output exactly: one abstaining Decision, no Mention. A mention
+    the linker found nothing for gets no Mention either: an empty candidate list gives link-pick nothing to pick."""
+    _, _, ctx = _aurora({"candidates_on_abstain": 0})
+    result = Link(_Ambiguous(), FakeWarehouse(list(ctx.units.values()))).run(ctx)
+    assert result.abstained and [a.type for a in result.annotations] == ["Decision"]
+    _, _, ctx = _aurora()
+    result = Link(_Lex(), FakeWarehouse(list(ctx.units.values()))).run(ctx)
+    assert result.abstained and [a.type for a in result.annotations] == ["Decision"]
+
+
+@pytest.mark.parametrize("bad", [-1, 1.5, "5", True])
+def test_candidates_on_abstain_must_be_a_non_negative_integer(bad: object) -> None:
+    _, _, ctx = _aurora({"candidates_on_abstain": bad})
+    with pytest.raises(ValueError, match="link/invalid-candidates-on-abstain"):
+        Link(_Ambiguous(), FakeWarehouse(list(ctx.units.values()))).run(ctx)
+
+
+@pytest.mark.parametrize("doc", ["review-001.en.json", "review-002.cs.json", "claim-001.cs.txt", "claim-002.en.md"])
+def test_confident_links_are_unchanged_by_candidates_on_abstain(doc: str) -> None:
+    """S4.1f T1(d): every PX mention links, and the output is the same bytes with the knob at its default and at 0
+    (the goldens themselves are untouched by S4.1f)."""
+    ctx = context(doc, "cz-mentions")
+    with recorded_nlp() as nlp:
+        mentions = [a for a in NlpPipeline(nlp).run(ctx).annotations if a.type == "Mention"]
+    for n, a in enumerate(mentions):
+        a.id = 100 + n
+    linkctx = replace(context(doc, "link-mentions"), annotations=mentions)
+    off = new_context(linkctx, kind="link", engine={**linkctx.manifest["engine"], "candidates_on_abstain": 0})
+    outputs = []
+    for c in (linkctx, off):
+        with recorded_lexmatcher() as lex:
+            outputs.append(Link(lex, FakeWarehouse(list(ctx.units.values()))).run(c).annotations)
+    assert [golden_rows(doc, o, ctx.units) for o in outputs[:1]] == [golden_rows(doc, outputs[1], ctx.units)]
+    assert all(a.payload().get("linkMethod") != "abstain" for a in outputs[0])

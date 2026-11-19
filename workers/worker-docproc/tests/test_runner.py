@@ -700,15 +700,20 @@ class Abstaining:
     """F15's case: a run whose only output is abstaining Decisions, with the sections it logged. A decider the
     recovery's inference does not know (not in ABSTAINING_DECIDERS) would be inferred SUCCEEDED."""
 
-    def __init__(self, decider: str) -> None:
-        self.decider = decider
+    def __init__(self, decider: str, mention: bool = False) -> None:
+        self.decider, self.mention = decider, mention
 
     def run(self, ctx: RunContext) -> KindResult:
         from docproc.sdk.models import Usage, payload_text
 
         decision = {"decider": self.decider, "score": 0.4, "factors": {"annotationId": 7101, "candidates": 1}}
+        out = [Annotation(unit_id=101, type="Decision", payload_json=payload_text(decision))]
+        if self.mention:  # S4.1f: the abstaining linker's candidates, on a Mention for link-pick
+            candidate = {"system": "cn.Item", "code": "HL-1001", "label": "Aurora", "score": 0.4, "source": "lexicon"}
+            abstained = {"surface": "Aurora", "kind": "item", "linkMethod": "abstain", "candidates": [candidate]}
+            out.insert(0, Annotation(unit_id=101, type="Mention", payload_json=payload_text(abstained)))
         return KindResult(
-            annotations=[Annotation(unit_id=101, type="Decision", payload_json=payload_text(decision))],
+            annotations=out,
             usage=Usage(nlp_calls=2),
             abstained=True,
             sections={
@@ -718,6 +723,16 @@ class Abstaining:
         )
 
 
+@pytest.mark.parametrize("mention", [False, True], ids=["decision-only", "with-abstained-mention"])
+def test_an_abstaining_link_completes_abstained(runtime: tuple[ProcessorRunner, WorkItem], mention: bool) -> None:
+    """S4.1f: the Mention an abstaining linker writes for link-pick does not turn its run into SUCCEEDED."""
+    runner, item = runtime
+    runner.kinds.kinds["classify"] = Abstaining("link/rule", mention)
+    result = runner.process(enqueue(runner, item))
+    assert result is not None and result.status == CompletionStatus.ABSTAINED
+    assert len(result.annotation_ids) == (2 if mention else 1)
+
+
 def staged_rows(runner: ProcessorRunner, item: WorkItem) -> int:
     with psycopg.connect(runner.config.pipeline_db_url) as conn:
         row = conn.execute("SELECT count(*) FROM pipeline.run_sections WHERE run_id=%s", (item.run_id,)).fetchone()
@@ -725,11 +740,14 @@ def staged_rows(runner: ProcessorRunner, item: WorkItem) -> int:
     return int(row[0])
 
 
-@pytest.mark.parametrize("decider", ["link/rule", "pick/unregistered"])
-def test_crash_after_load_recovers_staged_sections(runtime: tuple[ProcessorRunner, WorkItem], decider: str) -> None:
-    """review-182 C3: the sections and the status survive a loss between the load's commit and the ack."""
+@pytest.mark.parametrize("decider,mention", [("link/rule", False), ("pick/unregistered", False), ("link/rule", True)])
+def test_crash_after_load_recovers_staged_sections(
+    runtime: tuple[ProcessorRunner, WorkItem], decider: str, mention: bool
+) -> None:
+    """review-182 C3: the sections and the status survive a loss between the load's commit and the ack. S4.1f: an
+    abstaining link that also wrote its candidates' Mention is ABSTAINED on both the first and the recovered path."""
     runner, item = runtime
-    runner.kinds.kinds["classify"] = Abstaining(decider)
+    runner.kinds.kinds["classify"] = Abstaining(decider, mention)
     message = enqueue(runner, item)
 
     def crash() -> None:
@@ -988,6 +1006,10 @@ def test_unknown_plan_registry_is_permanent(
         ([("Abstention", {})], CompletionStatus.ABSTAINED),
         ([("Verdict", {}), ("Decision", {"decider": "normalize/conflicts"})], CompletionStatus.SUCCEEDED),
         ([("Mention", {}), ("Decision", {"decider": "link/rule", "chosen": "item"})], CompletionStatus.SUCCEEDED),
+        # S4.1f: an abstaining link's Mention carries its candidates for link-pick and is still an abstention
+        ([("Mention", {"linkMethod": "abstain"}), ("Decision", {"decider": "link/rule"})], CompletionStatus.ABSTAINED),
+        ([("Mention", {"linkMethod": "lexicon"}), ("Decision", {"decider": "link/rule"})], CompletionStatus.SUCCEEDED),
+        ([("Mention", {"linkMethod": "abstain"})], CompletionStatus.SUCCEEDED),
     ],
 )
 def test_recovered_status_deciders(annotations: list[tuple[str, dict[str, Any]]], expected: CompletionStatus) -> None:
