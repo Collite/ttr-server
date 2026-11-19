@@ -1,0 +1,4889 @@
+{
+  "run": "814fb2e9-876a-48ec-8e17-057161afe5c5",
+  "sections": {
+    "automation": [
+      {
+        "seq": 1,
+        "at": "2026-11-16T07:42:20.733972Z",
+        "payload": {
+          "fps": {
+            "text": "sha256:318018e4466d47f4fbb751e97adfbf0304d73e9c4acc9cdcdb0d6029f88e8f1f",
+            "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
+            "program": "sha256:c86a04774c7718fba812357a4c94b9d1329b88c14f9c737ea71a799d4058ae91",
+            "deployment": "sha256:c95a5c953ef34415a47654e6ed026c3d7bcacc5a26875d52d231a424d49ba7d8"
+          },
+          "asOf": "2026-11-16T07:42:20.715463550Z",
+          "port": {
+            "none": true
+          },
+          "event": "opened",
+          "runAs": "svc-hartland-automation",
+          "author": "operator@example.test",
+          "bundle": "served:master@dd5f1f8b4550",
+          "caller": "operator",
+          "dryRun": false,
+          "origin": null,
+          "recipe": "release_order",
+          "modelFp": "sha256:db5dca69bcb739a2063f003fa6a67c3d302c6e9a064386f18aa6c7d26e9a3f4a",
+          "program": "morning_release_cz",
+          "approvals": "required",
+          "deployment": "release_morning_cz",
+          "detailLimit": 200,
+          "readCeiling": 100000,
+          "budgetSyncMs": 60000,
+          "detailLimits": {
+            "hold_ar": 200,
+            "hold_sales": 200
+          },
+          "budgetBatchMs": 1800000,
+          "allowRestrictedView": false
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-16T07:43:35.695493Z",
+        "payload": {
+          "batch": "e9d47e9d-9cd6-3efc-bba2-6a96a1c5e385",
+          "event": "closed",
+          "dryRun": false,
+          "status": "closed"
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-16T07:43:35.695493Z",
+        "payload": {
+          "sealed": true
+        }
+      }
+    ],
+    "islands": [
+      {
+        "seq": 1,
+        "at": "2026-11-16T07:42:21.091002Z",
+        "payload": {
+          "kind": "output",
+          "name": "placed_orders",
+          "port": "orders",
+          "rows": 153,
+          "bytes": 11600,
+          "engine": "query",
+          "params": {},
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/placed_orders.orders.sql",
+          "durationMs": 173
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-16T07:42:21.419910Z",
+        "payload": {
+          "kind": "output",
+          "name": "overdue",
+          "port": "rows",
+          "rows": 7,
+          "bytes": 944,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-16T07:42:20.715463550Z"
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/overdue.rows.sql",
+          "durationMs": 284
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-16T07:42:21.515874Z",
+        "payload": {
+          "kind": "output",
+          "name": "price_differences",
+          "port": "rows",
+          "rows": 6,
+          "bytes": 1096,
+          "engine": "query",
+          "params": {
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/price_differences.rows.sql",
+          "durationMs": 409
+        }
+      },
+      {
+        "seq": 4,
+        "at": "2026-11-16T07:42:24.866208Z",
+        "payload": {
+          "kind": "output",
+          "name": "shortfall",
+          "port": "rows",
+          "rows": 13,
+          "bytes": 1656,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-16T07:42:20.715463550Z"
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/shortfall.rows.sql",
+          "durationMs": 3763
+        }
+      },
+      {
+        "seq": 5,
+        "at": "2026-11-16T07:42:25.643642Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_ar.overdue",
+          "rows": 7,
+          "bytes": 1496,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-16T07:42:20.715463550Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_ar.overdue.sql",
+          "durationMs": 753
+        }
+      },
+      {
+        "seq": 6,
+        "at": "2026-11-16T07:42:30.909013Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales",
+          "rows": 19,
+          "bytes": 4472,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-16T07:42:20.715463550Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.sql",
+          "durationMs": 6027
+        }
+      },
+      {
+        "seq": 7,
+        "at": "2026-11-16T07:42:31.413233Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_ar",
+          "rows": 7,
+          "bytes": 2584,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-16T07:42:20.715463550Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_ar.sql",
+          "durationMs": 6505
+        }
+      },
+      {
+        "seq": 8,
+        "at": "2026-11-16T07:42:31.523207Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "release_confirmed",
+          "rows": 2,
+          "bytes": 2064,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-16T07:42:20.715463550Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            },
+            "confirmation_threshold": {
+              "type": "decimal",
+              "value": 1250000
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.release_confirmed.sql",
+          "durationMs": 6626
+        }
+      },
+      {
+        "seq": 9,
+        "at": "2026-11-16T07:42:32.507338Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales.price_differences",
+          "rows": 6,
+          "bytes": 1704,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-16T07:42:20.715463550Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.price_differences.sql",
+          "durationMs": 7620
+        }
+      },
+      {
+        "seq": 10,
+        "at": "2026-11-16T07:42:35.627713Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "release",
+          "rows": 127,
+          "bytes": 17552,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-16T07:42:20.715463550Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            },
+            "confirmation_threshold": {
+              "type": "decimal",
+              "value": 1250000
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.release.sql",
+          "durationMs": 10737
+        }
+      },
+      {
+        "seq": 11,
+        "at": "2026-11-16T07:42:39.279002Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales.shortfall",
+          "rows": 13,
+          "bytes": 2392,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-16T07:42:20.715463550Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.shortfall.sql",
+          "durationMs": 14390
+        }
+      }
+    ],
+    "decision": [
+      {
+        "seq": 1,
+        "at": "2026-11-16T07:42:39.790918Z",
+        "payload": {
+          "mode": "overlapping",
+          "guards": [
+            {
+              "code": "candidates-truncated",
+              "island": "overdue",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "overdue",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "overdue",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "duplicate-key",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "price_differences",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "price_differences",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "price_differences",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "shortfall",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "shortfall",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "shortfall",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "verdict",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "verdict",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "verdict",
+              "status": "passed"
+            }
+          ],
+          "verdict": {
+            "none": 0,
+            "routes": {
+              "hold_ar": {
+                "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/outputs/verdict.hold_ar",
+                "detail": {
+                  "overdue": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_ar/details/overdue"
+                },
+                "rowCount": 7
+              },
+              "release": {
+                "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/outputs/verdict.release",
+                "rowCount": 127
+              },
+              "hold_sales": {
+                "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/outputs/verdict.hold_sales",
+                "detail": {
+                  "shortfall": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall",
+                  "price_differences": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences"
+                },
+                "rowCount": 19
+              },
+              "release_confirmed": {
+                "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/outputs/verdict.release_confirmed",
+                "rowCount": 2
+              }
+            }
+          }
+        }
+      }
+    ],
+    "actions": [
+      {
+        "seq": 1,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220002109
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 220002109 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 220002109,
+            "department": "Sales"
+          },
+          "batchRows": [
+            3,
+            4
+          ]
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220002109
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=0",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=0",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117149
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117149 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117149,
+            "department": "Sales"
+          },
+          "batchRows": [
+            7,
+            8
+          ]
+        }
+      },
+      {
+        "seq": 4,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117149
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=1",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=1",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 5,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117047
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117047 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117047,
+            "department": "Sales"
+          },
+          "batchRows": [
+            11,
+            12
+          ]
+        }
+      },
+      {
+        "seq": 6,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117047
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=2",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=2",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 7,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117604
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117604 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117604,
+            "department": "Sales"
+          },
+          "batchRows": [
+            15,
+            16
+          ]
+        }
+      },
+      {
+        "seq": 8,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117604
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=3",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=3",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 9,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220058126
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 220058126 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 220058126,
+            "department": "Sales"
+          },
+          "batchRows": [
+            19,
+            20
+          ]
+        }
+      },
+      {
+        "seq": 10,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220058126
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=4",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=4",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 11,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117533
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117533 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117533,
+            "department": "Sales"
+          },
+          "batchRows": [
+            23,
+            24
+          ]
+        }
+      },
+      {
+        "seq": 12,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117533
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=5",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=5",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 13,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117422
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117422 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117422,
+            "department": "Sales"
+          },
+          "batchRows": [
+            27,
+            28
+          ]
+        }
+      },
+      {
+        "seq": 14,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117422
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=6",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=6",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 15,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117313
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117313 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117313,
+            "department": "Sales"
+          },
+          "batchRows": [
+            31,
+            32
+          ]
+        }
+      },
+      {
+        "seq": 16,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117313
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=7",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=7",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 17,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117353
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117353 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117353,
+            "department": "Sales"
+          },
+          "batchRows": [
+            35,
+            36
+          ]
+        }
+      },
+      {
+        "seq": 18,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117353
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=8",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=8",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 19,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117301
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117301 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117301,
+            "department": "Sales"
+          },
+          "batchRows": [
+            39,
+            40
+          ]
+        }
+      },
+      {
+        "seq": 20,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117301
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=9",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=9",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 21,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117228
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117228 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117228,
+            "department": "Sales"
+          },
+          "batchRows": [
+            43,
+            44
+          ]
+        }
+      },
+      {
+        "seq": 22,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117228
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=10",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=10",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 23,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117017
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117017 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117017,
+            "department": "Sales"
+          },
+          "batchRows": [
+            47,
+            48
+          ]
+        }
+      },
+      {
+        "seq": 24,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117017
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=11",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=11",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 25,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117109
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117109 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117109,
+            "department": "Sales"
+          },
+          "batchRows": [
+            51,
+            52
+          ]
+        }
+      },
+      {
+        "seq": 26,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117109
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=12",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=12",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 27,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117148
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117148 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117148,
+            "department": "Sales"
+          },
+          "batchRows": [
+            55,
+            56
+          ]
+        }
+      },
+      {
+        "seq": 28,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117148
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=13",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=13",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 29,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117749
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117749 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117749,
+            "department": "Sales"
+          },
+          "batchRows": [
+            59,
+            60
+          ]
+        }
+      },
+      {
+        "seq": 30,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117749
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=14",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=14",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 31,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117329
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117329 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117329,
+            "department": "Sales"
+          },
+          "batchRows": [
+            63,
+            64
+          ]
+        }
+      },
+      {
+        "seq": 32,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117329
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=15",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 1,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=15",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 0,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 33,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117743
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117743 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117743,
+            "department": "Sales"
+          },
+          "batchRows": [
+            67,
+            68
+          ]
+        }
+      },
+      {
+        "seq": 34,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117743
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=16",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=16",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 35,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117754
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117754 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117754,
+            "department": "Sales"
+          },
+          "batchRows": [
+            71,
+            72
+          ]
+        }
+      },
+      {
+        "seq": 36,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117754
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=17",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=17",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 37,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117259
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would hold order 200117259 for Sales",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117259,
+            "department": "Sales"
+          },
+          "batchRows": [
+            75,
+            76
+          ]
+        }
+      },
+      {
+        "seq": 38,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117259
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_sales",
+          "would": "would notify role.sales with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.sales",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/shortfall?row=18",
+                  "limit": 200,
+                  "context": "shortfall",
+                  "rowCount": 0,
+                  "truncated": false
+                },
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_sales/details/price_differences?row=18",
+                  "limit": 200,
+                  "context": "price_differences",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 39,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117595
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 200117595 for AR",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117595,
+            "department": "AR"
+          },
+          "batchRows": [
+            79,
+            80
+          ]
+        }
+      },
+      {
+        "seq": 40,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117595
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_ar/details/overdue?row=0",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 41,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117504
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 200117504 for AR",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117504,
+            "department": "AR"
+          },
+          "batchRows": [
+            83,
+            84
+          ]
+        }
+      },
+      {
+        "seq": 42,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117504
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_ar/details/overdue?row=1",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 43,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117553
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 200117553 for AR",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117553,
+            "department": "AR"
+          },
+          "batchRows": [
+            87,
+            88
+          ]
+        }
+      },
+      {
+        "seq": 44,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117553
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_ar/details/overdue?row=2",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 45,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117273
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 200117273 for AR",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117273,
+            "department": "AR"
+          },
+          "batchRows": [
+            91,
+            92
+          ]
+        }
+      },
+      {
+        "seq": 46,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117273
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_ar/details/overdue?row=3",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 47,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117313
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 200117313 for AR",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117313,
+            "department": "AR"
+          },
+          "batchRows": [
+            95,
+            96
+          ]
+        }
+      },
+      {
+        "seq": 48,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117313
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_ar/details/overdue?row=4",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 49,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117301
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 200117301 for AR",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117301,
+            "department": "AR"
+          },
+          "batchRows": [
+            99,
+            100
+          ]
+        }
+      },
+      {
+        "seq": 50,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117301
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_ar/details/overdue?row=5",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 51,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117200
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would hold order 200117200 for AR",
+          "action": "hold",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117200,
+            "department": "AR"
+          },
+          "batchRows": [
+            103,
+            104
+          ]
+        }
+      },
+      {
+        "seq": 52,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117200
+          },
+          "sink": "engine",
+          "event": "preview",
+          "route": "hold_ar",
+          "would": "would notify role.ar with 1 rows",
+          "action": "notify",
+          "dryRun": false,
+          "arguments": {
+            "who": "role.ar",
+            "detail": {
+              "refs": [
+                {
+                  "ref": "/automation/runs/814fb2e9-876a-48ec-8e17-057161afe5c5/routes/hold_ar/details/overdue?row=6",
+                  "limit": 200,
+                  "context": "overdue",
+                  "rowCount": 1,
+                  "truncated": false
+                }
+              ],
+              "count": 1,
+              "truncated": false
+            }
+          },
+          "batchRows": []
+        }
+      },
+      {
+        "seq": 53,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117739
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask the sales manager to confirm the release of 200117739 (1500970.48)",
+          "action": "release_confirmed",
+          "dryRun": false,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "order": 200117739,
+            "value": 1500970.48
+          },
+          "batchRows": [
+            106
+          ]
+        }
+      },
+      {
+        "seq": 54,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117319
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask the sales manager to confirm the release of 200117319 (1500334.01)",
+          "action": "release_confirmed",
+          "dryRun": false,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "order": 200117319,
+            "value": 1500334.01
+          },
+          "batchRows": [
+            108
+          ]
+        }
+      },
+      {
+        "seq": 55,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117597
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117597",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117597
+          },
+          "batchRows": [
+            110
+          ]
+        }
+      },
+      {
+        "seq": 56,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117279
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117279",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117279
+          },
+          "batchRows": [
+            112
+          ]
+        }
+      },
+      {
+        "seq": 57,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117345
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117345",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117345
+          },
+          "batchRows": [
+            114
+          ]
+        }
+      },
+      {
+        "seq": 58,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117343
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117343",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117343
+          },
+          "batchRows": [
+            116
+          ]
+        }
+      },
+      {
+        "seq": 59,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117407
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117407",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117407
+          },
+          "batchRows": [
+            118
+          ]
+        }
+      },
+      {
+        "seq": 60,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117393
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117393",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117393
+          },
+          "batchRows": [
+            120
+          ]
+        }
+      },
+      {
+        "seq": 61,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117242
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117242",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117242
+          },
+          "batchRows": [
+            122
+          ]
+        }
+      },
+      {
+        "seq": 62,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220024606
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220024606",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220024606
+          },
+          "batchRows": [
+            124
+          ]
+        }
+      },
+      {
+        "seq": 63,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117336
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117336",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117336
+          },
+          "batchRows": [
+            126
+          ]
+        }
+      },
+      {
+        "seq": 64,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117406
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117406",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117406
+          },
+          "batchRows": [
+            128
+          ]
+        }
+      },
+      {
+        "seq": 65,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117237
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117237",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117237
+          },
+          "batchRows": [
+            130
+          ]
+        }
+      },
+      {
+        "seq": 66,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117321
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117321",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117321
+          },
+          "batchRows": [
+            132
+          ]
+        }
+      },
+      {
+        "seq": 67,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117216
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117216",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117216
+          },
+          "batchRows": [
+            134
+          ]
+        }
+      },
+      {
+        "seq": 68,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117188
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117188",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117188
+          },
+          "batchRows": [
+            136
+          ]
+        }
+      },
+      {
+        "seq": 69,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117177
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117177",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117177
+          },
+          "batchRows": [
+            138
+          ]
+        }
+      },
+      {
+        "seq": 70,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117150
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117150",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117150
+          },
+          "batchRows": [
+            140
+          ]
+        }
+      },
+      {
+        "seq": 71,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117221
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117221",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117221
+          },
+          "batchRows": [
+            142
+          ]
+        }
+      },
+      {
+        "seq": 72,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117167
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117167",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117167
+          },
+          "batchRows": [
+            144
+          ]
+        }
+      },
+      {
+        "seq": 73,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117158
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117158",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117158
+          },
+          "batchRows": [
+            146
+          ]
+        }
+      },
+      {
+        "seq": 74,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117183
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117183",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117183
+          },
+          "batchRows": [
+            148
+          ]
+        }
+      },
+      {
+        "seq": 75,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117220
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117220",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117220
+          },
+          "batchRows": [
+            150
+          ]
+        }
+      },
+      {
+        "seq": 76,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220015897
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220015897",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220015897
+          },
+          "batchRows": [
+            152
+          ]
+        }
+      },
+      {
+        "seq": 77,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117176
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117176",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117176
+          },
+          "batchRows": [
+            154
+          ]
+        }
+      },
+      {
+        "seq": 78,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117175
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117175",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117175
+          },
+          "batchRows": [
+            156
+          ]
+        }
+      },
+      {
+        "seq": 79,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117157
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117157",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117157
+          },
+          "batchRows": [
+            158
+          ]
+        }
+      },
+      {
+        "seq": 80,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117152
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117152",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117152
+          },
+          "batchRows": [
+            160
+          ]
+        }
+      },
+      {
+        "seq": 81,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117144
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117144",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117144
+          },
+          "batchRows": [
+            162
+          ]
+        }
+      },
+      {
+        "seq": 82,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220027258
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220027258",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220027258
+          },
+          "batchRows": [
+            164
+          ]
+        }
+      },
+      {
+        "seq": 83,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220012270
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220012270",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220012270
+          },
+          "batchRows": [
+            166
+          ]
+        }
+      },
+      {
+        "seq": 84,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117161
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117161",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117161
+          },
+          "batchRows": [
+            168
+          ]
+        }
+      },
+      {
+        "seq": 85,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117222
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117222",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117222
+          },
+          "batchRows": [
+            170
+          ]
+        }
+      },
+      {
+        "seq": 86,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117142
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117142",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117142
+          },
+          "batchRows": [
+            172
+          ]
+        }
+      },
+      {
+        "seq": 87,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117196
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117196",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117196
+          },
+          "batchRows": [
+            174
+          ]
+        }
+      },
+      {
+        "seq": 88,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220033686
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220033686",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220033686
+          },
+          "batchRows": [
+            176
+          ]
+        }
+      },
+      {
+        "seq": 89,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220045490
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220045490",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220045490
+          },
+          "batchRows": [
+            178
+          ]
+        }
+      },
+      {
+        "seq": 90,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117139
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117139",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117139
+          },
+          "batchRows": [
+            180
+          ]
+        }
+      },
+      {
+        "seq": 91,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220058647
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220058647",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220058647
+          },
+          "batchRows": [
+            182
+          ]
+        }
+      },
+      {
+        "seq": 92,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117032
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117032",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117032
+          },
+          "batchRows": [
+            184
+          ]
+        }
+      },
+      {
+        "seq": 93,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117103
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117103",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117103
+          },
+          "batchRows": [
+            186
+          ]
+        }
+      },
+      {
+        "seq": 94,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220007408
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220007408",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220007408
+          },
+          "batchRows": [
+            188
+          ]
+        }
+      },
+      {
+        "seq": 95,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117056
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117056",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117056
+          },
+          "batchRows": [
+            190
+          ]
+        }
+      },
+      {
+        "seq": 96,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117055
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117055",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117055
+          },
+          "batchRows": [
+            192
+          ]
+        }
+      },
+      {
+        "seq": 97,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220043108
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220043108",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220043108
+          },
+          "batchRows": [
+            194
+          ]
+        }
+      },
+      {
+        "seq": 98,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220005101
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220005101",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220005101
+          },
+          "batchRows": [
+            196
+          ]
+        }
+      },
+      {
+        "seq": 99,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117063
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117063",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117063
+          },
+          "batchRows": [
+            198
+          ]
+        }
+      },
+      {
+        "seq": 100,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117089
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117089",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117089
+          },
+          "batchRows": [
+            200
+          ]
+        }
+      },
+      {
+        "seq": 101,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117058
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117058",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117058
+          },
+          "batchRows": [
+            202
+          ]
+        }
+      },
+      {
+        "seq": 102,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117727
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117727",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117727
+          },
+          "batchRows": [
+            204
+          ]
+        }
+      },
+      {
+        "seq": 103,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220030696
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220030696",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220030696
+          },
+          "batchRows": [
+            206
+          ]
+        }
+      },
+      {
+        "seq": 104,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117665
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117665",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117665
+          },
+          "batchRows": [
+            208
+          ]
+        }
+      },
+      {
+        "seq": 105,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117682
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117682",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117682
+          },
+          "batchRows": [
+            210
+          ]
+        }
+      },
+      {
+        "seq": 106,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117588
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117588",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117588
+          },
+          "batchRows": [
+            212
+          ]
+        }
+      },
+      {
+        "seq": 107,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117718
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117718",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117718
+          },
+          "batchRows": [
+            214
+          ]
+        }
+      },
+      {
+        "seq": 108,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117716
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117716",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117716
+          },
+          "batchRows": [
+            216
+          ]
+        }
+      },
+      {
+        "seq": 109,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117693
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117693",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117693
+          },
+          "batchRows": [
+            218
+          ]
+        }
+      },
+      {
+        "seq": 110,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117640
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117640",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117640
+          },
+          "batchRows": [
+            220
+          ]
+        }
+      },
+      {
+        "seq": 111,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117755
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117755",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117755
+          },
+          "batchRows": [
+            222
+          ]
+        }
+      },
+      {
+        "seq": 112,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117753
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117753",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117753
+          },
+          "batchRows": [
+            224
+          ]
+        }
+      },
+      {
+        "seq": 113,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117670
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117670",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117670
+          },
+          "batchRows": [
+            226
+          ]
+        }
+      },
+      {
+        "seq": 114,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117700
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117700",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117700
+          },
+          "batchRows": [
+            228
+          ]
+        }
+      },
+      {
+        "seq": 115,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117591
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117591",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117591
+          },
+          "batchRows": [
+            230
+          ]
+        }
+      },
+      {
+        "seq": 116,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117672
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117672",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117672
+          },
+          "batchRows": [
+            232
+          ]
+        }
+      },
+      {
+        "seq": 117,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117671
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117671",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117671
+          },
+          "batchRows": [
+            234
+          ]
+        }
+      },
+      {
+        "seq": 118,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117729
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117729",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117729
+          },
+          "batchRows": [
+            236
+          ]
+        }
+      },
+      {
+        "seq": 119,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117688
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117688",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117688
+          },
+          "batchRows": [
+            238
+          ]
+        }
+      },
+      {
+        "seq": 120,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117694
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117694",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117694
+          },
+          "batchRows": [
+            240
+          ]
+        }
+      },
+      {
+        "seq": 121,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117744
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117744",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117744
+          },
+          "batchRows": [
+            242
+          ]
+        }
+      },
+      {
+        "seq": 122,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220023206
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220023206",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220023206
+          },
+          "batchRows": [
+            244
+          ]
+        }
+      },
+      {
+        "seq": 123,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117631
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117631",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117631
+          },
+          "batchRows": [
+            246
+          ]
+        }
+      },
+      {
+        "seq": 124,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117638
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117638",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117638
+          },
+          "batchRows": [
+            248
+          ]
+        }
+      },
+      {
+        "seq": 125,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117679
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117679",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117679
+          },
+          "batchRows": [
+            250
+          ]
+        }
+      },
+      {
+        "seq": 126,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117703
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117703",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117703
+          },
+          "batchRows": [
+            252
+          ]
+        }
+      },
+      {
+        "seq": 127,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117615
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117615",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117615
+          },
+          "batchRows": [
+            254
+          ]
+        }
+      },
+      {
+        "seq": 128,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117651
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117651",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117651
+          },
+          "batchRows": [
+            256
+          ]
+        }
+      },
+      {
+        "seq": 129,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117666
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117666",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117666
+          },
+          "batchRows": [
+            258
+          ]
+        }
+      },
+      {
+        "seq": 130,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117589
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117589",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117589
+          },
+          "batchRows": [
+            260
+          ]
+        }
+      },
+      {
+        "seq": 131,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117617
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117617",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117617
+          },
+          "batchRows": [
+            262
+          ]
+        }
+      },
+      {
+        "seq": 132,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220017846
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220017846",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220017846
+          },
+          "batchRows": [
+            264
+          ]
+        }
+      },
+      {
+        "seq": 133,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117658
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117658",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117658
+          },
+          "batchRows": [
+            266
+          ]
+        }
+      },
+      {
+        "seq": 134,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117471
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117471",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117471
+          },
+          "batchRows": [
+            268
+          ]
+        }
+      },
+      {
+        "seq": 135,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117579
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117579",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117579
+          },
+          "batchRows": [
+            270
+          ]
+        }
+      },
+      {
+        "seq": 136,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117429
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117429",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117429
+          },
+          "batchRows": [
+            272
+          ]
+        }
+      },
+      {
+        "seq": 137,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117421
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117421",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117421
+          },
+          "batchRows": [
+            274
+          ]
+        }
+      },
+      {
+        "seq": 138,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117565
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117565",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117565
+          },
+          "batchRows": [
+            276
+          ]
+        }
+      },
+      {
+        "seq": 139,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220035393
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220035393",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220035393
+          },
+          "batchRows": [
+            278
+          ]
+        }
+      },
+      {
+        "seq": 140,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117575
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117575",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117575
+          },
+          "batchRows": [
+            280
+          ]
+        }
+      },
+      {
+        "seq": 141,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117536
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117536",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117536
+          },
+          "batchRows": [
+            282
+          ]
+        }
+      },
+      {
+        "seq": 142,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117460
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117460",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117460
+          },
+          "batchRows": [
+            284
+          ]
+        }
+      },
+      {
+        "seq": 143,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117451
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117451",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117451
+          },
+          "batchRows": [
+            286
+          ]
+        }
+      },
+      {
+        "seq": 144,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117469
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117469",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117469
+          },
+          "batchRows": [
+            288
+          ]
+        }
+      },
+      {
+        "seq": 145,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117447
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117447",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117447
+          },
+          "batchRows": [
+            290
+          ]
+        }
+      },
+      {
+        "seq": 146,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117487
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117487",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117487
+          },
+          "batchRows": [
+            292
+          ]
+        }
+      },
+      {
+        "seq": 147,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117527
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117527",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117527
+          },
+          "batchRows": [
+            294
+          ]
+        }
+      },
+      {
+        "seq": 148,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117425
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117425",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117425
+          },
+          "batchRows": [
+            296
+          ]
+        }
+      },
+      {
+        "seq": 149,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117495
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117495",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117495
+          },
+          "batchRows": [
+            298
+          ]
+        }
+      },
+      {
+        "seq": 150,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117582
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117582",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117582
+          },
+          "batchRows": [
+            300
+          ]
+        }
+      },
+      {
+        "seq": 151,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117452
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117452",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117452
+          },
+          "batchRows": [
+            302
+          ]
+        }
+      },
+      {
+        "seq": 152,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117486
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117486",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117486
+          },
+          "batchRows": [
+            304
+          ]
+        }
+      },
+      {
+        "seq": 153,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117548
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117548",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117548
+          },
+          "batchRows": [
+            306
+          ]
+        }
+      },
+      {
+        "seq": 154,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117498
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117498",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117498
+          },
+          "batchRows": [
+            308
+          ]
+        }
+      },
+      {
+        "seq": 155,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117543
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117543",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117543
+          },
+          "batchRows": [
+            310
+          ]
+        }
+      },
+      {
+        "seq": 156,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117531
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117531",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117531
+          },
+          "batchRows": [
+            312
+          ]
+        }
+      },
+      {
+        "seq": 157,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117427
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117427",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117427
+          },
+          "batchRows": [
+            314
+          ]
+        }
+      },
+      {
+        "seq": 158,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117569
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117569",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117569
+          },
+          "batchRows": [
+            316
+          ]
+        }
+      },
+      {
+        "seq": 159,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117512
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117512",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117512
+          },
+          "batchRows": [
+            318
+          ]
+        }
+      },
+      {
+        "seq": 160,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117549
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117549",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117549
+          },
+          "batchRows": [
+            320
+          ]
+        }
+      },
+      {
+        "seq": 161,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117411
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117411",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117411
+          },
+          "batchRows": [
+            322
+          ]
+        }
+      },
+      {
+        "seq": 162,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117414
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117414",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117414
+          },
+          "batchRows": [
+            324
+          ]
+        }
+      },
+      {
+        "seq": 163,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220053270
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220053270",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220053270
+          },
+          "batchRows": [
+            326
+          ]
+        }
+      },
+      {
+        "seq": 164,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117239
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117239",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117239
+          },
+          "batchRows": [
+            328
+          ]
+        }
+      },
+      {
+        "seq": 165,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117248
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117248",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117248
+          },
+          "batchRows": [
+            330
+          ]
+        }
+      },
+      {
+        "seq": 166,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117274
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117274",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117274
+          },
+          "batchRows": [
+            332
+          ]
+        }
+      },
+      {
+        "seq": 167,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117285
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117285",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117285
+          },
+          "batchRows": [
+            334
+          ]
+        }
+      },
+      {
+        "seq": 168,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117383
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117383",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117383
+          },
+          "batchRows": [
+            336
+          ]
+        }
+      },
+      {
+        "seq": 169,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117272
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117272",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117272
+          },
+          "batchRows": [
+            338
+          ]
+        }
+      },
+      {
+        "seq": 170,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117241
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117241",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117241
+          },
+          "batchRows": [
+            340
+          ]
+        }
+      },
+      {
+        "seq": 171,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117308
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117308",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117308
+          },
+          "batchRows": [
+            342
+          ]
+        }
+      },
+      {
+        "seq": 172,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117387
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117387",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117387
+          },
+          "batchRows": [
+            344
+          ]
+        }
+      },
+      {
+        "seq": 173,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117367
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117367",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117367
+          },
+          "batchRows": [
+            346
+          ]
+        }
+      },
+      {
+        "seq": 174,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117348
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117348",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117348
+          },
+          "batchRows": [
+            348
+          ]
+        }
+      },
+      {
+        "seq": 175,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117284
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117284",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117284
+          },
+          "batchRows": [
+            350
+          ]
+        }
+      },
+      {
+        "seq": 176,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220009094
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220009094",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220009094
+          },
+          "batchRows": [
+            352
+          ]
+        }
+      },
+      {
+        "seq": 177,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117342
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117342",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117342
+          },
+          "batchRows": [
+            354
+          ]
+        }
+      },
+      {
+        "seq": 178,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117339
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117339",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117339
+          },
+          "batchRows": [
+            356
+          ]
+        }
+      },
+      {
+        "seq": 179,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117399
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117399",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117399
+          },
+          "batchRows": [
+            358
+          ]
+        }
+      },
+      {
+        "seq": 180,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 200117262
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 200117262",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 200117262
+          },
+          "batchRows": [
+            360
+          ]
+        }
+      },
+      {
+        "seq": 181,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "key": {
+            "order_number": 220055893
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release",
+          "would": "would release order 220055893",
+          "action": "release",
+          "dryRun": false,
+          "arguments": {
+            "order": 220055893
+          },
+          "batchRows": [
+            362
+          ]
+        }
+      }
+    ],
+    "writes": [
+      {
+        "seq": 1,
+        "at": "2026-11-16T07:42:39.765474Z",
+        "payload": {
+          "rows": 670,
+          "batch": "e9d47e9d-9cd6-3efc-bba2-6a96a1c5e385",
+          "state": "preview",
+          "entities": {
+            "er.entity.order": 181,
+            "er.entity.release_order_verdict": 155,
+            "er.entity.release_order_verdict_detail": 26,
+            "er.entity.release_order_verdict_current": 308
+          }
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-16T07:43:35.695493Z",
+        "payload": {
+          "held": 2,
+          "rows": 670,
+          "batch": "e9d47e9d-9cd6-3efc-bba2-6a96a1c5e385",
+          "event": "closed",
+          "state": "held",
+          "failed": 0,
+          "groups": 2,
+          "applied": 668,
+          "history": {
+            "failed": 0,
+            "applied": 148,
+            "unknown": 0
+          },
+          "skipped": 0,
+          "unknown": 0,
+          "entities": {
+            "er.entity.order": {
+              "failed": 0,
+              "applied": 179,
+              "history": {
+                "failed": 0,
+                "applied": 148,
+                "unknown": 0
+              },
+              "skipped": 0,
+              "unknown": 0
+            },
+            "er.entity.release_order_verdict": {
+              "failed": 0,
+              "applied": 155,
+              "history": {
+                "failed": 0,
+                "applied": 0,
+                "unknown": 0
+              },
+              "skipped": 0,
+              "unknown": 0
+            },
+            "er.entity.release_order_verdict_detail": {
+              "failed": 0,
+              "applied": 26,
+              "history": {
+                "failed": 0,
+                "applied": 0,
+                "unknown": 0
+              },
+              "skipped": 0,
+              "unknown": 0
+            },
+            "er.entity.release_order_verdict_current": {
+              "failed": 0,
+              "applied": 308,
+              "history": {
+                "failed": 0,
+                "applied": 0,
+                "unknown": 0
+              },
+              "skipped": 0,
+              "unknown": 0
+            }
+          },
+          "staleState": 0
+        }
+      }
+    ],
+    "people": [],
+    "turns": [],
+    "signals": [],
+    "receipts": []
+  },
+  "schema": "protocol/v1"
+}
