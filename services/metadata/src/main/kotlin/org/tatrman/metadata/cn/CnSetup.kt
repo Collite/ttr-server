@@ -19,6 +19,9 @@ data class PromotionTarget(
     val branch: String = "main",
     val subdirectory: String = "",
     val localRoot: Path? = null,
+    /** MW S4.2 (contracts §1, ✅MW-52): the source's parser kind and configured profile, for the dialect guard. */
+    val kind: String = "ttr",
+    val profile: String? = null,
 )
 
 /** What `metadata.cn` turns on: the API surface, the vocabulary source for the refresher, the source to watch. */
@@ -125,7 +128,12 @@ class CnSetup(
                     InboxDelivery(Path.of(it))
             }
             return Promoter(
-                StoragePromotionFiles(target.storage, target.localRoot),
+                StoragePromotionFiles(
+                    target.storage,
+                    target.localRoot,
+                    yaml = target.kind == "yaml",
+                    profile = target.profile,
+                ),
                 deliveries,
                 modelRoot = target.subdirectory,
             )

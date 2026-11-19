@@ -29,6 +29,11 @@ enum class ErrorCode(
     BUNDLE_INVALID("bundle-invalid", HttpStatusCode.UnprocessableEntity, "S0.2"),
     REFRESH_FORBIDDEN("refresh-forbidden", HttpStatusCode.Forbidden, "S0.2"),
 
+    // §1.1 — a program's manifest (S3.4, D-209): the program, the `?bundle=` id, a program with no manifest.
+    PROGRAM_UNKNOWN("program-unknown", HttpStatusCode.NotFound, "S3.4"),
+    BUNDLE_UNKNOWN("bundle-unknown", HttpStatusCode.NotFound, "S3.4"),
+    MANIFEST_UNAVAILABLE("manifest-unavailable", HttpStatusCode.NotFound, "S3.4"),
+
     // §1.2 — runs
     PORT("port", HttpStatusCode.BadRequest, "S1.1"),
     AS_OF("as-of", HttpStatusCode.BadRequest, "S1.1"),
@@ -81,6 +86,9 @@ enum class ErrorCode(
     WINDOW_OPEN("window-open", HttpStatusCode.Conflict, "S3.2"),
     ENGINE("engine", HttpStatusCode.BadRequest, "S3.2"),
     ENGINE_UNREACHABLE("engine-unreachable", HttpStatusCode.ServiceUnavailable, "S3.2"),
+
+    // S3.5 (D-230, ⚑AU-S35-1): an answer run whose engine instance has no waiting run, or whose run holds no such key.
+    ANSWER_UNMATCHED("answer-unmatched", HttpStatusCode.Conflict, "S3.5"),
 
     // S3.1 — `POST /automation/query` (D-146): the request, its variables and the Golem lane.
     STATEMENT("statement", HttpStatusCode.BadRequest, "S3.1"),

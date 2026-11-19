@@ -292,7 +292,8 @@ class ApprovalDependenciesSpec :
                     )
                 }
             }
-            val root = fixture()
+            // The independently opened neighbor has a working-days expect, so it needs a bound calendar.
+            val root = CalendarFixture.add(fixture())
             editEvidence(root) {
                 JsonObject(
                     mapOf(
@@ -323,6 +324,7 @@ class ApprovalDependenciesSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    doorRoutes = setOf("demo/erp_db"),
                     engineClient = "process-engine",
                 ).open(
                     "monitor_inbound",
@@ -339,7 +341,7 @@ class ApprovalDependenciesSpec :
 
         "non-object evidence stays local to its recipe and null remains absent" {
             for (value in listOf<JsonElement>(JsonArray(emptyList()), JsonPrimitive("future"), JsonPrimitive(2))) {
-                val root = fixture()
+                val root = CalendarFixture.add(fixture())
                 editRecipe(root) { JsonObject(it + ("approvalDependencies" to value)) }
                 val b = load(root)
                 refuses(b, "approval evidence is not an object", kind = CoverageKind.UNSUPPORTED)
@@ -361,6 +363,7 @@ class ApprovalDependenciesSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    doorRoutes = setOf("demo/erp_db"),
                     engineClient = "process-engine",
                 ).open("monitor_inbound", OpenRequest(deploymentName, buildJsonObject { put("none", true) }), caller)
                     .httpStatus shouldBe 201

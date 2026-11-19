@@ -15,11 +15,13 @@ import java.security.MessageDigest
  * changing any value does.
  */
 object Fingerprints {
-    fun sha256(text: String): String =
+    fun sha256(text: String): String = sha256(text.toByteArray(Charsets.UTF_8))
+
+    fun sha256(bytes: ByteArray): String =
         "sha256:" +
             MessageDigest
                 .getInstance("SHA-256")
-                .digest(text.toByteArray(Charsets.UTF_8))
+                .digest(bytes)
                 .joinToString("") { "%02x".format(it) }
 
     fun program(p: AutomationProgram): String = sha256("program ${p.qname.name} {" + entries(p.properties) + "}")

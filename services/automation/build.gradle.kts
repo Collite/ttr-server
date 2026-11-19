@@ -15,6 +15,13 @@ application {
     applicationDefaultJvmArgs = listOf("--add-opens=java.base/java.nio=ALL-UNNAMED")
 }
 
+// ✅D-MW-86 (MW S4.1): Zip64 for the fat jar — at grammar 0.22.7 automation's shadowJar is 64 636 / 65 535 entries of
+// legitimate library weight. The structural reductions are ttr-core's (`ttr-concept-cli` split; the `ttr-yaml` validator
+// stack, S1.5.9 Found 3). Precedent: tools/query-mcp.
+tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>().configureEach {
+    isZip64 = true
+}
+
 kotlin {
     jvmToolchain(21)
     // The real HTTP/JWKS realm is shared test support, never production code or a unit-test classpath
@@ -157,6 +164,8 @@ dependencies {
     // Component tier — the ledger over a REAL Postgres (Testcontainers): Flyway migrates clean, pgmq
     // round-trips, the idempotency claim races. `src/componentTest`, so the unit gate stays Docker-free.
     "componentTestImplementation"(libs.testcontainers.postgresql)
+    // S3.5 review-354 F2: a spy ledger injects a failed or late answer completion.
+    "componentTestImplementation"(libs.mockk)
     "componentTestImplementation"(libs.ktor.server.test.host)
     // S3.1: the query/runs/templates routes are specified over HTTP against the real ledger.
     "componentTestImplementation"(libs.ktor.server.auth)

@@ -94,6 +94,12 @@ class Link:
         k = int(engine.get("k", 5))
         if k < 1:
             raise ValueError("link/invalid-k")
+        # DX-D42: an abstaining link still hands link-pick its top candidates, on a derived Mention (0 = none).
+        on_abstain = engine.get("candidates_on_abstain", 5)
+        if type(on_abstain) is float and on_abstain.is_integer():  # the schema's `integer` admits 5.0 (review-381 F2)
+            on_abstain = int(on_abstain)
+        if type(on_abstain) is not int or on_abstain < 0:
+            raise ValueError("link/invalid-candidates-on-abstain")
         sources = engine.get("candidates", ["lexicon", "knn"])
         target_concepts = set(engine.get("targets", {}).values())
         abstain_below = float(engine.get("abstain_below", 0.6))
@@ -207,6 +213,16 @@ class Link:
                 }
                 if top["_member"]:
                     payload["member"] = top["_member"]
+                new = annotation(mention.unit_id, "Mention", payload, mention.spans)
+                new.derived_from = [mention.id]
+                result.annotations.append(new)
+            elif on_abstain and candidates:
+                # link-pick chooses among these (S4.1f). The input's `concept` and `member` are dropped: cz-mentions
+                # sets `concept` on every Mention, and link-pick skips a concept-bearing Mention whose best is
+                # ≥ abstain_below, i.e. every margin abstain (review-381 F1). The candidates are already that concept's.
+                # The rest of the input's payload is kept; the run still abstains (runner.is_abstention).
+                payload = {k: v for k, v in mention.payload().items() if k not in ("concept", "member")}
+                payload |= {"linkMethod": "abstain", "candidates": candidates[:on_abstain]}
                 new = annotation(mention.unit_id, "Mention", payload, mention.spans)
                 new.derived_from = [mention.id]
                 result.annotations.append(new)

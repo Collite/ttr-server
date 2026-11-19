@@ -226,9 +226,11 @@ class BundleLoader(
             findings += "$where: no manifest.json"
             return null
         }
+        val manifestBytes = Files.readAllBytes(manifestFile)
+        val manifestText = manifestBytes.decodeToString()
         val manifest =
             try {
-                RecipeManifest.parse(manifestFile.readText())
+                RecipeManifest.parse(manifestText)
             } catch (e: SerializationException) {
                 findings += "$where: manifest.json is not a manifest (${e.message?.lineSequence()?.first()})"
                 return null
@@ -285,7 +287,7 @@ class BundleLoader(
             }
             statements[relative] = text
         }
-        return LoadedRecipe(name, manifest, recipe, statements)
+        return LoadedRecipe(name, manifest, recipe, statements, manifestFile = ManifestFile(manifestBytes))
     }
 
     private fun isAutomationFinding(

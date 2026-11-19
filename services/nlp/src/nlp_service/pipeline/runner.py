@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """One named pipeline, run end to end (contracts §7, NL-4/NL-14).
 
-Engine ops, then gazetteer lists, then rule phases — in that order, and within
-each stage in the order the pipeline wrote. The order is not a detail: the
+Engine ops, then gazetteer lists, then the pipeline's stages (OL-C7) — in that
+order, and within each in the order the pipeline wrote. The order is not a detail: the
 gazetteer matches on `lemma`, which an engine op has to have produced, and the
 rules match on `Lookup`, which the gazetteer has to have produced. A pipeline that
 listed them the other way round would run, match nothing, and look exactly like a
 pack with a typo in it.
+
+**Stages come from the `ttrnlp.stages` group** (OL-C6). The runner does not
+import the rule engine: it asks the installed stage named by each step to `run`,
+and a trace's `kind` is that stage's name (`rules` for the rule engine). A step
+whose stage is not installed cannot reach here — the loader refused the snapshot
+with `NLS-PACK-006`.
 
 **Degrade is a message, not a failure** (NL-14). An op the active lane cannot
 route is skipped, `NLS-NLP-011` is appended, and every remaining phase still runs.
@@ -50,6 +56,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import Any
 
 from ttrnlp.doc import Document, build_document
@@ -57,7 +64,7 @@ from ttrnlp.doc.importers import TOKEN_TYPE
 from ttrnlp.morph import annotate_morph, build_morph_gazetteer
 from ttrnlp.morph import build_document as morph_build_document
 from ttrnlp.packs.loader import LoadedState
-from ttrnlp.rules.pipeline import run_phases
+from ttrnlp.stages import Stage, installed_stages
 
 from nlp_service.config import (
     STEP_MORPH_ANNOTATE,
@@ -77,6 +84,7 @@ logger = logging.getLogger(__name__)
 
 KIND_ENGINE = "engine"
 KIND_GAZETTEER = "gazetteer"
+#: The rule engine's stage name — the trace `kind` its steps carry.
 KIND_RULES = "rules"
 KIND_MORPH = "morph"
 
@@ -140,8 +148,10 @@ class PipelineRunner:
         *,
         morph: MorphSnapshot | None = None,
         queue: QueueSink | None = None,
+        stages: Mapping[str, Stage] | None = None,
     ):
         self._config = config
+        self._stages = installed_stages() if stages is None else stages
         self._registry = registry
         self._orchestrator = orchestrator or Orchestrator(config, registry)
         self._morph = morph
@@ -220,7 +230,7 @@ class PipelineRunner:
         )
         traces.extend(engine_traces)
         traces.extend(self._run_gazetteer(doc, spec, state, language))
-        traces.extend(self._run_rules(doc, spec, state))
+        traces.extend(self._run_stages(doc, spec, state))
 
         doc.features["pipeline"] = pipeline
         doc.features["lane"] = self._config.lane
@@ -521,30 +531,33 @@ class PipelineRunner:
             )
         return traces
 
-    def _run_rules(
+    def _run_stages(
         self, doc: Document, spec: PipelineConfig, state: LoadedState
     ) -> list[Trace]:
         traces: list[Trace] = []
-        for ref in spec.rules:
-            pack = state.packs.get(ref.pack)
-            if pack is None:
+        for ref in spec.stages:
+            stage = self._stages.get(ref.stage)
+            if stage is None:
+                # The loader refuses such a snapshot (NLS-PACK-006); reaching here
+                # means a runner built over other stages than the loader's.
+                logger.warning("pipeline step names stage %r, not installed", ref.stage)
+                continue
+            try:
+                trace = stage.run(doc, state.stages.get(ref.stage), ref.params())
+            except LookupError as exc:
                 # Boot validated every ref (NLS-PACK-004), so reaching this means
                 # the snapshot changed under a request. Skip and say so rather
-                # than raising: the phases that did run produced real annotations.
-                logger.warning("pipeline references missing pack %r", ref.pack)
+                # than raising: the steps that did run produced real annotations.
+                logger.warning("%s", exc)
                 continue
-            started = time.perf_counter()
-            before = len(doc.annset(""))
-            report = run_phases(doc, [pack], phases=[ref.phase])
             traces.append(
                 Trace(
-                    phase=f"{ref.pack}:{ref.phase}",
-                    kind=KIND_RULES,
-                    annotations_added=len(doc.annset("")) - before,
-                    elapsed_ms=int((time.perf_counter() - started) * 1000),
+                    phase=trace.label,
+                    kind=stage.name,
+                    annotations_added=trace.annotations_added,
+                    elapsed_ms=trace.elapsed_ms,
                 )
             )
-            logger.debug("phase %s:%s fired %d rule(s)", ref.pack, ref.phase, report.firings)
         return traces
 
 

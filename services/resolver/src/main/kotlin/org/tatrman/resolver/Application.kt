@@ -22,6 +22,7 @@ import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.tatrman.mcp.identity.IdentityPolicy
 import org.tatrman.resolver.client.GrpcGroundingClient
+import org.tatrman.resolver.client.ScanCapability
 import org.tatrman.resolver.client.GrpcFuzzyClient
 import org.tatrman.resolver.pipeline.NamedCategorySource
 import org.tatrman.resolver.client.GrpcNlpClient
@@ -54,6 +55,7 @@ import org.tatrman.resolver.telemetry.resolverTelemetry
 import shared.logging.IncomingCallLoggingInterceptor
 import shared.logging.OtelContextServerInterceptor
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.seconds
 
 private val log = LoggerFactory.getLogger("org.tatrman.resolver.Application")
 
@@ -235,6 +237,12 @@ fun Application.module(config: Config) {
             grounding = groundingClient,
             defaultPackage = resolverPackage,
             namedCategories = namedCategories,
+            scanCapability =
+                groundingClient?.let { kernel ->
+                    ScanCapability(
+                        config.getLong("resolver.grounding.status-ttl-seconds").seconds,
+                    ) { kernel.getStatus() }
+                },
         )
     val resolverService = ResolverGrpcService(pipeline, otel)
 

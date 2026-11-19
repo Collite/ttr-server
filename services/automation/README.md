@@ -50,6 +50,16 @@ An unmapped world or destructive column change refuses refresh with `422 bundle-
 bundle. DDL runs for served refreshes only, on the service's own connection before publication; preview refreshes
 change no table. Recipe rows remain unapplied in S2.1. Set the schema mapping on each cluster in the same commit
 as its first automation image bump containing #374; there is no default schema.
+
+S2.9a (D-249): configure `automation.worldZones` / `AUTOMATION_WORLD_ZONES` as comma-separated `world=Region/City`
+pairs (bp-dsk: `demo=Europe/Prague`). An `expect` row's `due` date is `as_of`'s date in that zone plus the duration;
+an unmapped world is UTC. A fixed offset (`+01:00`, `GMT+1`, or a region with fixed rules such as `Etc/GMT+1`) or an unknown zone fails at start.
+S2.9b: a date-valued `due: working_days(n)` uses the same governed calendar snapshot as working-day counts.
+It is the n-th working day strictly after that local date; `n = 0` also means the first working day after it.
+Literal, parameter and action-default counts are nonnegative integers. The manifest must declare the calendar
+entity in `objectsRead`; otherwise Open refuses `out-of-scope-read`. An insufficient snapshot horizon refuses
+`501 preview-unsupported` with `detail.expression: due`, `detail.cause: calendar-horizon`.
+
 `automation.pgDoorRole` / `AUTOMATION_PG_DOOR_ROLE`, when set, grants that database role schema USAGE and
 SELECT/INSERT/UPDATE/DELETE on the created model tables; unset grants no role.
 
@@ -145,6 +155,17 @@ promise. Failed status carries the stored public error code; execution requests 
 typed refusal. Polling never executes Query, applies an execution budget, retries a journal or mutates the run.
 Preview actions now appear in `actions`; task/delivery projections and close remain later lifecycle work.
 
+Evaluation tolerates trailing plain spaces (U+0020) in route and detail-route cells when trimming them
+matches the declared route port; other whitespace and detail context stamps remain strict.
+It records one `route_padded` warning per affected port, with `code`, `port` and the number of padded
+`rows`, in the evaluation response, durable decision protocol and run status, and logs it once at WARN
+with the run id. Warnings default to an empty list for older decisions and never refuse a run; genuine
+route mismatches still fail. Verdict and detail rows take their route from the port. The staged route
+table keeps CHAR padding until Core S2.4d, so wiring must not read `route` (no shipped recipe does).
+Core S2.4d removes the underlying CHAR padding; the tolerance remains for older producers.
+Decision readers ignore future additive fields; encoding is unchanged. Rolling back below 0.11.41
+breaks `GET /automation/runs/{id}` for runs that recorded `route_padded`.
+
 Engine polling contract (D-47):
 1. Open with an idempotency key and retain it with the run id. After a new open, call evaluate.
 2. On `202`, follow Location every 15–30 seconds, respecting Retry-After. Keep the same run id/key while it is
@@ -155,6 +176,29 @@ Engine polling contract (D-47):
    restart with that same key (bound attempts and elapsed time in the engine); stop when that bound is reached.
    The production queue and maintenance share the configured ledger clock. A missing/released context fails closed; restarting cannot reconstruct today's recipe as
    the old run, and an existing key may remain held until the ledger's existing budget-plus-two-minute claim rule.
+
+Answer runs (S3.5, D-230 — D-159 completed). An Open whose `engine` block carries `taskId` + `answeredBy`, verified
+against the engine's task history and sent by the engine client, is a **decision, not a run of the recipe**:
+`POST /automation/recipes/{r}/runs { deployment, port: { key: { keyColumn: value, … } }, engine: { instanceId,
+businessKey, deploymentId, taskId, answeredBy } }`. It finds the newest run of that recipe and deployment the engine opened in
+`instanceId` without a task whose batch held `port.key` (waiting or already closed), commits the held group of `port.key` (the hold group is the candidate
+key: only that key's held rows apply, the other keys stay held), records the decision on those rows as `{ decision:
+"commit", by: answeredBy, at, answer: <answer run id> }`, and closes — all at Open. The answer run is a run of kind
+`answer` (the six engine columns, the `people` entry, one `writes` entry with `answer: true`); it has no batch and no
+executor. Response `201 { runId, status: "closed", answer: { original, batch, key, decision, by, applied, skipped,
+failed, unknown, replayed } }`; the same answer again (the same `idempotencyKey`, else the same engine task and key) is
+`200 replayed: true` with that outcome; a key decided before (by an answer or the dev route, also after the run closed)
+answers `200` with `answer.replayed: true`, the recorded decision and its decider, and applies nothing. The engine chain is therefore **Open → status**: `evaluate`, part reads and `close` of an answer run are
+`409 close-not-ready · answer-run`. `role.ops` is not asked of the engine client — the approval is the person's, proved
+by the engine's history; the run's D-99 fingerprints must still be served (`409 superseded`, nothing applied).
+Refusals: `409 answer-unmatched · no-waiting-run | no-held-key` (with `held`: the run's undecided held keys — `port.key`
+is matched verbatim, JSON types included, so send the action's `key` object exactly as the run reported it),
+`400 port · key-not-object | key-missing` (the key is always the object), `400 engine · decision-unsupported` (v1 approves only; `decision: "approve"` is the default). A
+refusal or a failed completion after the claim leaves the answer run `failed` with its error code; that frees its
+idempotency key, so the engine's retry decides or replays. An answer run the sweep reaped while it decided still closes
+with its entry. `GET /automation/runs?kind=answer` lists answer runs. `GET /automation/runs/{id}` gains `kind` and `answer`; on the original run each action of a
+decided key carries `decided`, and `batch.held` counts the held rows still undecided. A row an obligation shares
+between two keys belongs to the first key's group (a known v1 limit, as on the dev route).
 
 `RunSessions` enforces the batch budget from the **committed** `runs.started_at` returned by a new claim,
 not from HTTP arrival, user `asOf`, delivery or evaluation start. Idle time, queue wait and all evaluation waves
@@ -332,6 +376,23 @@ large integers remain exact typed columns, avoiding the plan literal's Double re
 scalar kinds require an explicit cast. Invalid predicates refuse even on empty routes; syntax, typing,
 lowering and local execution failures return `501 preview-unsupported` before decision/batch completion.
 Repeated wiring stays repeated and the selected rows retain original route order.
+
+The refusal names where it happened (S2.8, D-239): `detail` is `{ wiring, action, kind, expression?, cause }` —
+`wiring` is the wiring's key `#<position>:<routes>-><action>` (`#1:way.hold->release`), `kind` is `expression`,
+`condition`, `mapping` (a native writer, obligation or obligation transition mapping) or `snapshot` (the obligation
+snapshot every wiring shares; it names no wiring and no action), `expression` the declared argument name (`when` for a condition;
+`on_due.order` for an argument inside a deferred call), and `cause` a compiler diagnostic id (`TTRP-EXP-001` unknown
+column, `TTRP-FN-001` unknown function), the name of a preview check (`comparison-kinds`, `assignment-type`,
+`condition-not-boolean`, `non-finite`, `decimal-range`, `column-type`, `unbound-parameter`; for the mappings
+`writer-mapping`, `obligation-mapping`, `obligation-transition`, `obligation-snapshot`) or
+the exception class (`SQLException` from the scratch engine, `IllegalArgumentException` …). It **never** shows generated
+SQL, a bound value or a route value. The failed run keeps the same detail in its `error` and in an `automation`
+protocol entry `{ event: "failed" }`. The cause's full message goes to one WARN line of
+`org.tatrman.automation.apply.PreviewRefusals` with the run id, every bound value, every date derived from one
+(`:as_of - days(30)`) and every route value of three characters or more replaced by `?`. A bound value shorter than three
+characters is replaced only where it stands alone (a binding of `3` hides `row 3`, not `INT32`), and short literal
+fragments such as type names may survive redaction. A mapping refusal logs its fixed cause only: its own message may quote
+data.
 
 Action-typed wiring calls and explicit `on_due` calls now produce deferred preview evidence, for example
 `{"action":"start","arguments":{"process":"purchasing"},"deferred":true}`. Supplied scalar leaves use
@@ -755,7 +816,16 @@ routes still validate. The published 0.18.14 fixture under `src/test/resources/c
 governed Open/evaluate/retry/close/restart with the real PostgreSQL ledger; only Query tables are canned.
 It does not certify a live Query database or perform physical writes.
 
-Relative `due` values remain descriptive. Absolute working-day deadlines, adding/subtracting a duration
+**`expect.due` (S2.9a, D-249).** `due` is authored as a duration; the obligation row's `due` is a `date`, and
+the Server computes it. A declared `due: date` column given a duration — `days(n)`, `weeks(n)`, the juxtaposed
+`2 days`, a bound parameter in either, or the action's `due:` default when the wiring omits `due` — is projected as
+`as_of`'s date (in the world's zone, `automation.worldZones`) plus the duration, through the same compiler
+date lowering as `:as_of + days(n)`. A working-days `due` needs the calendar, which the recipe does not yet declare
+(`objectsRead`): it refuses with `detail.cause: working-days-due-needs-calendar`, also on empty and unselected
+routes, until S2.9b computes the n-th working day over the governed calendar. A `due` given a date expression
+keeps its typed projection; an undeclared `due` stays wiring evidence (`{amount, unit}`).
+
+Apart from `expect.due` above, relative `due` values remain descriptive. Absolute working-day deadlines, adding/subtracting a duration
 to/from a route date, reverse/column-column date differences and integer calendar-key action inputs
 remain unsupported and refuse, including on empty routes. Action rows do not carry the key provenance
 needed to resolve calendar keys; no integer/date coercion is inferred. This stage changes no runtime/compiler dependency pin.

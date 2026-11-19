@@ -19,7 +19,12 @@ from pydantic import BaseModel, Field
 from golem_py.query_client import AnswerEnvelope
 from golem_py.state import GapKind, GapRecord, ResolutionState
 
-RefusalReason = Literal["NO_CAPABLE_PLUGIN", "UNRESOLVED_GAPS"]
+# OL-C16 adds the LLM lane's two: `QUERY_NOT_WRITTEN` (budget spent, a second door
+# rejection, an invalid object or a broken rule) and `LANE_UNAVAILABLE` (a leg of the lane
+# could not be reached). Both carry the lattice and the last error as `explanation`.
+RefusalReason = Literal[
+    "NO_CAPABLE_PLUGIN", "UNRESOLVED_GAPS", "QUERY_NOT_WRITTEN", "LANE_UNAVAILABLE"
+]
 
 
 class AskOption(BaseModel):
@@ -71,6 +76,8 @@ class RefusalWithGaps(BaseModel):
     composable_residue: list[str] = Field(default_factory=list)
     # Why compose refused, in the vocabulary of the predicate (an unknown `op:`, an
     # unsatisfied `requires:`, nothing to select). A caller acts on these differently.
+    # For the lane's refusals: the last error (the broken rule, the door's text, the leg
+    # that was unreachable).
     explanation: str = ""
 
 

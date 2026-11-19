@@ -5,6 +5,30 @@ Licensed under the Apache License, Version 2.0; see the LICENSE file for the ful
 
 ---
 
+The platform-question contract and Camunda 7 template in `connectors/platform-question`
+were published by Collite as contract owner under OL D-38. The template was copied once
+from ai-platform commit `4d0242eefbc0df292be2bd9fb96e6d47b71f8f3b`, file
+`services/aip-camunda/camunda/tatrman-dotaz.c7.json`, with an English localisation added.
+Both template copies include the OL R344-A repairs for exact decimals, required
+engine properties and reserved variable exports; the source repository is unchanged.
+The source repository was read only for this publication.
+
+The folder also includes the Camunda element-template JSON schema, version 0.22.1:
+Copyright (c) 2020 camunda Services GmbH, MIT License.
+See `connectors/platform-question/vendor/LICENSE-camunda` and its README.
+
+---
+
+The Tatrman Automation n8n nodes in `connectors/n8n-nodes-tatrman` moved from Collite's
+`kantheon` repository with their history, at commit `9b8860851f60fa6619cb9cc6ce82b2c151823c2c`
+(OL W6·S1), and are published under Apache-2.0 (OL D-25). The npm package declares
+`n8n-workflow` and `luxon` as peer dependencies and bundles neither. The derived image
+`ghcr.io/collite/n8n-tatrman` is built FROM the n8n image (`ghcr.io/collite/n8n`, a mirror of
+`docker.io/n8nio/n8n`); n8n itself remains under its own licence, which this repository's
+licence does not replace.
+
+---
+
 This product includes Apache Calcite, transitively distributed via `ttr-translator` into the
 chrono, geo, money, metadata, and validate service images:
 

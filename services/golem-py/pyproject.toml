@@ -3,12 +3,13 @@ name = "golem-py"
 version = "0.1.0"
 description = "golem-py — the Python OS Golem: the RV-11 resolution loop over the deterministic core (reference implementation)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     # ⚑ PINNED EXACTLY (RV-P4, from the P0-3 spike): pydantic-graph's builder API is
     # young and the pin is load-bearing — a minor bump has already changed edge
     # semantics once. Do not widen these without re-running the P4.1 T2 structural
-    # tests. Python floor is 3.12 (dev machines run 3.13; no 3.13-only API is used).
+    # tests. Python floor is 3.13 (OL W1c·S1: the `ttr-plan-proto` wheel requires it; the
+    # image, CI and the nlp / worker-polars siblings were already on 3.13).
     "pydantic-ai==2.22.0",
     "pydantic-graph==2.22.0",
     "pydantic==2.13.4",
@@ -20,6 +21,20 @@ dependencies = [
     # CONFORMANCE, not code reuse (PROVENANCE.md).
     "grpcio==1.83.0",
     "protobuf>=5.28.0",
+    # OL-C12: `plan.v1` (PipelineContext, SchemaCode, QualifiedName) and
+    # `translate/v1/translator.proto` (`Language`) come from the PUBLISHED wheel —
+    # never vendored — from the newest published wheel whose `plan.v1` equals the JVM pin's
+    # (`gradle/libs.versions.toml`): wheel 0.14.1 for JVM 0.14.3, whose `plan.v1` is unchanged.
+    # Move this pin when a wheel with a `plan.v1` change ships.
+    # 0.14.1 is the first wheel that ships `translator.proto` (Collite/ttr-core#409);
+    # `shared/proto`'s Python lane still pins 0.8.4, whose `plan.v1` field numbers match.
+    "ttr-plan-proto==0.14.1",
+    # OL-C12: the door streams Arrow IPC. Pinned exactly, at the version the estate's
+    # other Arrow reader (workers/worker-polars) locks.
+    "pyarrow==24.0.0",
+    # OL-C13 (D-43): the gateway is HTTP. httpx is the version master already resolved
+    # (via pydantic-ai), declared directly because the lane's client imports it.
+    "httpx==0.28.1",
     "pyyaml>=6.0.3",
     "zstandard>=0.23",
 ]

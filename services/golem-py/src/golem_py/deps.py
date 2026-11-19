@@ -9,15 +9,24 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from typing import Protocol, runtime_checkable
 
 from golem_py.compose import StructuredQuestion
+from golem_py.door_client import SqlDoorPort
 from golem_py.ladder import LadderConfig, load_default
+from golem_py.llm_client import LlmPort
+from golem_py.model_slice import ModelSlicePort
 from golem_py.query_client import QueryResult
 from golem_py.settings import GolemSettings
 from golem_py.skills import LayeredSkillLibrary
 from golem_py.snapshots import InMemorySnapshotStore, SnapshotStore
 from golem_py.state import Binding, GapRecord, Hypothesis, ResolutionState, RungLogEntry
+
+
+def utc_today() -> date:
+    """The lane's default reference date: today, in UTC."""
+    return datetime.now(UTC).date()
 
 
 @runtime_checkable
@@ -118,3 +127,12 @@ class Deps:
     skills: LayeredSkillLibrary = field(default_factory=LayeredSkillLibrary)
     query: QueryPort | None = None
     clock: Callable[[], float] = time.monotonic
+    # OL W1c — the LLM lane's ports (OL-C12…C14). All three default to None, and with
+    # any of the door or the gateway missing the lane is off (OL-C11): `emit` answers
+    # structurally, exactly as it did before W1c.
+    door: SqlDoorPort | None = None
+    llm: LlmPort | None = None
+    model_slice: ModelSlicePort | None = None
+    # The reference date the lane's prompt states (OL-C14) — what "last month" is counted
+    # from. Injected, like the clock, so a recorded turn renders the same prompt every run.
+    reference_date: Callable[[], date] = field(default_factory=lambda: utc_today)

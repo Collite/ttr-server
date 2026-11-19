@@ -153,6 +153,11 @@ def operator_refs(state: ResolutionState) -> list[str]:
     return ops
 
 
+def composable_residue(state: ResolutionState, skills: LayeredSkillLibrary) -> list[str]:
+    """The operators a refusal can still offer: the ones said that a skill can compose."""
+    return [op for op in operator_refs(state) if skills.has(op)]
+
+
 _PRED_PREFIX = "pred:"
 
 

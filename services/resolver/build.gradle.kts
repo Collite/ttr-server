@@ -17,6 +17,13 @@ application {
     mainClass.set("org.tatrman.resolver.ApplicationKt")
 }
 
+// ✅D-MW-86 (MW S4.1): Zip64 for the fat jar — at grammar 0.22.7 automation's shadowJar is 64 636 / 65 535 entries of
+// legitimate library weight. The structural reductions are ttr-core's (`ttr-concept-cli` split; the `ttr-yaml` validator
+// stack, S1.5.9 Found 3). Precedent: tools/query-mcp.
+tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>().configureEach {
+    isZip64 = true
+}
+
 tasks.test {
     useJUnitPlatform()
     // CN-P4 S4.4 — the conceptual tier's shared fixture estate, compiled at test time by the real producer

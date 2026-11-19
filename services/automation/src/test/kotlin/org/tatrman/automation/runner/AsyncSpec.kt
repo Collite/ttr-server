@@ -86,7 +86,31 @@ class AsyncSpec :
 
         "polling observes evaluations started by another read path without starting another evaluation" {
             val starts = AtomicInteger()
-            val fixture = asyncFixture(beforeRunning = { starts.incrementAndGet() })
+            val fixture =
+                RunSessionFixture(
+                    beforeRunning = { starts.incrementAndGet() },
+                    columns =
+                        listOf(
+                            ManifestColumn("order_number", "text"),
+                            ManifestColumn("verdict_reason", "text"),
+                            ManifestColumn("route", "text"),
+                        ),
+                    door =
+                        Door { read ->
+                            ReadResult(
+                                Table(
+                                    read.columns,
+                                    if (read.sql ==
+                                        "hold"
+                                    ) {
+                                        emptyList()
+                                    } else {
+                                        listOf(listOf("4711", "SQL reason", "release   "))
+                                    },
+                                ),
+                            )
+                        },
+                )
             try {
                 val id = UUID.fromString(fixture.open().response.runId)
                 val result = fixture.runs.read(id, fixture.caller, { Unit }) { runner, _ -> runner.evaluate() }
@@ -94,6 +118,7 @@ class AsyncSpec :
                 progress.status shouldBe "evaluated"
                 progress.verdict shouldBe result.verdict
                 progress.guards shouldBe result.guards
+                progress.warnings shouldBe listOf(EvaluationWarning("route_padded", "release", 1))
                 starts.get() shouldBe 0
                 fixture.evaluations.size shouldBe 1
             } finally {

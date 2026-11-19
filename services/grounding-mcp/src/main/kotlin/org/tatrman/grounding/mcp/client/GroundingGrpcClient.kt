@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.grounding.mcp.client
 
+import org.tatrman.grounding.v1.GetStatusRequest
+import org.tatrman.grounding.v1.GetStatusResponse
 import org.tatrman.grounding.v1.GroundRequest
 import org.tatrman.grounding.v1.GroundResponse
 import org.tatrman.grounding.v1.GroundingServiceGrpcKt
@@ -39,6 +41,9 @@ class GroundingGrpcClient(
 
     override suspend fun scan(request: ScanRequest): ScanResponse =
         stub.withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS).scan(request)
+
+    override suspend fun getStatus(): GetStatusResponse =
+        stub.withDeadlineAfter(deadlineSeconds, TimeUnit.SECONDS).getStatus(GetStatusRequest.getDefaultInstance())
 
     override fun close() {
         channel.shutdown()

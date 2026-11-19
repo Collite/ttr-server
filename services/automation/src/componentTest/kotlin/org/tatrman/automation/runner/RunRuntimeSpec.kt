@@ -9,12 +9,14 @@ import io.kotest.engine.spec.tempdir
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
@@ -453,40 +455,87 @@ class RunRuntimeComponentSpec :
             }
         }
 
-        fun obligationFixture(conflict: Boolean = false): DurableRuntimeFixture {
+        fun obligationFixture(
+            conflict: Boolean = false,
+            workingDue: Boolean = false,
+        ): DurableRuntimeFixture {
             val root =
                 ApprovalFixture.copyTo(
                     tempdir(prefix = "automation-bundles-").toPath().resolve("branch"),
                     obligations = true,
                     obligationConflict = conflict,
                 )
-            val source =
+            if (workingDue) CalendarFixture.add(root)
+            val loaded =
                 BundleLoader(AuthorMap(emptyMap())).load(
                     Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
                     BundleKind.SERVED,
                 )
-            return DurableRuntimeFixture(transformBundle = {
-                source.copy(
-                    deployments =
-                        source.deployments + (
-                            "release_native_event" to
-                                source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
-                        ),
-                )
-            }, queryTable = { request ->
-                if ("approved writer fixture" in request.source) {
-                    Table(
-                        listOf(
-                            ManifestColumn("order_number", "text"),
-                            ManifestColumn("route", "text"),
-                            ManifestColumn("verdict_reason", "text"),
-                        ),
-                        listOf(listOf("4711", "release", "approved writer fixture")),
+            val source =
+                if (workingDue) {
+                    val original = loaded.recipes.getValue("release_order")
+                    val recipe =
+                        original.recipe.copy(
+                            objectsRead = original.recipe.objectsRead + "er.entity.date_dim",
+                            wiring =
+                                original.recipe.wiring.map { wiring ->
+                                    if (wiring.action ==
+                                        "expect"
+                                    ) {
+                                        wiring.copy(columns = wiring.columns + ("due" to "working_days(5)"))
+                                    } else {
+                                        wiring
+                                    }
+                                },
+                        )
+                    loaded.copy(
+                        recipes =
+                            loaded.recipes +
+                                (
+                                    "release_order" to
+                                        original.copy(
+                                            recipe = recipe,
+                                            manifest = original.manifest.copy(recipe = recipe),
+                                        )
+                                ),
                     )
                 } else {
-                    Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                    loaded
                 }
-            })
+            return DurableRuntimeFixture(
+                calendarReads = listOf("er.entity.date_dim"),
+                transformBundle = {
+                    source.copy(
+                        deployments =
+                            source.deployments + (
+                                "release_native_event" to
+                                    source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                            ),
+                    )
+                },
+                queryTable = { request ->
+                    if (workingDue && "FROM er.entity.date_dim cal" in request.source) {
+                        Table(
+                            listOf(ManifestColumn("cal_date", "date"), ManifestColumn("working_day", "bool")),
+                            (16..30).map { day ->
+                                val date = java.time.LocalDate.of(2026, 11, day)
+                                listOf(date, date.dayOfWeek.value <= 5 && day != 17)
+                            },
+                        )
+                    } else if ("approved writer fixture" in request.source) {
+                        Table(
+                            listOf(
+                                ManifestColumn("order_number", "text"),
+                                ManifestColumn("route", "text"),
+                                ManifestColumn("verdict_reason", "text"),
+                            ),
+                            listOf(listOf("4711", "release", "approved writer fixture")),
+                        )
+                    } else {
+                        Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                    }
+                },
+            )
         }
 
         fun fulfilmentFixture(
@@ -951,6 +1000,58 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        "S2.9b T1f: the dated obligation survives in the batch and protocol linked evidence" {
+            val f = obligationFixture(workingDue = true)
+            f.base.now = Instant.parse("2026-11-16T12:00:00Z")
+            val runtime = f.start()
+            try {
+                val opened = runtime.sessions.open("release_order", f.request, f.caller)
+                opened.httpStatus shouldBe 201
+                val id = UUID.fromString(opened.response.runId)
+                runtime.sessions.evaluate(id, f.caller)
+                val batch = runtime.status.batch(id, f.caller)
+                val obligation = batch.rows.single { it.entity == "er.entity.obligation" }
+                obligation.row!!["due"] shouldBe JsonPrimitive("2026-11-24")
+                java.time.LocalDate
+                    .parse(
+                        obligation.row!!
+                            .getValue("due")
+                            .jsonPrimitive.content,
+                    ).toString() shouldBe
+                    "2026-11-24"
+                val entries = runtime.protocol.read(id, f.caller).sections
+                val writes =
+                    entries
+                        .getValue("writes")
+                        .single()
+                        .payload.jsonObject
+                writes["batch"] shouldBe JsonPrimitive(batch.batch)
+                writes.getValue("entities").jsonObject["er.entity.obligation"] shouldBe JsonPrimitive(1)
+                val actions =
+                    entries
+                        .getValue("actions")
+                        .map { it.payload.jsonObject }
+                        .filter { it["sink"] == JsonPrimitive("obligation") }
+                actions.size shouldBe 2
+                actions.forEach { action ->
+                    action.getValue("arguments").jsonObject["due"] shouldBe JsonPrimitive("2026-11-24")
+                    action.getValue("batchRows").jsonArray shouldBe JsonArray(listOf(JsonPrimitive(obligation.seq)))
+                }
+                runtime.closer.close(id, f.caller)
+                runtime.status
+                    .batch(
+                        id,
+                        f.caller,
+                    ).rows
+                    .single { it.entity == "er.entity.obligation" }
+                    .row!!["due"] shouldBe
+                    JsonPrimitive("2026-11-24")
+            } finally {
+                runtime.shutdown()
+                f.close()
+            }
+        }
+
         "conflicting obligation due dates leave no durable preview or action evidence" {
             val f = obligationFixture(conflict = true)
             val runtime = f.start()
@@ -1089,6 +1190,178 @@ class RunRuntimeComponentSpec :
             }
         }
 
+        /**
+         * D-206 (F5) + D-210: two runs of one program over overlapping windows, evaluated by the real producers — the
+         * second ([second], [advance] later) plans [entity] rows whose ids its own run seeded and whose [changed] value
+         * differs from the first's; they settle on what the first applied all the same (an insert on a business key: the
+         * first proposal stands), and no row reaches the door.
+         */
+        suspend fun settlesAcrossRuns(
+            first: DurableRuntimeFixture,
+            second: DurableRuntimeFixture,
+            entity: String,
+            advance: java.time.Duration,
+            changed: String,
+            between: () -> Unit = {},
+        ) {
+            val runtimes = mutableListOf<RunRuntime>()
+            try {
+                suspend fun evaluated(
+                    f: DurableRuntimeFixture,
+                    key: String,
+                ): Pair<UUID, RunContext> {
+                    val runtime = f.start().also { runtimes += it }
+                    val opened = runtime.sessions.open("release_order", f.request.copy(idempotencyKey = key), f.caller)
+                    val id = UUID.fromString(opened.response.runId)
+                    runtime.sessions.evaluate(id, f.caller)
+                    // A wet watermark run of program P over [epoch, now) (`prepare`-style: the open is a dry one).
+                    val window = Watermark.port(Watermark.EPOCH, f.clock.instant(), listOf("day"), watermark = true)
+                    transaction {
+                        Runs.update({ Runs.id eq id }) {
+                            it[Runs.dryRun] = false
+                            it[Runs.program] = "P"
+                            it[Runs.port] = window
+                        }
+                    }
+                    runtime.shutdown()
+                    return id to opened.context!!
+                }
+                val (one, _) = evaluated(first, "f5-first")
+                second.base.now = first.base.now.plus(advance)
+                between()
+                val (two, context) = evaluated(second, "f5-second")
+                val theirs = first.ledger.readRunBatch(one, first.caller.sub)
+                first.ledger.recordApply(
+                    UUID.fromString(theirs.batch),
+                    theirs.rows.filter { it.entity == entity }.map {
+                        org.tatrman.automation.writer
+                            .RowOutcome(it.seq, "applied")
+                    },
+                )
+
+                val state = second.ledger.applyState(two, second.caller.sub)
+                val mine = state.plan.rows.filter { it.entity == entity }
+                val earlier = theirs.rows.filter { it.entity == entity }
+                (mine.isNotEmpty() && mine.size == earlier.size) shouldBe true
+                // The run seeds the ids: no key of the re-read's rows is one the first run wrote.
+                (mine.map { it.key }.toSet() intersect earlier.map { it.key }.toSet()) shouldBe emptySet()
+                // D-210: the planned value differs too (a window-relative `due`, a changed writer argument).
+                mine.map { it.row!![changed] } shouldNotBe earlier.map { it.row!![changed] }
+                val recorded = mutableListOf<org.tatrman.automation.writer.RowOutcome>()
+                val metadata = requireNotNull(context.previewMetadata)
+                org.tatrman.automation.writer
+                    .Apply(Door { error("a settled row reaches no door") }, second.clock)
+                    .apply(
+                        org.tatrman.automation.writer.ApplyInput(
+                            two,
+                            context.world,
+                            context.identity,
+                            context.modelFp,
+                            state.deadline,
+                            mine,
+                            state.actions,
+                            requireNotNull(metadata.planSource),
+                            metadata.entities,
+                            emptyList(),
+                            settled = state.settled,
+                        ),
+                        object : org.tatrman.automation.writer.ApplyJournal {
+                            override fun begin(
+                                seqs: List<Int>,
+                                request: String,
+                            ) = error("a settled row is never sent")
+
+                            override fun release(seqs: List<Int>) = Unit
+
+                            override fun record(outcomes: List<org.tatrman.automation.writer.RowOutcome>) {
+                                recorded += outcomes
+                            }
+                        },
+                    )
+                recorded.map { it.seq } shouldBe mine.map { it.seq }
+                recorded.map { it.status to it.error }.toSet() shouldBe
+                    setOf("skipped" to org.tatrman.automation.writer.RowOutcome.SETTLED)
+            } finally {
+                runtimes.forEach { runCatching { it.shutdown() } }
+                first.close()
+                if (second !== first) second.close()
+            }
+        }
+
+        "D-206 (F5) + D-210: an obligation settles on its business identity, its window-relative due not counted" {
+            // `due = as_of + inbound_reminder`: two days later the re-read plans another due — not a second obligation.
+            val f = obligationFixture()
+            settlesAcrossRuns(f, f, "er.entity.obligation", java.time.Duration.ofDays(2), "due")
+        }
+
+        "D-206 (F5) + D-210: a writer-sink row settles on its route row's key, a changed argument not counted" {
+            val root =
+                ApprovalFixture.copyTo(
+                    tempdir(prefix = "automation-bundles-").toPath().resolve("generated"),
+                    generatedIds = true,
+                )
+            val source =
+                BundleLoader(AuthorMap(emptyMap())).load(
+                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
+                    BundleKind.SERVED,
+                )
+            // The proposal's `state` argument is wired to the route row's `verdict_reason` column, so the data decides it
+            // (an action change would be a rebuild — its approval dependencies are pinned — not a re-read).
+            val recipe = source.recipes.getValue("release_order")
+            val wired =
+                recipe.recipe.copy(
+                    wiring =
+                        recipe.recipe.wiring.map {
+                            if (it.action ==
+                                "release"
+                            ) {
+                                it.copy(columns = it.columns + ("state" to "verdict_reason"))
+                            } else {
+                                it
+                            }
+                        },
+                )
+            val selected =
+                source.withWriterStorage("reorder_proposal").copy(
+                    recipes =
+                        source.recipes +
+                            (
+                                "release_order" to
+                                    recipe.copy(recipe = wired, manifest = recipe.manifest.copy(recipe = wired))
+                            ),
+                    deployments =
+                        source.deployments + (
+                            "release_native_event" to
+                                source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                        ),
+                )
+            var state = "proposed"
+            val f =
+                DurableRuntimeFixture(transformBundle = { selected }, queryTable = { request ->
+                    if ("approved writer fixture" in request.source) {
+                        Table(
+                            listOf(
+                                ManifestColumn("order_number", "text"),
+                                ManifestColumn("route", "text"),
+                                ManifestColumn("verdict_reason", "text"),
+                            ),
+                            listOf(listOf("4711", "release", state)),
+                        )
+                    } else {
+                        Table(listOf(ManifestColumn("order_number", "text")), listOf(listOf("4711")))
+                    }
+                })
+            // The first run proposes `proposed`; the re-read reads `approved` for the same route row.
+            settlesAcrossRuns(
+                f,
+                f,
+                "er.entity.reorder_proposal",
+                java.time.Duration.ofSeconds(60),
+                "state",
+                between = { state = "approved" },
+            )
+        }
+
         "writer defaults persist across clock movement close and restart" {
             val loc = SourceLocation.UNKNOWN
 
@@ -1199,152 +1472,19 @@ class RunRuntimeComponentSpec :
 
         // ---- S2.2: the apply through the door, end to end (open → evaluate → close) ----
 
-        fun sqlAuto(text: String) =
-            LedgerTestDb.db.getDataSource().connection.use { c ->
-                c.autoCommit = true
-                c.createStatement().use { it.execute(text) }
-            }
+        fun sqlAuto(text: String) = wetSql(text)
 
-        fun query(text: String): List<List<String?>> =
-            LedgerTestDb.db.getDataSource().connection.use { c ->
-                c.createStatement().use { s ->
-                    s.executeQuery(text).use { rs ->
-                        buildList { while (rs.next()) add((1..rs.metaData.columnCount).map { rs.getString(it) }) }
-                    }
-                }
-            }
+        fun query(text: String): List<List<String?>> = wetQuery(text)
 
-        /**
-         * The default H-1 fixture (route `release` → `release`, a transition placed/held → released, with history) plus
-         * the generated verdict catalog entities of the approval fixture's `release_order`, which the writer lowers
-         * against. ERP = public (sales_order), automation_pg = wet_runtime.
-         */
         fun wetFixture(
             protocol: String? = null,
             routed: Boolean = true,
             initial: String = "held",
             keys: List<String> = listOf("4711"),
             wire: String = "release",
-        ): Triple<DurableRuntimeFixture, org.tatrman.automation.writer.RowWritesQueryFake, Unit> {
-            val root = ApprovalFixture.copyTo(tempdir(prefix = "automation-bundles-").toPath().resolve("branch"))
-            val catalog =
-                BundleLoader(AuthorMap(emptyMap())).load(
-                    Checkout(root, "master", "0123456789abcdef", "po", "po@example.org"),
-                    BundleKind.SERVED,
-                )
-            org.tatrman.automation.writer
-                .Ddl(LedgerTestDb.db.getDataSource(), { listOf("wet_runtime") })
-                .refresh(catalog.copy(recipes = catalog.recipes.filterKeys { it == "release_order" }))
-            val verdicts =
-                (catalog.model.schemas.getValue("er") as ErSchema).entities.filterValues {
-                    it.qname.name.startsWith("release_order_verdict")
-                }
-            sqlAuto(
-                "CREATE SCHEMA IF NOT EXISTS public; DROP TABLE IF EXISTS public.sales_order; " +
-                    "CREATE TABLE public.sales_order " +
-                    "(order_number text PRIMARY KEY, state text NOT NULL, held_for text); " +
-                    "INSERT INTO public.sales_order VALUES ('4711', '$initial', 'AR')",
-            )
-            val fake =
-                org.tatrman.automation.writer.RowWritesQueryFake(
-                    LedgerTestDb.db.getDataSource(),
-                    mapOf("w-erp" to "public", "w-auto" to "wet_runtime"),
-                    bundle = { catalog },
-                )
-            val program = "release_on_placement"
-            val f =
-                DurableRuntimeFixture(
-                    transformBundle = { b ->
-                        val er = b.model.schemas.getValue("er") as ErSchema
-                        val r = b.recipes.getValue("release_order")
-                        val wired =
-                            r.recipe.copy(
-                                wiring =
-                                    r.recipe.wiring.map {
-                                        it.copy(
-                                            action = wire,
-                                            columns =
-                                                mapOf("order" to "order_number") +
-                                                    // release_confirmed also takes the order's value (a literal here).
-                                                    if (wire ==
-                                                        "release_confirmed"
-                                                    ) {
-                                                        mapOf("value" to "100000")
-                                                    } else {
-                                                        emptyMap()
-                                                    },
-                                        )
-                                    },
-                            )
-                        // The Core 0.22.3 fixture's release_confirmed `dry_run` names `{by}`, not a column, which the
-                        // preview refuses (fixed in hartland content by ttr-demo#171); the spec uses a column-only text.
-                        val actions =
-                            b.actions.mapValues { (name, a) ->
-                                if (name == "release_confirmed") {
-                                    a.copy(
-                                        dryRun =
-                                            org.tatrman.ttr.metadata.model.LocalizedText(
-                                                mapOf("en" to "would confirm the release of {order} ({value})"),
-                                            ),
-                                    )
-                                } else {
-                                    a
-                                }
-                            }
-                        val base = b.withActions(actions)
-                        base.copy(
-                            recipes =
-                                b.recipes +
-                                    (
-                                        "release_order" to
-                                            r.copy(recipe = wired, manifest = r.manifest.copy(recipe = wired))
-                                    ),
-                            model =
-                                base.model.copy(
-                                    schemas =
-                                        base.model.schemas + ("er" to er.copy(entities = er.entities + verdicts)),
-                                ),
-                            programs =
-                                b.programs + (
-                                    program to
-                                        b.programs
-                                            .getValue(
-                                                program,
-                                            ).let { p ->
-                                                p.copy(
-                                                    protocol = protocol,
-                                                    port =
-                                                        if (keys.size >
-                                                            1
-                                                        ) {
-                                                            "keys"
-                                                        } else {
-                                                            p.port
-                                                        },
-                                                )
-                                            }
-                                ),
-                        )
-                    },
-                    queryTable = { request ->
-                        Table(
-                            listOf(ManifestColumn("order_number", "text"), ManifestColumn("verdict_reason", "text")),
-                            if (routed ||
-                                "candidates" in request.source
-                            ) {
-                                keys.map { listOf(it, "SQL reason") }
-                            } else {
-                                emptyList()
-                            },
-                        )
-                    },
-                    writeRoutes = "demo/erp_db=w-erp,demo/automation_db=w-auto",
-                    writes = fake,
-                )
-            return Triple(f, fake, Unit)
-        }
+        ) = wetRuntimeFixture(tempdir(prefix = "automation-bundles-").toPath(), protocol, routed, initial, keys, wire)
 
-        fun dropWet() = sqlAuto("DROP SCHEMA IF EXISTS wet_runtime CASCADE; DROP TABLE IF EXISTS public.sales_order")
+        fun dropWet() = dropWetRuntime()
 
         "a committed H-1 run applies through the door; a second run is idempotent; a dry run sends no row_writes" {
             val (f, fake, _) = wetFixture()
@@ -2062,7 +2202,7 @@ private suspend fun eventually(predicate: () -> Boolean) {
     withTimeout(5000) { while (!withContext(Dispatchers.IO) { predicate() }) delay(10) }
 }
 
-private class RuntimeClock(
+internal class RuntimeClock(
     @Volatile var now: Instant,
 ) : Clock() {
     override fun getZone(): ZoneId = ZoneOffset.UTC
@@ -2072,7 +2212,7 @@ private class RuntimeClock(
     override fun instant(): Instant = now
 }
 
-private class DurableRuntimeFixture(
+internal class DurableRuntimeFixture(
     sync: String = "60s",
     private val beforeRead: suspend () -> Unit = {},
     transformBundle: (Bundle) -> Bundle = { it },
@@ -2081,10 +2221,19 @@ private class DurableRuntimeFixture(
     private val queryTable: ((RunRequest) -> Table)? = null,
     private val approvalReader: ApprovalReader? = null,
     private val lookupReads: List<String> = listOf("er.entity.obligation"),
+    private val calendarReads: List<String> = lookupReads,
     private val queryWarnings: (RunRequest) -> Set<String> = { emptySet() },
     /** S2.2: AUTOMATION_DOOR_WRITE_ROUTES, and the row_writes seam (the component fake). */
     writeRoutes: String = "",
     private val writes: QueryRun? = null,
+    /** S3.5: the engine's task history for answer runs (default: none configured). */
+    private val engineHistory: org.tatrman.automation.engine.EngineHistory = org.tatrman.automation.engine.NoEngine,
+    /** S3.5: the service credentials (a deployment that runs as a declared identity needs its own). */
+    private val tokens: ServiceTokens = ServiceTokens(emptyMap(), { error("unused") }),
+    /** The specs run `release_native_event` as its caller; S3.5 keeps its declared `identity.automation_decider`. */
+    runAsCaller: Boolean = true,
+    /** S3.5 review-354 F2: the ledger the runtime gets (a spy injects faults); the fixture's own [ledger] by default. */
+    private val ledgerFor: (Ledger) -> Ledger = { it },
 ) {
     /** Every row_writes request that reached the door — a dry run must leave it at zero (R217-L5). */
     val rowWrites = AtomicInteger()
@@ -2188,6 +2337,9 @@ private class DurableRuntimeFixture(
         }
     val served: Bundle get() = bundle
 
+    /** S3.5: a refresh the runtime sees from now on (the D-99 check of an answer); null = the fixture's bundle. */
+    @Volatile var refreshed: Bundle? = null
+
     private val bundle =
         transformBundle(
             source.copy(
@@ -2198,11 +2350,15 @@ private class DurableRuntimeFixture(
                         if (name == "release_on_placement") p.copy(mode = "batch") else p
                     },
                 deployments =
-                    source.deployments +
-                        (
-                            "release_native_event" to
-                                source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
-                        ),
+                    if (runAsCaller) {
+                        source.deployments +
+                            (
+                                "release_native_event" to
+                                    source.deployments.getValue("release_native_event").copy(runAs = ModelRunAs.Caller)
+                            )
+                    } else {
+                        source.deployments
+                    },
             ),
         ).let { afterPrepare(it.withActions(it.actions)) }
     private val query =
@@ -2213,13 +2369,10 @@ private class DurableRuntimeFixture(
                     .setPlan(PlanNode.newBuilder().setValues(ValuesNode.getDefaultInstance()))
                     .setErReads(
                         ErReadScope.newBuilder().addAllObjects(
-                            if ("_au_obligation_entity_" in
-                                request.source ||
-                                "FROM er.entity.date_dim cal" in request.source
-                            ) {
-                                lookupReads
-                            } else {
-                                emptyList()
+                            when {
+                                "_au_obligation_entity_" in request.source -> lookupReads
+                                "FROM er.entity.date_dim cal" in request.source -> calendarReads
+                                else -> emptyList()
                             },
                         ),
                     ).build()
@@ -2267,7 +2420,7 @@ private class DurableRuntimeFixture(
     fun start() =
         RunRuntime(
             config,
-            { bundle },
+            { refreshed ?: bundle },
             approvalReader ?: ApprovalReader {
                 _,
                 _,
@@ -2275,12 +2428,13 @@ private class DurableRuntimeFixture(
                 ->
                 true
             },
-            ServiceTokens(emptyMap(), { error("unused") }),
-            ledger,
+            tokens,
+            ledgerFor(ledger),
             scope,
             clock,
             query,
             LocalStagingStore(stagingRoot),
+            engineHistory = engineHistory,
         )
 
     fun close() {

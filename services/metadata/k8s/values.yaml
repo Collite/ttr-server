@@ -44,10 +44,18 @@ telemetry:
 # Metadata bundles no fallback model (ttr-server#180): until a configured source
 # has loaded once, /ready answers 503 and /status says why. An empty `gitBranch`/`gitSubdirectory`
 # renders no env var (the metadata service's own defaults apply), and so does one that `extraEnv` already sets.
+#
+# MW-P4 (contracts §1): `gitKind` is the parser kind of that repository, `ttr` (.ttr/.ttrm) or `yaml` (canonical or
+# dialect YAML; METADATA_GIT_KIND). `profile` (METADATA_PROFILE, yaml only) is the profile a tree WITHOUT `ttr.yaml`
+# is read through: an identity from the tree's `profiles/` (`<name>/<major>`) or a path relative to the source root.
+# A tree that declares `ttr.yaml` while `profile` is set fails its load: there is no silent precedence. Declared
+# `metadata.sources` lists (a config file) carry `kind` and `profile` per entry. Empty renders no env var.
 metadata:
   gitRemoteUri: "https://github.com/Collite/ttr-demo.git"
   gitBranch: "master"
   gitSubdirectory: "model"
+  gitKind: ""
+  profile: ""
 
 # CN candidate store: optional; the service needs DB host/password and a token issuer.
 # Empty strings keep the runtime defaults. Passwords/tokens are Secret refs only. Existing

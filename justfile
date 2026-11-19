@@ -420,7 +420,8 @@ conformance-service-level:
     ./gradlew :services:lex-matcher:test --tests '*OverlayDrillTest*'
     just eval-grounding-test
     # RV-P4.4.T3 — the conformance-CONVERSATION tier (the P4 phase gate). Hermetic: the
-    # five hero conversations in conformance/conversations/ driven through golem-py
+    # five hero conversations in conformance/conversations/ (plus four with the LLM lane on,
+    # its legs recorded — OL W1c·S3) driven through golem-py
     # against the resolver's OWN lattice goldens, so a core change fails this the same
     # day it fails the Kotlin tier. The SAME fixtures are what RV-P5's Kotlin Golem must
     # pass (RV-28: one corpus, N shells).
@@ -680,7 +681,7 @@ _release-guard:
 #
 # `what`: one of the image modules (by name or path — see `image_modules`;
 #   GHCR only, RELEASE accepted for interface uniformity but changes nothing),
-#   `bundle server-libs` (the 14-module Maven library set — GH Packages always,
+#   `bundle server-libs` (the 16-module Maven library set — GH Packages always,
 #   + Maven Central on RELEASE), or `wheel <name>` (a pure-Python distribution —
 #   see `wheel_modules`; a bare tag BUILDS ONLY, PyPI upload on RELEASE).
 #   `alchemy` is short for `wheel ttr-sqlalchemy` (no image module is called that).
@@ -716,7 +717,7 @@ publish *args:
         WHAT="wheel ttr-sqlalchemy"
     fi
     if [ -z "$WHAT" ] || [ "$WHAT" = "bundle " ] || [ "$WHAT" = "wheel " ]; then
-        echo "❌ Usage: just publish <module|path|bundle server-libs|wheel NAME|alchemy> [release] [major|minor|patch|set VERSION]" >&2
+        echo "❌ Usage: just publish <module|path|bundle server-libs|wheel NAME|alchemy|n8n-nodes-tatrman> [release] [major|minor|patch|set VERSION]" >&2
         echo "   Wheels: {{wheel_modules}}" >&2
         exit 1
     fi
@@ -760,6 +761,12 @@ publish *args:
             *) echo "❌ No tag prefix known for wheel '$WHEEL_NAME' — add it here and in publish-python.yml." >&2; exit 1 ;;
         esac
         DESC="the ${WHEEL_NAME} wheel (shared/libs/python/${WHEEL_NAME}) → PyPI"
+    elif [ "$WHAT" = "n8n-nodes-tatrman" ] || [ "$WHAT" = "connectors/n8n-nodes-tatrman" ]; then
+        # Not an image module: n8n-nodes.yml publishes the npm package and the derived n8n image,
+        # and refuses a tag that differs from package.json's version (bump it in a PR first).
+        WHAT=n8n-nodes-tatrman
+        PREFIX=n8n-nodes-tatrman
+        DESC="@collite/n8n-nodes-tatrman (npm, GitHub Packages) + ghcr.io/collite/n8n-tatrman"
     else
         # Map image names that differ from their directory basenames explicitly.
         # The connector also lives outside `_resolve`'s search roots; the NLP
@@ -832,6 +839,13 @@ publish *args:
         echo "❌ Version ${NEW_VERSION} already used (as a bare or RELEASE tag) for ${PREFIX}."; exit 1
     fi
 
+    if [ "$PREFIX" = "n8n-nodes-tatrman" ]; then
+        PKG_VERSION=$(node -p 'require("./connectors/n8n-nodes-tatrman/package.json").version')
+        if [ "$RELEASE" = true ] || [ "$PKG_VERSION" != "$NEW_VERSION" ]; then
+            echo "❌ n8n-nodes-tatrman: package.json is ${PKG_VERSION}; the tag must equal it and carries no RELEASE marker."; exit 1
+        fi
+    fi
+
     NEW_TAG="${PREFIX}/v${NEW_VERSION}"
     [ "$RELEASE" = true ] && NEW_TAG="${NEW_TAG}-RELEASE"
 
@@ -841,6 +855,9 @@ publish *args:
         else
             LANES="GH Packages (internal) ONLY — not marked RELEASE, no Central step runs"
         fi
+    elif [ "$PREFIX" = "n8n-nodes-tatrman" ]; then
+        RUNTIME=$(cd connectors/n8n-nodes-tatrman && node scripts/release-metadata.cjs --runtime-version)
+        LANES="npm.pkg.github.com @collite/n8n-nodes-tatrman@${NEW_VERSION} + ghcr.io/collite/n8n-tatrman:${RUNTIME}-${NEW_VERSION} (internal registries only)"
     elif [ "${WHAT%% *}" = "wheel" ]; then
         # PyPI has no internal staging equivalent, so a bare tag has no upload
         # lane at all — it runs the whole BUILD and stops. That is the point of
@@ -909,3 +926,51 @@ om-image-test image="connect-openmetadata:ci":
       -v "$(pwd)/connectors/openmetadata/tests/fixtures/export:/export:ro" \
       -v "$(pwd)/conformance/openmetadata/image_smoke.sh:/image_smoke.sh:ro" \
       --entrypoint sh "{{image}}" /image_smoke.sh | tee "$results/image-summaries.jsonl"
+
+# ── n8n connector lane (connectors/n8n-nodes-tatrman, moved from kantheon in OL W6·S1) ─────────────
+# A standalone pnpm project with its own lockfile: run `pnpm install --frozen-lockfile` in the folder first.
+# Released by the `n8n-nodes-tatrman/v*` tag through n8n-nodes.yml (`just publish n8n-nodes-tatrman …`).
+
+# Custom-node source lint plus source/test type checking (no runtime/server required).
+lint-n8n:
+    cd connectors/n8n-nodes-tatrman && pnpm typecheck && pnpm lint
+
+# Real pinned n8n persistence and workflow engine, isolated from external networks.
+test-n8n-runtime:
+    just build-n8n-image
+    just test-n8n-image
+
+# Verify the built image itself; only test harness scripts are mounted, never compiled nodes.
+test-n8n-image image="n8n-tatrman:local":
+    docker run --rm --platform "${N8N_IMAGE_PLATFORM:-linux/amd64}" --network none --tmpfs /home/node/.n8n:uid=1000,gid=1000 -e EXPECTED_RUNTIME_VERSION="$(cd connectors/n8n-nodes-tatrman && node scripts/release-metadata.cjs --runtime-version)" -e EXPECTED_PACKAGE_VERSION="$(node -p 'require("./connectors/n8n-nodes-tatrman/package.json").version')" -v "$PWD/connectors/n8n-nodes-tatrman/scripts/image-smoke.cjs:/opt/image-smoke.cjs:ro" {{image}} node /opt/image-smoke.cjs
+    docker run --rm --platform "${N8N_IMAGE_PLATFORM:-linux/amd64}" --network none --tmpfs /home/node/.n8n:uid=1000,gid=1000 -v "$PWD/connectors/n8n-nodes-tatrman/scripts/workflow-smoke.cjs:/opt/workflow-smoke.cjs:ro" {{image}} node /opt/workflow-smoke.cjs
+
+# Build the same packed-package input locally and in CI. Existing archives avoid rebuilding
+# checked artifacts in the publish job; otherwise pnpm pack performs its normal prepack build.
+build-n8n-image image="n8n-tatrman:local" package_dir="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    connector="$PWD/connectors/n8n-nodes-tatrman"
+    image_context=$(mktemp -d)
+    trap 'rm -rf "$image_context"' EXIT
+    archive_dir="{{package_dir}}"
+    if [[ -z "$archive_dir" ]]; then
+        archive_dir="$image_context"
+        (cd "$connector" && pnpm pack --pack-destination "$archive_dir")
+    fi
+    archives=("$archive_dir"/*.tgz)
+    [[ ${#archives[@]} -eq 1 && -f "${archives[0]}" ]] || { echo "Expected one packed connector archive" >&2; exit 1; }
+    shasum -a 256 "${archives[0]}"
+    tar -xzf "${archives[0]}" -C "$image_context"
+    docker build --platform "${N8N_IMAGE_PLATFORM:-linux/amd64}" -f "$connector/Dockerfile" -t "{{image}}" "$image_context/package"
+
+# Install the same packed archive with npm in a fresh runtime and reuse scoped workflow JSON.
+test-n8n-install-parity package_dir:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    archive_dir="{{package_dir}}"
+    runtime_image=$(cd connectors/n8n-nodes-tatrman && node scripts/release-metadata.cjs --runtime-image)
+    archives=("$archive_dir"/*.tgz)
+    [[ ${#archives[@]} -eq 1 && -f "${archives[0]}" ]] || { echo "Expected one packed connector archive" >&2; exit 1; }
+    shasum -a 256 "${archives[0]}"
+    docker run --rm --platform "${N8N_IMAGE_PLATFORM:-linux/amd64}" --network none --entrypoint node -e NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules -e N8N_TEST_PACKAGE_ARCHIVE=/opt/connector.tgz -v "${archives[0]}:/opt/connector.tgz:ro" -v "$PWD/connectors/n8n-nodes-tatrman/scripts/workflow-smoke.cjs:/opt/workflow-smoke.cjs:ro" "$runtime_image" /opt/workflow-smoke.cjs

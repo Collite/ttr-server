@@ -11,44 +11,110 @@ bundled protoc + grpc_python plugin.
 conformance, not code reuse. The proto IS the interface both sides implement, and it
 is on the MAY-consult list.
 
+**`plan.v1` is not generated here (OL-C12).** Its `.proto` files belong to
+`org.tatrman:ttr-plan-proto`, whose Python lane is the published `ttr-plan-proto` wheel
+pinned in `pyproject.toml`. The wheel ships `_pb2` modules only, so protoc reads those
+files' descriptors from the INSTALLED wheel (`--descriptor_set_in`) and the generated
+stubs import `org.tatrman.plan.v1.*_pb2` from it at run time. For that import to work,
+`generated/org` and `generated/org/tatrman` stay PEP 420 namespace packages — an
+`__init__.py` at either level would make this tree shadow the wheel's (the same rule
+`shared/proto`'s Python lane follows).
+
 Run:  uv run python scripts/gen_proto.py
-Output: services/golem-py/generated/org/tatrman/{resolver,nlp,common}/v1/*.py(i)
+Output: services/golem-py/generated/org/tatrman/{resolver,nlp,common,meta,worker,
+        validate,translate,query}/v1/*.py(i)
 """
 
 from __future__ import annotations
 
+import importlib
 import sys
+import tempfile
 from pathlib import Path
 
+import grpc_tools
+from google.protobuf import descriptor_pb2
 from grpc_tools import protoc
 
 SERVICE_DIR = Path(__file__).resolve().parent.parent
 # services/golem-py -> repo root (tatrman-server)
 REPO_ROOT = SERVICE_DIR.parent.parent
 PROTO_ROOT = REPO_ROOT / "shared" / "proto" / "src" / "main" / "proto"
+# The well-known `google/protobuf/*.proto` ship with grpcio-tools.
+# ⚑ OL W1c·S3a (D-43): no `llm.v1` stubs. Gateway 2.0 serves HTTP only, and the lane's client
+# speaks it (`golem_py.llm_client`); the shared `proto-llm` module stays for its producers.
+WELL_KNOWN_ROOT = Path(grpc_tools.__file__).resolve().parent / "_proto"
 OUT_DIR = SERVICE_DIR / "generated"
 
 # resolver.proto is the door (`Resolve` + the RV-P2.4 `Gate` sibling); it imports
 # nlp.proto for the parse passthrough, which in turn imports common. Imported files
 # must be generated too — protoc only emits for the files it is given.
+#
+# OL W1c·S1: `query.v1` (the SQL door, OL-C12) with what it imports — `worker.v1` (the
+# `ResultBatch` it streams) + `validate.v1`, `translate.v1`'s `translate.proto` — then
+# `meta.v1` (the model slice, OL-C14).
+# `translate/v1/translator.proto` (`Language`) is the wheel's, like `plan.v1`.
 PROTOS = [
     "org/tatrman/resolver/v1/resolver.proto",
     "org/tatrman/nlp/v1/nlp.proto",
     "org/tatrman/common/v1/response_message.proto",
+    "org/tatrman/meta/v1/meta.proto",
+    "org/tatrman/validate/v1/validate.proto",
+    "org/tatrman/worker/v1/worker.proto",
+    "org/tatrman/translate/v1/translate.proto",
+    "org/tatrman/query/v1/query.proto",
 ]
 
+# The wheel's modules, dependencies before dependants (protoc reads the set in order).
+PLAN_MODULES = [
+    "org.tatrman.plan.v1.parameters_pb2",
+    "org.tatrman.plan.v1.plan_pb2",
+    "org.tatrman.plan.v1.context_pb2",
+    "org.tatrman.translate.v1.translator_pb2",
+]
 
-def _ensure_namespace_inits(out_dir: Path) -> None:
-    """protoc emits per-package dirs but no `__init__.py`; add them so the
-    `org.tatrman.*.v1` packages import cleanly under pytest."""
+# Levels shared with the `ttr-plan-proto` wheel: namespace packages, never regular ones.
+_NAMESPACE_LEVELS = 2  # org, org/tatrman
+# `org/tatrman/translate` is shared too: the wheel owns `translate.v1.translator_pb2` and
+# this tree generates `translate.v1.translate_pb2` beside it, so both levels of
+# `translate/` (and its `v1/`) must merge rather than shadow (see `_SHARED_PACKAGES`).
+_SHARED_PACKAGES = {("org", "tatrman", "translate"), ("org", "tatrman", "translate", "v1")}
+
+
+def _clear_namespace_inits(out_dir: Path) -> None:
+    """A tree generated before OL W1c·S1 has `__init__.py` at `org/` and
+    `org/tatrman/`; left in place they shadow the wheel's `org.tatrman.plan`."""
+    for level in (out_dir / "org", out_dir / "org" / "tatrman"):
+        init = level / "__init__.py"
+        if init.exists():
+            init.unlink()
+    importlib.invalidate_caches()
+
+
+def _ensure_package_inits(out_dir: Path) -> None:
+    """protoc emits per-package dirs but no `__init__.py`; add them below the shared
+    namespace levels so the `org.tatrman.*.v1` packages import cleanly under pytest."""
     for proto in PROTOS:
         parts = Path(proto).parent.parts  # ('org','tatrman','resolver','v1')
         cur = out_dir
-        for part in parts:
+        for depth, part in enumerate(parts, start=1):
             cur = cur / part
+            if depth <= _NAMESPACE_LEVELS or tuple(parts[:depth]) in _SHARED_PACKAGES:
+                continue
             init = cur / "__init__.py"
             if not init.exists():
                 init.write_text("# generated namespace package\n", encoding="utf-8")
+
+
+def _plan_descriptor_set() -> bytes:
+    """The installed wheel's `plan.v1` files as a `FileDescriptorSet` for protoc."""
+    fds = descriptor_pb2.FileDescriptorSet()
+    for name in PLAN_MODULES:
+        module = importlib.import_module(name)
+        proto = descriptor_pb2.FileDescriptorProto()
+        module.DESCRIPTOR.CopyToProto(proto)
+        fds.file.append(proto)
+    return fds.SerializeToString()
 
 
 def main() -> int:
@@ -56,20 +122,36 @@ def main() -> int:
         print(f"proto root not found: {PROTO_ROOT}", file=sys.stderr)
         return 2
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    _clear_namespace_inits(OUT_DIR)
 
-    args = [
-        "grpc_tools.protoc",
-        f"-I{PROTO_ROOT}",
-        f"--python_out={OUT_DIR}",
-        f"--pyi_out={OUT_DIR}",
-        f"--grpc_python_out={OUT_DIR}",
-        *PROTOS,
-    ]
-    rc: int = protoc.main(args)
+    try:
+        plan_set = _plan_descriptor_set()
+    except ImportError as exc:
+        print(
+            f"the ttr-plan-proto wheel is not importable ({exc}) — run `uv sync`",
+            file=sys.stderr,
+        )
+        return 3
+
+    with tempfile.TemporaryDirectory() as tmp:
+        plan_set_path = Path(tmp) / "ttr-plan-proto.pb"
+        plan_set_path.write_bytes(plan_set)
+        args = [
+            "grpc_tools.protoc",
+            f"-I{PROTO_ROOT}",
+            f"-I{WELL_KNOWN_ROOT}",
+            f"--descriptor_set_in={plan_set_path}",
+            f"--python_out={OUT_DIR}",
+            f"--pyi_out={OUT_DIR}",
+            f"--grpc_python_out={OUT_DIR}",
+            *PROTOS,
+        ]
+        rc: int = protoc.main(args)
     if rc != 0:
         print(f"protoc failed with code {rc}", file=sys.stderr)
         return rc
-    _ensure_namespace_inits(OUT_DIR)
+    _ensure_package_inits(OUT_DIR)
+    importlib.invalidate_caches()
     print(f"generated proto stubs → {OUT_DIR}")
     return 0
 

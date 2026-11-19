@@ -44,6 +44,9 @@ backends:
     host: money
     grpcPort: 7222
 
+# Any other env. GROUNDING_STATUS_TTL_SECONDS (default 60) is how long chrono's GetStatus answer is
+# kept: scan_time calls Scan only while chrono declares capabilities["scan"]="true", else it answers
+# the tool error `not_available` (OL-C4).
 extraEnv: []
 
 readinessProbe:

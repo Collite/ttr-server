@@ -1,0 +1,138 @@
+{
+  "id": "ol-lane-door-repair",
+  "description": "OL W1c·S3 — H1 with the lane on, the door rejecting the first query once. The first query passes the checks (an attribute name is not something the checks can know) and the door's translator refuses it; its code and text — the shape bp-dsk's door returned on 2026-11-17 for the same mistake — go back to the model in the ONE repair call, and the repaired query answers. Two LLM calls, two door calls, and the envelope carries the query that ran.",
+  "surface": "golem",
+  "corpus": "hartland_cz",
+  "invariants": [
+    "the lane is what emit does when it is on; the verdicts do not change and nothing in it binds (OL-C11)",
+    "the door runs the query under the CALLER's subject, whoever wrote it (OL-C12)",
+    "a door rejection buys exactly one repair call, and the repair sees the door's own words (OL-C16)",
+    "the envelope's SQL is the query the door ran, never the one it refused"
+  ],
+  "turns": [
+    {
+      "tool": "golem.turn:v1",
+      "args": {
+        "conversation_id": "c-ol-repair",
+        "turn_id": "t-1",
+        "text": "Zobraz náklady účtu 501001 v roce 2025 podle období",
+        "locale": "cs",
+        "caller_subject": "user-a",
+        "profile": "CHAT_QUICK"
+      },
+      "core": {
+        "lattice": "h1-cs"
+      },
+      "lane": {
+        "slice": "cost-ledger",
+        "world": "hartland_cz",
+        "reference_date": "2026-11-16",
+        "gateway": {
+          "model": "capable-fixture",
+          "replies": [
+            {
+              "sql": "SELECT DATE_TRUNC('month', e.booked_on) AS obdobi, SUM(e.amount) AS naklady FROM er.entity.cost_entry e JOIN er.entity.account a ON e.account_id = a.account_id WHERE a.number = '501001' AND e.booked_on >= DATE '2025-01-01' AND e.booked_on < DATE '2026-01-01' GROUP BY DATE_TRUNC('month', e.booked_on) ORDER BY obdobi",
+              "handled_spans": [],
+              "note": "costs of account 501001 per month of 2025"
+            },
+            {
+              "sql": "SELECT DATE_TRUNC('month', e.booked_on) AS obdobi, SUM(e.amount) AS naklady FROM er.entity.cost_entry e JOIN er.entity.account a ON e.account_id = a.account_id WHERE a.code = '501001' AND e.booked_on >= DATE '2025-01-01' AND e.booked_on < DATE '2026-01-01' GROUP BY DATE_TRUNC('month', e.booked_on) ORDER BY obdobi",
+              "handled_spans": [],
+              "note": "the account's code column is `code`"
+            }
+          ]
+        },
+        "door": [
+          {
+            "rejected": {
+              "code": "translator_rejected",
+              "message": "Column 'number' not found in table 'a' — did you mean: name?"
+            }
+          },
+          {
+            "columns": [
+              "obdobi",
+              "naklady"
+            ],
+            "rows": [
+              [
+                "2025-01-01",
+                48210.0
+              ],
+              [
+                "2025-02-01",
+                50961.0
+              ],
+              [
+                "2025-03-01",
+                53712.0
+              ],
+              [
+                "2025-04-01",
+                49585.5
+              ],
+              [
+                "2025-05-01",
+                52336.5
+              ],
+              [
+                "2025-06-01",
+                48210.0
+              ],
+              [
+                "2025-07-01",
+                50961.0
+              ],
+              [
+                "2025-08-01",
+                53712.0
+              ],
+              [
+                "2025-09-01",
+                49585.5
+              ],
+              [
+                "2025-10-01",
+                52336.5
+              ],
+              [
+                "2025-11-01",
+                48210.0
+              ],
+              [
+                "2025-12-01",
+                50961.0
+              ]
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "outcome": "answer",
+        "llm_invocations": 2,
+        "asks": 0,
+        "measures": [
+          "md.measure.cost"
+        ],
+        "gaps_carried": [],
+        "lane": "llm",
+        "llm_model": "capable-fixture",
+        "sql": "SELECT DATE_TRUNC('month', e.booked_on) AS obdobi, SUM(e.amount) AS naklady FROM er.entity.cost_entry e JOIN er.entity.account a ON e.account_id = a.account_id WHERE a.code = '501001' AND e.booked_on >= DATE '2025-01-01' AND e.booked_on < DATE '2026-01-01' GROUP BY DATE_TRUNC('month', e.booked_on) ORDER BY obdobi",
+        "rows": 12,
+        "llm_handled_spans": [],
+        "door_calls": 2,
+        "door_subject": "user-a",
+        "prompt_states": [
+          [
+            "reference date (today, for relative periods): 2026-11-16"
+          ],
+          [
+            "Column 'number' not found in table 'a'",
+            "a.number = '501001'"
+          ]
+        ],
+        "no_binding_below_threshold": true
+      }
+    }
+  ]
+}

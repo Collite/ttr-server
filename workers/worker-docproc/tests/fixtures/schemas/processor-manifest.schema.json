@@ -218,6 +218,11 @@
           "type": "array",
           "uniqueItems": true
         },
+        "candidates_on_abstain": {
+          "description": "How many of an abstaining link's top candidates its derived Mention carries (linkMethod abstain) for link-pick; 0 writes none. Default 5, never more than k.",
+          "minimum": 0,
+          "type": "integer"
+        },
         "categories": {
           "additionalProperties": {
             "items": {

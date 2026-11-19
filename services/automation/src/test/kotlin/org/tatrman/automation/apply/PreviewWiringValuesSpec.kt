@@ -538,6 +538,53 @@ class PreviewWiringValuesSpec :
             result["on_due"] shouldBe JsonPrimitive("hold")
             result["group_by"] shouldBe JsonPrimitive(2)
         }
+
+        "review-376 B1: the private due date never resolves an authored reference, and authored bindings keep theirs" {
+            val asOf = mapOf("as_of" to BoundValue("datetime", java.time.Instant.parse("2026-11-18T23:30:00Z")))
+            val declared =
+                ask.copy(
+                    columns =
+                        ask.columns +
+                            listOf(
+                                ask.columns.first().copy(name = "due", type = "date"),
+                                ask.columns.first().copy(name = "other", type = "date"),
+                            ),
+                )
+            val prague = java.time.ZoneId.of("Europe/Prague")
+            val cases =
+                listOf(
+                    declared to mapOf("other" to ":_au_due_on_0"),
+                    declared to mapOf("other" to ":_au_due_on_0", "due" to "days(2)"),
+                    declared.copy(due = AutomationDuration(2.0, "days")) to mapOf("other" to ":_au_due_on_0"),
+                )
+            for ((action, sources) in cases) {
+                for (rows in listOf(table.rows, emptyList())) {
+                    val error =
+                        shouldThrow<AutomationException> {
+                            PreviewWiringValues.project(
+                                PreviewWiringValues.prepare(sources, action),
+                                table.copy(rows = rows),
+                                asOf,
+                                roleNames = emptySet(),
+                                zone = prague,
+                            )
+                        }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                }
+            }
+            val authored = asOf + ("_au_due_on_0" to BoundValue("date", LocalDate.parse("2026-01-02")))
+            val kept =
+                PreviewWiringValues
+                    .project(
+                        PreviewWiringValues.prepare(mapOf("other" to ":_au_due_on_0", "due" to "days(2)"), declared),
+                        table,
+                        authored,
+                        roleNames = emptySet(),
+                        zone = prague,
+                    ).single()
+            kept["other"] shouldBe JsonPrimitive("2026-01-02")
+            kept["due"] shouldBe JsonPrimitive("2026-11-21")
+        }
     })
 
 private fun PreviewWiringValues.project(

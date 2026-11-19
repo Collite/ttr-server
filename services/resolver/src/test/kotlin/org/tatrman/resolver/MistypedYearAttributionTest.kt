@@ -1068,7 +1068,9 @@ class MistypedYearAttributionTest :
                 return answer(request)
             }
 
-            override suspend fun getStatus(): GetStatusResponse = GetStatusResponse.getDefaultInstance()
+            // OL-C1: this kernel implements Scan, so it declares it — the resolver calls Scan only then (OL-C2).
+            override suspend fun getStatus(): GetStatusResponse =
+                GetStatusResponse.newBuilder().putCapabilities("scan", "true").build()
         }
 
         /**

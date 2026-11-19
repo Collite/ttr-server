@@ -12,6 +12,13 @@ application {
     mainClass.set("org.tatrman.metadata.ApplicationKt")
 }
 
+// ✅D-MW-86 (MW S4.1): Zip64 for the fat jar — at grammar 0.22.7 automation's shadowJar is 64 636 / 65 535 entries of
+// legitimate library weight. The structural reductions are ttr-core's (`ttr-concept-cli` split; the `ttr-yaml` validator
+// stack, S1.5.9 Found 3). Precedent: tools/query-mcp.
+tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>().configureEach {
+    isZip64 = true
+}
+
 jib {
     from {
         image = "ghcr.io/collite/eclipse-temurin:21-jre" // mirror of the Docker official image (mirror-base-images.yml)
@@ -62,6 +69,9 @@ dependencies {
     // ttr-parser/writer/semantics as `api`, so those three are NOT declared here
     // (MetadataExportRoutes still imports them — they arrive transitively).
     implementation(libs.tatrman.ttr.metadata)
+    // MW S4.2 review-380: ttr-metadata's POM has ttr-profile at runtime only; the yaml source's cap and the
+    // promotion guard read declarations (DeclarationReader, FileSelector) as the loader does. Same version as its POM.
+    implementation(libs.tatrman.ttr.profile)
     implementation(libs.tomlj)
     // #272: YAML validity and JSON projection only; no report renderer dependency.
     implementation(libs.snakeyaml.engine)
@@ -121,6 +131,8 @@ dependencies {
 
     testImplementation(libs.bundles.kotest)
     testImplementation(libs.tatrman.ttr.metadata.cli)
+    // MW S4.2 — specs write a `.ttrm` fixture as canonical YAML through the library's own writer.
+    testImplementation(libs.tatrman.ttr.yaml)
     testImplementation(libs.mockk)
     // In-process gRPC server (review-004 R3.2 — live GetPrompts round-trip).
     testImplementation(libs.grpc.inprocess)

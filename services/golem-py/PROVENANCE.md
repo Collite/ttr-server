@@ -39,6 +39,7 @@ scoring input, never a source.
 | `tatrman-server` **`.proto` files** | the wire contract. Generating stubs from a shared proto is contract conformance, not code reuse — the proto IS the interface both sides implement |
 | Public **Pydantic AI / pydantic-graph** documentation (via context7) | framework API |
 | `Collite/ttr-demo` `model/` + `model/lexicon/` | the fixture estate (`hartland_cz`) |
+| `project/common/open-paid-line/implementation/contracts.md` **§C** (OL-C11…C19) | the LLM lane's specification: where it runs, the door, the gateway, the model slice, the reply's shape, budget/repair/refusal, the envelope (OL W1c, added by W1c·S1·T1) |
 
 ## Off-limits — the complete list
 
@@ -48,6 +49,7 @@ scoring input, never a source.
 | **`EXAMPLES.md`'s "Python + LangGraph agent" row** and anything it points at | it is a pointer *into* the legacy agent |
 | any legacy **prompt text**, **eval fixture**, or **agent config** | expression, not interface |
 | the legacy Golem's **conversation corpora** | fixtures are `hartland_cz` only |
+| the **Kantheon Golem's code** (OL-C19) | a second agent implementation; the lane is specified by contracts §C, not by another Golem |
 
 ## Compliance record
 
@@ -73,5 +75,56 @@ scoring input, never a source.
   (`ValueFinding.verbatim_text` / `predicate_ref`, `VALUE_KIND_VERBATIM`), the resolver's
   `LatticeAssembler` (the producer of the VERBATIM value, this repo), the LP `contracts.md`
   §2/§5/§8 and `review-103.md` (Tatrman project documents), and this directory's own code.
+- **2026-11-16 · OL W1c·S1, the door, the gateway, the model slice.** Clean-room observed.
+  The legacy predecessor-platform repository was not opened, listed or searched in the session that
+  made this change; `EXAMPLES.md` was not opened; the Kantheon Golem's code was not opened. What WAS
+  read: OL `contracts.md` §C and §H, the stage list and the OL plan / architecture (Tatrman project
+  documents); the shared `.proto` tree (`query.v1`, `worker.v1`, `meta.v1`, `common.v1`) and
+  `shared/proto-llm`'s `llm_gateway.proto`; the published `ttr-plan-proto` wheels' file lists and
+  `plan.v1` descriptors (0.8.4, 0.12.11, 0.14.1), and the field numbers of `PipelineContext`, `SchemaCode`
+  and `QualifiedName` in the `ttr-plan-proto` 0.14.1 artefact — the newest published wheel whose `plan.v1` equals
+  the JVM pin's (today wheel 0.14.1 for JVM 0.14.3, unchanged); the wheel pin moves when a wheel with a `plan.v1`
+  change ships;
+  `shared/proto/build.gradle.kts` for the Python lane's pin; this directory's own code.
+- **2026-11-16 · OL W1c·S2, the LLM lane at `emit`.** Clean-room observed. The legacy
+  predecessor-platform repository was not opened, listed or searched in the session that made this
+  change; `EXAMPLES.md` was not opened; the Kantheon Golem's code was not opened, and no prompt text
+  from any other agent was read — `config/llm-lane-prompt.md` was written from OL-C14/C15 alone. What
+  WAS read: OL `contracts.md` §C, the stage list, the OL plan / architecture and W1c·S1's list
+  (Tatrman project documents); the shared `.proto` tree (`resolver.v1`'s `ResolveContext`); this
+  directory's own code and tests.
+- **2026-11-17 · AU S2.4 review-328 F4, compatibility comments only.** Clean-room observed: no legacy predecessor
+  source, `EXAMPLES.md`, or Kantheon Golem code was read. Read this directory's `pyproject.toml` and `PROVENANCE.md`,
+  the JVM version catalog and review-328's compatibility evidence. The wheel remains pinned to 0.14.1.
+- **2026-11-17 · OL W1c·S3: conversations with the lane on, the CLI wiring, the release.**
+  Clean-room observed. No legacy predecessor-platform repository, `EXAMPLES.md`, legacy
+  conversation corpus or Kantheon Golem code was opened, listed or searched in this session, and
+  no prompt text from any other agent was read. What WAS read:
+  - Tatrman project documents: OL `contracts.md` §C and §H, the stage list, the plan and
+    review-329, whose ✅R329-C carry is T0.
+  - The shared `.proto` tree (`llm_gateway.proto`, `resolver.v1`).
+  - The resolver's lattice goldens and their `PROVENANCE.md`.
+  - `conformance/conversations/` and its `SCHEMA.md`.
+  - This repo's `release-image.yml`, `PUBLISHING.md` and `justfile`.
+  - The route list, ports and chart values of this repo's own `services/llm-gateway`, read
+    only to learn which wire it serves.
+  - This directory's own code and tests.
+
+  The live probes of bp-dsk's `meta.v1`, `query.v1` and gateway ports used this directory's
+  own clients.
+- **2026-11-17 · OL W1c·S3a: the HTTP gateway client and the CLI's operator library.**
+  Clean-room observed. No legacy predecessor-platform repository, `EXAMPLES.md`, legacy
+  conversation corpus or Kantheon Golem code was opened, listed or searched in this session, and
+  no prompt text from any other agent was read. The HTTP client was written from the amended
+  OL-C13. What WAS read:
+  - Tatrman project documents: OL `contracts.md` §C (OL-C13 as amended by D-43 and this stage's
+    Found 1 ruling), the OL design / control room (D-43), the stage list and planning Rule 4; the
+    gateway's own `contracts.md` §§1.1–1.3, 1.7 and 2.1–2.3, which OL-C13 names as the wire
+    authority.
+  - This repo's own `services/llm-gateway` `catalog.yaml`, `governance.yaml` and
+    `ModelResolver.kt`, read only to learn how a model class is routed.
+  - This directory's own code and tests, and the installed `httpx` package's behaviour.
+
+  The live probes of bp-dsk's gateway used a throwaway script and then this directory's own client.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.

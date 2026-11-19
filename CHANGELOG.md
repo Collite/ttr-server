@@ -16,6 +16,210 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata 0.12.9 — GET /model/layout?tags= (MW S4.3b).** Tag sets now select a computed layout from the same
+  `ResolveTags` closure as the service, with `schema=er|db` (default `er`); callers wanting both make two calls.
+  Layouts cache by normalized tag set and schema until the next registry snapshot, with a stable ETag per response.
+  `name` plus `tags`, unknown schemas and blank tag members return 400. The grammar/metadata family moves from
+  0.22.9 to internal Core 0.22.12, which also serves authored YAML layouts; translator/plan-proto remain 0.14.4.
+  Rebuild JVM consumers together for Core's `LayoutFileRef` changes; the old-arity `copy` remains incompatible.
+
+- **automation 0.11.46 — working_days due over the calendar (S2.9b, closes ttr-server#449).**
+  A declared date-valued `due: working_days(n)` (literal, bound parameter or action default) becomes the n-th
+  working day strictly after `as_of`'s date in the world's configured zone. `n = 0` means the first working day
+  after that date. The Server reuses the governed calendar snapshot and requires its entity in `objectsRead`;
+  no implicit read is granted. A short horizon refuses with `501 preview-unsupported`, `cause: calendar-horizon`,
+  naming the wiring and `due`. Mixed-unit `case` due expressions remain named refusals (D-254).
+
+- **metadata — the `yaml` source kind (MW-P4 S4.2; MW-P4 contracts §1, ✅D-MW-60).** `metadata.sources.<id>.kind`
+  accepts `yaml` (`METADATA_GIT_KIND` / `METADATA_GIT2_KIND`; chart `metadata.gitKind`): a git or filesystem tree of
+  canonical or dialect YAML, read through `ttr-metadata`'s `YamlFileSource` with the profiles of the tree's own
+  `profiles/`. `profile` / `METADATA_PROFILE` (chart `metadata.profile`) applies only to a tree without `ttr.yaml`; both
+  is a startup error on a filesystem source and a `profile_conflict` load failure on a git source. `meta.v1.SourceStatus`
+  gains `kind` (16) and `profile` (17), `/status` `sources[]` gains `kind` and `profile`, and a strict-swap refusal
+  names `ys/*` issues `file:line:col`. A CN promotion source whose tree profile or any content file's own `ttr` header names a dialect is
+  `409 promotion_target_dialect`.
+  `metadata.yaml.maxInputCodePoints` (`METADATA_YAML_MAX_INPUT_CODE_POINTS`, default half the heap at ~500 B per code
+  point) fails the load with `yaml_input_budget` before the engine runs when the files dialect profiles read exceed it
+  (a file's own header counts; canonical and `model.ignore`d files do not). For every
+  source kind, an `er2db_entity` with `whereFilter: {sql: <c>}` is served as the query `<entity>__filter`
+  (`SELECT * FROM <table> WHERE <c>`) and its mapping as that query; another form is a located warning, a name clash
+  a load error (✅D-MW-67 (c′)).
+
+- **automation 0.11.45 — `expect.due` days/weeks/literal lowered; working_days named (S2.9a, D-249; refs #449).**
+  An action whose declared `due` column is a `date` (the stock `expect`) and whose wiring gives `due` a duration —
+  `days(n)`, `weeks(n)`, the juxtaposed `2 days`, a bound parameter in either (`days(:inbound_reminder)`), or the
+  action's own `due:` default when the wiring omits `due` — now previews the **date** `as_of` + the duration, where it
+  used to refuse with `cause: TtrpEmitException`. `as_of`'s date is taken in the world's zone: new setting
+  `automation.worldZones` / `AUTOMATION_WORLD_ZONES`, comma-separated `world=Region/City` pairs (`demo=Europe/Prague`);
+  an unmapped world is UTC; a fixed offset (`+01:00`, `GMT+1`, a fixed-rule region such as `Etc/GMT+1`) or an unknown zone fails at start. A `working_days` due
+  needs the calendar, and no recipe declares that read yet: it is refused by name — `501 preview-unsupported`,
+  `detail.cause: "working-days-due-needs-calendar"`, `expression: "due"` — even on an empty or unselected route.
+  S2.9b computes it. Undeclared `due` (wiring evidence) and every non-duration date expression are unchanged.
+
+- **Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.22.7 → 0.22.9; translator/plan-proto 0.14.3 → 0.14.4
+  (MW S4.2b, ✅D-MW-99; absorbs AU S2.7).** ttr-core 0.22.9 (Collite/ttr-core#426): the YAML schemas are no longer
+  preloaded, so a `yaml` load no longer holds ~240 MB of schema validators for the life of the process (16 MB retained
+  after a canonical demo-cs load, measured in ttr-core); a dialect file over 6 000 000 code points is refused at read
+  with `ys/profile-invalid` "Canonical document <file> exceeds 6000000 code points" and the source loads the rest; the
+  typed `er2db_entity` mapping carries its `whereFilter`; an explicit `er2db_attribute` with a bare column anchors
+  under a standalone entity's table. Translator 0.14.4 (Collite/ttr-core#424) types a CASE/UNION of ragged string
+  literals as VARCHAR. grammar 0.22.9 was built on translator 0.14.4, so both lines move together: one translator line
+  across metadata, resolver, automation and translate.
+
+- **automation 0.11.44 — `preview-unsupported` names the wiring and logs its cause (ttr-server#443).**
+  A dry run's `501 preview-unsupported` from an action expression, a condition, a native writer, obligation or
+  obligation transition mapping, or the obligation snapshot now carries `detail: { wiring, action, kind, expression?,
+  cause }` — the wiring's key (`#<position>:<routes>-><action>`), `kind` (`expression` · `condition` · `mapping` ·
+  `snapshot`; a snapshot names no wiring), the expression's declared argument name (`when` for a condition) and the
+  cause: the compiler diagnostic id (`TTRP-EXP-001`, `TTRP-FN-001` …), the check's name (`comparison-kinds`,
+  `non-finite`, `writer-mapping`, `obligation-mapping`, `obligation-transition`, `obligation-snapshot` …) or the
+  exception class (`SQLException` …). The message is unchanged; generated SQL and bound values are still never shown.
+  The failed run stores the same detail in its `error` (`GET /automation/runs/{id}`) and its protocol gains one
+  `automation` entry `{ event: "failed", status: "failed", error }`; every other failure stays code-only, as before. One
+  WARN line per refusal (`org.tatrman.automation.apply.PreviewRefusals`) names the run id and the wiring and carries the
+  cause's message with bound values, dates derived from them, and route values of three characters or more replaced by
+  `?` (a bound value under three characters only where it stands alone). No migration; nothing that was supported
+  changes.
+
+- **automation 0.11.43 — an answer run decides the answered key's held rows at Open (D-159 completed; ttr-server#429).**
+  A verified engine answer (`engine.taskId` + `answeredBy`, from the engine client) no longer re-runs the recipe and
+  holds the approved key again: it finds the instance's run that held the key (waiting, or closed: a decided key replays
+  `200`), commits that key's held group (D-99 first; no `role.ops`), records `{ decision, by, at, answer }` on the rows
+  and closes at Open — a run of the new kind `answer`
+  (migration V14), `201 { status: "closed", answer: {…} }`. Its `evaluate`, part reads and `close` are
+  `409 close-not-ready · answer-run`; unmatched answers are the new `409 answer-unmatched`; `engine.decision` other than
+  `approve` is `400 engine · decision-unsupported`; a bare-scalar `port.key` is `400 port · key-not-object`, and `port.key` is matched verbatim (`no-held-key` lists the held keys). Run status
+  gains `kind`, `answer`, `actions[].decided` and `batch.held`. V14 only widens the `kind` check and adds two indexes;
+  Flyway's default ignores it as a future migration on a rollback below 0.11.43, whose service then reads `answer` runs
+  as closed runs and runs an answer Open as an ordinary run again (the pre-S3.5 behaviour).
+
+- **Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.22.3 → 0.22.7; translator/plan-proto stay 0.14.3 (MW S4.1).**
+  Load diagnostics in metadata's `/health` and in refresh warnings now report 1-based columns: the same file shows a
+  column one higher than before (`x.ttrm:12:5` where 0.22.3 showed `x.ttrm:12:4`; `:0:0` still means "no position").
+  metadata, resolver and automation resolve a single translator line (0.14.3; on 0.22.3 automation and resolver took
+  0.14.1 transitively). The `yaml` source kind and `MetadataLoader.of` arrive in the reader. `grounding-lexicon`'s next
+  server-libs POM names ttr-lexicon/ttr-snapshot 0.22.7. The three readers' fat jars are built with Zip64 (✅D-MW-86).
+
+- **golem-py: the LLM lane calls the gateway over HTTP; the CLI loads the operator library
+  (OL W1c·S3a, D-43).**
+  - Gateway 2.0 is REST-only, so the lane's client now sends one non-streaming
+    `POST {GOLEM_LLM_TARGET}/chat/completions`: system and user messages, `temperature: 0`,
+    `response_format: json_object`, and the team key as `Authorization: Bearer`. It no longer
+    calls `llm.v1 CreateResponse` (nothing served it), and golem-py no longer generates
+    `llm.v1` stubs. The shared `proto-llm` module is unchanged.
+  - **Migration:** `GOLEM_LLM_TARGET` is now an HTTP(S) base URL ending in `/v1` (bp-dsk:
+    `http://llm-gateway.ttr-server.svc.cluster.local:7280/v1`), not `host:port`. The new
+    `GOLEM_LLM_API_KEY` carries the team's `ttrk-` key from a Secret; it is required when the
+    lane is on and never printed. `GOLEM_LLM_MODEL_CLASS` defaults to `smart`, sent as
+    `model_tags` (the gateway's catalog has no `capable` tag), and an explicit `GOLEM_LLM_MODEL`
+    is sent instead. The ladder rung keeps the name `capable`.
+  - A target that is not such a URL, or a key with characters no HTTP header can carry, exits
+    2 when the gateway client is built. The error names the wrong part and at most the
+    `scheme://host:port`, never the value. With the lane switched off the target is not read.
+  - Failures:
+    - No answer, a timeout or a non-2xx status refuses `LANE_UNAVAILABLE`. The refusal
+      carries only the status and the gateway's error code, else its type
+      (`HTTP 401 invalid_api_key`, `HTTP 400 invalid_request_error`).
+    - A 2xx reply with no completion text, or one cut off (`finish_reason` `length` or
+      `content_filter`), refuses `QUERY_NOT_WRITTEN`.
+    - The whole call is bounded by the `capable` rung's timeout, with no client retry.
+  - `GOLEM_LEXICON_ARCHIVE_PATHS` (`os.pathsep`-separated, estate first) loads the operator
+    library from the estate's lexicon archive, such as bp-dsk's `hartland-lexicon` ConfigMap.
+    An archive that cannot be read, has no operator library or holds a malformed one exits 2.
+    With none configured, questions naming an operator still refuse `NO_CAPABLE_PLUGIN`.
+- **golem-py: the CLI takes the LLM lane's settings, and four lane-on conversations join the
+  conformance tier (OL W1c·S3).**
+  - `src/main.py` builds the door, the gateway and the model slice from `GOLEM_*`. Before
+    the turn, a lane that is on is checked for a world, a slice, the `capable` clock and the
+    prompt file (`check_lane_config`); a bad configuration exits 2.
+  - `--json` prints the answer's envelope: SQL, provenance, rows, `llm_handled`. A refusal
+    or an ask prints without its lattice.
+  - The image sets no `GOLEM_*` default of its own (they live in `GolemSettings`). Five
+    variables name the estate; without `GOLEM_QUERY_TARGET` or `GOLEM_LLM_TARGET` it answers as
+    before. A missing or invalid ladder file, or an unknown profile, also exits 2.
+  - The member-literal check traces a string literal by where it sits (review-343
+    ✅R343-A): in `WHERE`/`HAVING`/`ON`/`QUALIFY` at any depth, between `WHEN` and `THEN`, in a
+    sub-query's select list or a `VALUES` list, or compared to any non-literal operand
+    (`UPPER(col) = 'X'`). Dates are exempt by name: typed and temporal-cast literals, ISO
+    dates, a date function's arguments, and period labels compared to a date function
+    (`TO_CHAR(d,'YYYYMM') = '202610'`). Before, only a few comparison shapes were traced, and
+    concatenation, literal-only operands, other operators or a sub-query could carry an
+    invented member past the check. Nesting deeper than 64 parentheses refuses `invalid_sql`.
+  - Conversations: `conformance/conversations/` gains a `lane:` block (recorded slice,
+    gateway replies, door outcomes, reference date) and four fixtures: `ol-lane-covered`,
+    `ol-lane-relative-period`, `ol-lane-door-repair` and `ol-lane-query-not-written`. The
+    five heroes still run with the lane off, unchanged.
+- **`ttr-nlp` and `nlp` — pipeline stages through the `ttrnlp.stages` group (OL W1b·S1).** New
+  module `ttrnlp.stages`: the `Stage` protocol, `StageTrace`, `installed_stages()`. The loader, `validate_sources`,
+  the `ttr-nlp validate` CLI and the `nlp` runner reach stages through the group only; the rule engine is
+  registered there by this wheel (`rules = "ttrnlp.rules.stage:RulesStage"`). `LoadedState.stages` and
+  `.stage_status` are new; `LoadedState.packs` / `Gathered.packs` are read-only views of the `rules` stage until
+  the rule engine moves out; `loader.PACK_SUFFIX` is gone (`ttrnlp.rules.stage.PACK_SUFFIX`). New code
+  **`NLS-PACK-006`**: a pipeline naming a stage that is not installed (ERROR, fail-all), or a typed source file
+  no installed stage owns (INFO, not read). `nlp` pipelines take `stages: [{stage: <name>, …}]`; `rules:` stays
+  as an alias. Two entries naming one stage are a boot error. No proto change; rule behaviour unchanged.
+
+- **automation 0.11.41 — the route invariant tolerates CHAR padding and records `route_padded` (ttr-server#428).**
+  Evaluation accepts trailing plain spaces only when the trimmed route or detail-route stamp matches its route port.
+  Other whitespace and detail context stamps remain strict. One non-refusing warning
+  per padded port, including its row count, is persisted in the decision, surfaced in run status and logged at WARN.
+  Both durable and session status carry the warnings; decision readers ignore future additive fields.
+  Genuine mismatches and the other decision invariants still fail; older decisions default to no warnings.
+  Rolling back below 0.11.41 breaks run status for decisions that recorded a warning.
+
+- **golem-py — the LLM lane at `emit` (OL W1c·S2).** With `GOLEM_LLM_LANE_ENABLED` (default on), a gateway
+  and a door configured, a question that composed and carries no blocking gap is answered by one `llm.v1`
+  call that writes a `SELECT` over the model slice's `er.*` entities (prompt: `config/llm-lane-prompt.md`).
+  Before the door, the code checks a strict JSON object, one `SELECT`, slice names only, no parameters, a
+  member literal (compared to a column, or in its `IN` list) found as whole words in the lattice, and
+  `handled_spans` naming carried gaps. The door runs it under the caller's subject; one rejection buys one
+  repair. Each call counts against `max_llm_invocations`. New refusal reasons `QUERY_NOT_WRITTEN` (budget,
+  second rejection, invalid object, broken rule) and `LANE_UNAVAILABLE` (meta.v1, llm.v1 or query.v1
+  unreachable). The answer envelope gains `sql`, `llm_handled` and `provenance.lane` / `llm_model` /
+  `sql_sha256`; `gaps_carried` is unchanged. With the lane off, answers are exactly as before.
+  `golem_py.lane.check_lane_config` fails a lane that is on at startup when the `capable` rung has no
+  timeout or the prompt file does not parse.
+- **translate · validate · chrono · geo · money · metadata — translator/plan-proto 0.14.1 → 0.14.3 (ttr-core#407).** A
+  parameter the SQL author CASTs (e.g. `CAST(:p AS VARCHAR)` inside `||`) now survives Query's SQL → ER → REL_NODE → DB
+  re-entry. A REL_NODE decode failure keeps the code `rel_node_schema_resolution_failed`, and its text now names the
+  failing plan node (the exception class goes only to translate's WARN log). From 0.14.2: T-SQL `[name]` identifiers are
+  rewritten to quoted identifiers before parsing, schema detection and saved-query reference extraction. That rewrite also
+  catches `ARRAY[…]` and `c[1]` (ttr-core#412). The published `translate-snapshot` and `server-proto` POMs now name 0.14.3.
+
+- **`server-libs` — the grounding kernel published (OL W3·S1).** `org.tatrman:grounding-core` (plan.v1
+  recipe scaffolding: `PlanExpr`, `SqlRenderer`) and `org.tatrman:grounding-lexicon` (the `ground:<kind>`
+  trigger slice: `GroundingSlice`, `GroundingSliceSource`) join the set, which is now sixteen libraries. Same
+  coordinates, POM metadata and sources/javadoc jars as the rest; no code or API change. `grounding-core` depends
+  on `server-proto` and `text`. `grounding-lexicon` depends on `text` and on ttr-core's `ttr-lexicon` and
+  `ttr-snapshot` at the grammar ref.
+
+- **golem-py — the LLM lane's three clients (OL W1c·S1).** The `llm.v1` gateway client (`CreateResponse`:
+  a JSON object at temperature 0, model class `capable`, the caller's timeout), the `meta.v1` model slice
+  (`GetModel` for `GOLEM_META_PACKAGES`; the bound refs' ER entities first, capped at
+  `GOLEM_LLM_MODEL_SLICE_ENTITIES`, default 40; its entity names are the ER read allow-list) and the SQL door
+  (`query.v1 Run`: SQL over `ER`, the caller's subject, the allow-list as `allowed_er_reads` — sent even when
+  empty; Arrow IPC rows, `top_n_applied` truncation, ERROR batches as `DoorRejected`, a gRPC failure as lane
+  unavailable). New settings `GOLEM_QUERY_*`, `GOLEM_LLM_*`, `GOLEM_META_*`; the new `Deps` ports default to
+  `None`, so nothing answers differently yet. `plan.v1` and `translator.proto` now come from the
+  `ttr-plan-proto==0.14.1` wheel, `pyarrow==24.0.0` is a dependency, and the Python floor is 3.13.
+
+- **chrono · resolver · grounding-mcp — the `scan` capability (OL W1a·S1).** `grounding.v1` gains no field: the
+  comment on `GetStatusResponse.capabilities` names the key `scan`, and `"true"` means the service implements
+  `Scan` (OL-C1). chrono declares it. The resolver reads the grounder's `GetStatus` (kept for
+  `RESOLVER_GROUNDING_STATUS_TTL_SECONDS`, default 60) and calls `Scan` only while the key is there; without it the
+  turn writes no `scan_failed` and logs nothing per turn, and `Ground` is unchanged. `grounding-mcp`'s `scan_time`
+  stays listed and answers the tool error `not_available` against a chrono without the key
+  (`GROUNDING_STATUS_TTL_SECONDS`). Roll chrono before, or with, the resolver and `grounding-mcp`: a reader that
+  meets an older chrono scans nothing until its next status read (OL-C5).
+
+- **llm-gateway — DX-P4 extraction route and Azure prices.** `extract-strong` now aliases the existing
+  Azure chat row (catalog name `gpt-4.1`; the reference deployments point it at `gpt-5-mini`), preserving
+  strict JSON-schema forwarding. Sol, gpt-5-mini, text-embedding-3-small and the new Terra row carry Azure
+  list input/output prices (DX-D22); Terra is an Azure reasoning model without tier aliases or tags.
+  Tag routing (`model_tags`) breaks ties by price, so the new prices move `complex` to gpt-6.1-sol and
+  `balanced`/`default`+`tatrman` to gpt-4.1 (from gpt-4o / claude-sonnet-4-6). Other rows retain their flagged
+  interim prices. No key or governance changes.
+
 - **resolver — chrono finds time spans.** One `Scan` call adds DATE entities before the existing
   universal path, retaining original NER DATE/numeric/MONEY ownership, quoted literals, request context
   and separate time phrases for interpretation. Any overlap drops the whole Scan candidate; numeric
@@ -2009,6 +2213,27 @@ artifact.
   named, so a chart that has never heard of a rule pack renders byte-identically.
 - **New diagnostics** — `NLS-NLP-011` (op unrouted in the active lane),
   `NLS-PACK-010` (reload refused), `LM-MORPH-007` (token report not sunk).
+
+- **platform-question 0.11.0 — the external workflow task contract (OL W6·S3).**
+  `connectors/platform-question` publishes the read-only `/automation/query` and
+  `/automation/check` interface, a configuration JSON Schema with examples, English
+  and Czech Camunda 7 element templates, and one generic BPMN sample. CI validates
+  both templates against the vendored official Camunda schema and all 11 examples
+  (four valid, seven invalid, with expected failure reasons). Templates preserve
+  non-round-tripping BigDecimal values through built-in Java Object serialization
+  (HTTP JSON unchanged), fail missing engine properties as incidents, and protect
+  reserved answer variables. Row prefixes and column selections are constrained.
+  Tag `platform-question/v0.11.0` runs `platform-question.yml` to build the folder
+  archive, test it unpacked, and publish the GitHub release; the image lane excludes it.
+  This release contains the contract and template; the bridge follows separately.
+
+- **n8n-nodes-tatrman 0.1.1 — the n8n nodes move to `ttr-server` (OL W6·S1).**
+  `connectors/n8n-nodes-tatrman` arrives from `kantheon` with its history (freeze commit
+  `9b886085`); nodes, credential and behaviour are unchanged from 0.1.0. The package is now
+  Apache-2.0, its `homepage` and `repository` point here, and it is a standalone pnpm project with
+  its own lockfile (the same resolved versions). `n8n-nodes.yml` runs the same checks; the tag
+  `n8n-nodes-tatrman/v0.1.1` publishes `@collite/n8n-nodes-tatrman@0.1.1` to GitHub Packages and
+  `ghcr.io/collite/n8n-tatrman:2.44.6-0.1.1`; the image lane excludes it.
 
 ## chrono 0.11.32 — 2026-11-12
 

@@ -120,6 +120,11 @@ val publishableLibs =
         // CH-D5 — the Charon transfer seam, consumed by tatrman-platform's radegast
         // (CH-P2 cutover) behind the unchanged TransferMover in-process seam.
         ":shared:libs:kotlin:transfer-core",
+        // OL W3·S1 (OL-C27) — the grounding kernel: the plan.v1 recipe scaffolding (grounding-core)
+        // and the `ground:<kind>` trigger slice read from the compiled lexicon (grounding-lexicon).
+        // The time service in ttr-platform builds on both as published artefacts (OL-C28).
+        ":shared:libs:kotlin:grounding-core",
+        ":shared:libs:kotlin:grounding-lexicon",
         // capabilities-client TRIMMED at SV-P1 S2 (2026-07-11): no external consumer
         // (kantheon keeps its own copy; nothing published depends on it). Publishing it
         // would be a maintenance promise with no taker — re-add here if a consumer appears.
@@ -144,6 +149,8 @@ val pomMeta: Map<String, Triple<String, String, String>> =
         ":shared:libs:kotlin:meta-client" to Triple("meta-client", "TTR Meta Client", "gRPC client for the metadata service (meta.v1)."),
         ":shared:libs:kotlin:llm-client" to Triple("llm-client", "TTR LLM Client", "Client for the llm-gateway service (llm.v1)."),
         ":shared:libs:kotlin:transfer-core" to Triple("transfer-core", "TTR Transfer Core", "The Charon transfer seam (MoveExecutor + Plan + CharonError over transfer.v1) for in-process embedding behind a TransferMover."),
+        ":shared:libs:kotlin:grounding-core" to Triple("grounding-core", "TTR Grounding Core", "The grounding kernel's plan.v1 recipe scaffolding: Expression builders (PlanExpr) and the derived SQL preview (SqlRenderer)."),
+        ":shared:libs:kotlin:grounding-lexicon" to Triple("grounding-lexicon", "TTR Grounding Lexicon", "The ground:<kind> trigger slice read from the compiled lexicon archive (GroundingSlice, GroundingSliceSource)."),
     )
 
 subprojects {

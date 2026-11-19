@@ -18,6 +18,7 @@ import json
 import pytest
 
 from golem_py.outputs import Answer, Ask, RefusalWithGaps
+from golem_py.query_client import sql_sha256
 from golem_py.state import EvidenceClass
 from tests.conversation_runner import FIXTURE_DIR, drive, fixture_ids, load_fixture
 
@@ -27,6 +28,11 @@ EXPECTED_FIXTURES = [
     "h2-ask-pin-resume",
     "h4-refusal",
     "h5-answer-with-gap",
+    # OL W1c·S3·T2 — the same goldens with the LLM lane on, its legs recorded (`lane:`).
+    "ol-lane-covered",
+    "ol-lane-door-repair",
+    "ol-lane-query-not-written",
+    "ol-lane-relative-period",
 ]
 
 # ⛑ EVERY key a fixture may state, and the guard below asserts nothing outside it appears.
@@ -43,6 +49,10 @@ _TURN_KEYS = {
     "asks",
     "no_binding_below_threshold",
     "byte_identical_to_turn",
+    # the lane's legs (a turn with `lane:`): what the door and the gateway were asked
+    "door_calls",
+    "door_subject",
+    "prompt_states",
 }
 _ASK_KEYS = {"gap_kind", "asked_span", "min_options", "escape_offered", "snapshot_stored"}
 _ANSWER_KEYS = {
@@ -57,13 +67,25 @@ _ANSWER_KEYS = {
     "provenance_lexicon_artifact_hash",
     "gated_refs",
     "proposing_rung",
+    # an answer the lane wrote (OL-C17)
+    "lane",
+    "llm_model",
+    "sql",
+    "rows",
+    "llm_handled_spans",
 }
-_REFUSAL_KEYS = {"refusal_reason", "min_bindings", "gap_kinds", "composable_residue"}
+_REFUSAL_KEYS = {
+    "refusal_reason",
+    "min_bindings",
+    "gap_kinds",
+    "composable_residue",
+    "explanation_contains",
+}
 _GATE_KEYS = {"gated_refs", "evidence_classes", "proposing_rung", "gap_kinds"}
 KNOWN_TURN_KEYS = _TURN_KEYS | _ASK_KEYS | _ANSWER_KEYS | _REFUSAL_KEYS
 
 
-def test_the_corpus_holds_exactly_the_five_heroes() -> None:
+def test_the_corpus_holds_exactly_the_pinned_conversations() -> None:
     """A suite that silently loses a fixture reports as green. The list is pinned here
     and the CONTENT is pinned by `conformance/corpus-hashes.sha256`."""
     assert fixture_ids() == EXPECTED_FIXTURES
@@ -113,6 +135,7 @@ async def test_fixture(name: str) -> None:
         expect = turn.get("expect", {})
         output = run.outputs[index]
         _assert_turn(name, index, expect, output, run)
+        _assert_lane(name, index, expect, output, run)
 
     # The gate turns, asserted against the lattice they folded into.
     gate_turns = [t for t in run.fixture["turns"] if t["tool"] == "resolve.gate:v1"]
@@ -246,6 +269,56 @@ def _assert_turn(name: str, index: int, expect: dict, output: object, run: objec
         bound_refs = [b.ref for m in output.lattice.mentions for b in m.bindings]
         for ref in expect["gated_refs"]:
             assert ref in bound_refs, where
+
+
+def _assert_lane(name: str, index: int, expect: dict, output: object, run: object) -> None:  # type: ignore[type-arg]
+    """The lane's half of a turn (OL W1c·S3): its legs, and an answer's lane provenance."""
+    where = f"{name} turn {index + 1}"
+    lane = run.lanes[index]  # type: ignore[attr-defined]
+    stated = {"door_calls", "door_subject", "prompt_states"} & set(expect)
+    if lane is None:
+        assert not stated, f"{where}: states lane legs {sorted(stated)} but records no lane"
+    else:
+        # Every recording is consumed: a fixture recording a call the lane never makes
+        # would pass while saying something untrue about the lane.
+        assert lane.leftovers() == [], f"{where}: unconsumed {lane.leftovers()}"
+        if "door_calls" in expect:
+            assert len(lane.door.calls) == expect["door_calls"], where
+        if "door_subject" in expect:
+            assert lane.door.calls, f"{where}: no door call to carry a subject"
+            for call in lane.door.calls:
+                assert call.caller_subject == expect["door_subject"], where
+                assert call.world == lane.world, where
+                assert call.allowed_entities == lane.slice.model_slice.allowed_entities, where
+        if "prompt_states" in expect:
+            prompts = lane.gateway.prompts
+            assert len(prompts) == len(expect["prompt_states"]), where
+            for prompt, needles in zip(prompts, expect["prompt_states"], strict=True):
+                for needle in needles:
+                    assert needle in prompt, f"{where}: the prompt does not state {needle!r}"
+
+    if isinstance(output, RefusalWithGaps) and "explanation_contains" in expect:
+        for needle in expect["explanation_contains"]:
+            assert needle in output.explanation, f"{where}: {output.explanation!r}"
+    if not isinstance(output, Answer):
+        return
+    envelope = output.envelope
+    if "lane" in expect:
+        assert envelope is not None
+        assert envelope.provenance.get("lane") == expect["lane"], where
+    if "llm_model" in expect:
+        assert envelope is not None
+        assert envelope.provenance.get("llm_model") == expect["llm_model"], where
+    if "sql" in expect:
+        assert envelope is not None and envelope.sql == expect["sql"], where
+        assert lane is not None and lane.door.calls[-1].sql == expect["sql"], where
+        assert envelope.provenance.get("sql_sha256") == sql_sha256(expect["sql"]), where
+    if "rows" in expect:
+        assert envelope is not None and envelope.result is not None
+        assert len(envelope.result.rows) == expect["rows"], where
+    if "llm_handled_spans" in expect:
+        assert envelope is not None
+        assert [s.text for s in envelope.llm_handled] == expect["llm_handled_spans"], where
 
 
 def _assert_gate(expect: dict, run: object, position: int) -> None:  # type: ignore[type-arg]

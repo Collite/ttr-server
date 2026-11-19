@@ -2,6 +2,7 @@
 package org.tatrman.automation.writer
 
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldContain
@@ -162,6 +163,7 @@ class ApplyComponentSpec :
             clock.now = Instant.parse("2026-11-11T10:00:00Z")
             fake.writes.clear()
             fake.refuse = { null }
+            fake.failRow = { null }
             fake.loseCommit = { false }
             sql(
                 "TRUNCATE wet_fixture.release_order_verdict, wet_fixture.release_order_verdict_detail, " +
@@ -175,28 +177,38 @@ class ApplyComponentSpec :
 
         fun key(order: String) = buildJsonObject { put("order_number", order) }
 
+        /** The planner's verdict row: `run`, `as_of` and `written_at` are the run's own (review-293's fixture note). */
         fun verdict(
             run: UUID,
             order: String,
             route: String,
             fp: JsonElement = JsonPrimitive("sha256:values"),
-        ) = ApplyRow(
-            1,
-            "er.entity.release_order_verdict",
-            "insert",
-            key(order),
-            row =
-                buildJsonObject {
-                    put("run", run.toString())
-                    put("as_of", "2026-11-11T10:00:00")
-                    put("order_number", order)
-                    put("route", route)
-                    put("verdict_reason", "because")
-                    put("parameters_fp", fp)
-                    put("run_as", principal)
-                    put("written_at", "2026-11-11T10:00:00")
-                },
-        )
+            reason: String = "because",
+        ): ApplyRow {
+            val now =
+                clock
+                    .instant()
+                    .atOffset(ZoneOffset.UTC)
+                    .toLocalDateTime()
+                    .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            return ApplyRow(
+                1,
+                "er.entity.release_order_verdict",
+                "insert",
+                key(order),
+                row =
+                    buildJsonObject {
+                        put("run", run.toString())
+                        put("as_of", now)
+                        put("order_number", order)
+                        put("route", route)
+                        put("verdict_reason", reason)
+                        put("parameters_fp", fp)
+                        put("run_as", principal)
+                        put("written_at", now)
+                    },
+            )
+        }
 
         fun detail(
             run: UUID,
@@ -1950,6 +1962,12 @@ class ApplyComponentSpec :
                     .rowWrites.rowsCount
             }
 
+        /**
+         * A re-read follows a held watermark only. Where a spec's first run sealed clean (and so advanced), this puts P's
+         * watermark back, as if that run had held; the hold itself is spec'd in D-206 (F2)/(F10) and S3.2c's cases.
+         */
+        fun heldBack() = sql("DELETE FROM automation.program_windows WHERE program = 'P'")
+
         "review-293 F6: rows a run applied before it failed close-deadline-exceeded settle the re-read" {
             val t0 = clock.instant()
             val first =
@@ -1990,24 +2008,10 @@ class ApplyComponentSpec :
             Watermark.lastTo("P", listOf("day")) shouldBe clock.instant()
         }
 
-        "review-293 F8: a re-read's held row an earlier run applied commits as settled, with no door request" {
+        "review-293 F8: a held row another run applied after the close commits as settled, with no door request" {
             val t0 = clock.instant()
-            // Run 1 of P applies 4711's verdict as an auto row; 4712's release meets a transient fault and holds.
-            fake.refuse = { if (it.world == "w-erp") "worker_engine_unavailable" else null }
-            val first =
-                prepare(
-                    { run -> planned(listOf(verdict(run, "4711", "release"), release("4712"))) },
-                    deployment = "release_native_event",
-                    program = "P",
-                    port = Watermark.port(Watermark.EPOCH, t0, listOf("day"), watermark = true),
-                )
-            applyOnce(first)
-            ledger.closeCommitted(first, subject)
-            Watermark.lastTo("P", listOf("day")) shouldBe Watermark.EPOCH
-            fake.refuse = { null }
-
-            // The re-read holds 4711's verdict in an approval group; its auto rows close, and the run waits.
-            clock.now = t0.plus(Duration.ofHours(1))
+            // Run A of P holds 4711's verdict in an approval group; nothing applied it yet, so the run waits.
+            // (D-206 F9: a held row an earlier run had already applied would settle at the close instead.)
             val again =
                 prepare(
                     { run ->
@@ -2017,10 +2021,23 @@ class ApplyComponentSpec :
                     },
                     deployment = "release_native_event",
                     program = "P",
-                    port = Watermark.port(Watermark.EPOCH, clock.instant(), listOf("day"), watermark = true),
+                    port = Watermark.port(Watermark.EPOCH, t0, listOf("day"), watermark = true),
                 )
             RunCloser(ledger, Apply(door(), clock), pinned = { id, _ -> reread(id) }).close(again, identity.caller)
             ledger.findRun(again)?.status shouldBe RunStatus.WAITING
+            // Before the group is decided, a debug replay of P over the range (an explicit window, `watermark: false`;
+            // a watermark open is blocked while A waits, F3) applies 4711's verdict.
+            clock.now = t0.plus(Duration.ofHours(1))
+            val other =
+                prepare(
+                    { run -> planned(listOf(verdict(run, "4711", "release"))) },
+                    program = "P",
+                    port = Watermark.port(Watermark.EPOCH, clock.instant(), listOf("day"), watermark = false),
+                )
+            applyOnce(other)
+            ledger.closeCommitted(other, subject)
+            rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4711'") shouldBe
+                listOf(listOf("1"))
             // The run was opened under the served fingerprints (D-99); `prepare` claims without them.
             val fps =
                 bundle.recipes
@@ -2043,6 +2060,475 @@ class ApplyComponentSpec :
             grouped.map { outcome.getValue(it.seq) }.toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
             rows("SELECT count(*) FROM wet_fixture.release_order_verdict WHERE order_number = '4711'") shouldBe
                 listOf(listOf("1"))
+        }
+
+        // ---- S3.2d (D-206): the settlement, second cut ----
+
+        fun window(to: Instant) = Watermark.port(Watermark.EPOCH, to, listOf("day"), watermark = true)
+
+        suspend fun closeRun(id: UUID) =
+            RunCloser(ledger, Apply(door(), clock), pinned = { r, _ -> reread(r) }).close(id, identity.caller)
+
+        /** (entity, order_number, op) → (status, error), in `seq` order. */
+        fun outcomes(id: UUID): Map<Triple<String, String, String>, Pair<String, String?>> {
+            val batch = ledger.readRunBatch(id, subject)
+            return batch.rows.associate {
+                Triple(it.entity, (it.key!!["order_number"] as JsonPrimitive).content, it.op) to
+                    batch.status(it.seq).let { s -> s.status to s.error }
+            }
+        }
+
+        fun erpRows() =
+            fake.writes.filter { it.world == "w-erp" }.map {
+                org.tatrman.plan.v1.PlanNode
+                    .parseFrom(it.source.toByteArray(Charsets.ISO_8859_1))
+                    .rowWrites.rowsCount
+            }
+
+        "D-206 (F2): a request the worker rolled back holds; the re-read resends only its rolled-back rows" {
+            val t0 = clock.instant()
+            // The worker refuses 4712's row whenever a request carries it (worker-postgres: the translator refuses the
+            // row's unparse, `row_writes_shape`, a settled code) and the request rolls back.
+            fake.failRow = { r ->
+                if (r.world == "w-erp" &&
+                    "\"4712\"" in r.context.parametersList.toString()
+                ) {
+                    1 to "row_writes_shape"
+                } else {
+                    null
+                }
+            }
+            val plan = { _: UUID ->
+                planned(listOf(release("4711"), release("4712"), release("4713")), keys = emptyList())
+            }
+            val first = prepare(plan, program = "P", port = window(t0))
+            closeRun(first)
+            outcomes(first).values.toList() shouldBe
+                listOf(
+                    "skipped" to RowOutcome.ROLLED_BACK,
+                    "failed" to "row_writes_shape",
+                    "skipped" to RowOutcome.ROLLED_BACK,
+                )
+            // The rolled-back rows hold: nothing of them was written.
+            Watermark.lastTo("P", listOf("day")) shouldBe Watermark.EPOCH
+
+            // The re-read: 4712's settled refusal is not resent, so the request does not roll back again.
+            clock.now = t0.plus(Duration.ofHours(1))
+            fake.writes.clear()
+            val again = prepare(plan, program = "P", port = window(clock.instant()))
+            closeRun(again)
+            outcomes(again).values.toList() shouldBe
+                listOf("applied" to null, "skipped" to RowOutcome.SETTLED, "applied" to null)
+            erpRows() shouldBe listOf(2)
+            rows("SELECT order_number, state FROM public.sales_order WHERE order_number < '4714' ORDER BY 1") shouldBe
+                listOf(listOf("4711", "released"), listOf("4712", "placed"), listOf("4713", "released"))
+            Watermark.lastTo("P", listOf("day")) shouldBe clock.instant()
+        }
+
+        "D-206 (F4): a changed value is re-applied, an unchanged one settles; what the run seeds does not count" {
+            fun heldFor(
+                order: String,
+                department: String,
+            ) = ApplyRow(
+                1,
+                "er.entity.order",
+                "update",
+                key(order),
+                set = buildJsonObject { put("held_for", department) },
+            )
+            val t0 = clock.instant()
+            val first =
+                prepare(
+                    { run ->
+                        planned(
+                            listOf(
+                                verdict(run, "4711", "hold_sales"),
+                                heldFor("4711", "Sales"),
+                                heldFor("4712", "Sales"),
+                            ),
+                            keys = listOf("4711"),
+                        )
+                    },
+                    program = "P",
+                    port = window(t0),
+                )
+            closeRun(first)
+            outcomes(first).values.toSet() shouldBe setOf("applied" to null)
+            heldBack()
+
+            // The re-read: 4711's department changed in the source (a new identity, sent); 4712's did not (settled).
+            // The verdict and its current pair differ from run 1's only in run, as_of and written_at: settled.
+            clock.now = t0.plus(Duration.ofHours(1))
+            fake.writes.clear()
+            val again =
+                prepare(
+                    { run ->
+                        planned(
+                            listOf(verdict(run, "4711", "hold_sales"), heldFor("4711", "AR"), heldFor("4712", "Sales")),
+                            keys = listOf("4711"),
+                        )
+                    },
+                    program = "P",
+                    port = window(clock.instant()),
+                )
+            closeRun(again)
+            val settled = "skipped" to RowOutcome.SETTLED
+            outcomes(again) shouldBe
+                mapOf(
+                    Triple("er.entity.release_order_verdict", "4711", "insert") to settled,
+                    Triple("er.entity.order", "4711", "update") to ("applied" to null),
+                    Triple("er.entity.order", "4712", "update") to settled,
+                    Triple("er.entity.release_order_verdict_current", "4711", "delete") to settled,
+                    Triple("er.entity.release_order_verdict_current", "4711", "insert") to settled,
+                )
+            erpRows() shouldBe listOf(1)
+            rows(
+                "SELECT order_number, held_for FROM public.sales_order WHERE order_number < '4713' ORDER BY 1",
+            ) shouldBe
+                listOf(listOf("4711", "AR"), listOf("4712", "Sales"))
+
+            // A changed verdict is a new identity, and so is the current delete before it: the pair is resent whole.
+            heldBack()
+            clock.now = clock.now.plus(Duration.ofHours(1))
+            val third =
+                prepare(
+                    { run -> planned(listOf(verdict(run, "4711", "release"))) },
+                    program = "P",
+                    port = window(clock.instant()),
+                )
+            closeRun(third)
+            outcomes(third).values.toSet() shouldBe setOf("applied" to null)
+            rows("SELECT route FROM wet_fixture.release_order_verdict WHERE order_number = '4711' ORDER BY 1") shouldBe
+                listOf(listOf("hold_sales"), listOf("release"))
+        }
+
+        "D-206 (F7): a reverted batch's rows and the revert's inverse rows settle nothing" {
+            val plan = { _: UUID -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) }
+            val first =
+                prepare(plan, deployment = "release_native_event", program = "P", port = window(clock.instant()))
+            closeRun(first)
+            heldBack()
+            clock.now = clock.now.plusSeconds(3600)
+            val held = Held(ledger, Apply(door(), clock), contexts, { bundle }, clock)
+            Revert(ledger, Apply(door(), clock), contexts, held, clock).revert(first, ops).applied shouldBe 2
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("placed", null))
+
+            // The re-read over the same range: the reverted rows (and the inverse rows that undid them) are not done.
+            fake.writes.clear()
+            val again =
+                prepare(plan, deployment = "release_native_event", program = "P", port = window(clock.instant()))
+            closeRun(again)
+            outcomes(again).values.toSet() shouldBe setOf("applied" to null)
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("held", "Sales"))
+        }
+
+        "D-206 (F9): a held group an operator rejected is not held, nor asked, again on the re-read" {
+            val t0 = clock.instant()
+            val plan = { _: UUID ->
+                planned(
+                    hold("4711").map { it.copy(group = key("4711")) } + release("4712"),
+                    listOf(listOf(0, 1)),
+                    keys = emptyList(),
+                )
+            }
+            val first = prepare(plan, deployment = "release_native_event", program = "P", port = window(t0))
+            closeRun(first)
+            ledger.findRun(first)?.status shouldBe RunStatus.WAITING
+            ledger.decideHeld(first, key("4711"), "reject", "olga")
+            ledger.findRun(first)?.status shouldBe RunStatus.CLOSED
+            heldBack()
+
+            clock.now = t0.plus(Duration.ofHours(1))
+            fake.writes.clear()
+            val again =
+                prepare(plan, deployment = "release_native_event", program = "P", port = window(clock.instant()))
+            closeRun(again)
+            // The rejected rows settle at the close (no group waits); 4712's release was applied by run 1.
+            ledger.findRun(again)?.status shouldBe RunStatus.CLOSED
+            outcomes(again).values.toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
+            fake.writes shouldBe emptyList()
+            rows("SELECT state, held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe
+                listOf(listOf("placed", null))
+            writesEntry(again).let {
+                it["held"] shouldBe null
+                it["settled"] shouldBe JsonPrimitive(3)
+            }
+        }
+
+        "D-206 (F10): an earlier run's unknown insert is read before it is resent — found settles, absent resends" {
+            val t0 = clock.instant()
+            // Run 1 commits 4711's verdict, but the answer is lost: its rows stay `staged · unknown-outcome`.
+            fake.loseCommit = { it.world == "w-auto" }
+            val landed =
+                prepare({ run -> planned(listOf(verdict(run, "4711", "release"))) }, program = "P", port = window(t0))
+            closeRun(landed)
+            // Run 2 loses 4712's answer too — and its commit never landed (the rows are gone).
+            val lost =
+                prepare({ run -> planned(listOf(verdict(run, "4712", "release"))) }, program = "P", port = window(t0))
+            closeRun(lost)
+            fake.loseCommit = { false }
+            sql(
+                "DELETE FROM wet_fixture.release_order_verdict WHERE order_number = '4712'; " +
+                    "DELETE FROM wet_fixture.release_order_verdict_current WHERE order_number = '4712'",
+            )
+            for (id in listOf(landed, lost)) {
+                outcomes(id).values.toSet() shouldBe setOf("staged" to RowOutcome.UNKNOWN)
+            }
+            Watermark.lastTo("P", listOf("day")) shouldBe Watermark.EPOCH
+
+            clock.now = t0.plus(Duration.ofHours(1))
+            fake.writes.clear()
+            val again =
+                prepare(
+                    { run -> planned(listOf(verdict(run, "4711", "release"), verdict(run, "4712", "release"))) },
+                    program = "P",
+                    port = window(clock.instant()),
+                )
+            closeRun(again)
+            val o = outcomes(again)
+            // 4711's verdict is found under run 1's key: reconciled, not sent. 4712's is absent: sent.
+            o.getValue(Triple("er.entity.release_order_verdict", "4711", "insert")) shouldBe
+                ("applied" to RowOutcome.RECONCILED)
+            o.getValue(Triple("er.entity.release_order_verdict", "4712", "insert")) shouldBe ("applied" to null)
+            // The current pairs are not read: each is resent whole, its delete clearing what a lost request left.
+            o.filterKeys { it.first.endsWith("_current") }.values.toSet() shouldBe setOf("applied" to null)
+            rows(
+                "SELECT order_number, count(*) FROM wet_fixture.release_order_verdict GROUP BY 1 ORDER BY 1",
+            ) shouldBe listOf(listOf("4711", "1"), listOf("4712", "1"))
+            rows("SELECT order_number FROM wet_fixture.release_order_verdict_current ORDER BY 1") shouldBe
+                listOf(listOf("4711"), listOf("4712"))
+            writesEntry(again)["reconciled"] shouldBe JsonPrimitive(1)
+            Watermark.lastTo("P", listOf("day")) shouldBe clock.instant()
+        }
+
+        // ---- review-303: the latest write wins (F1) · a current pair settles as a unit (F2) · settled carries (F3) ----
+
+        "review-303 F1: a value that went A → B → A is re-applied — only the latest write of a key settles" {
+            fun heldFor(department: String) =
+                ApplyRow(
+                    1,
+                    "er.entity.order",
+                    "update",
+                    key("4711"),
+                    set = buildJsonObject { put("held_for", department) },
+                )
+            for ((i, department) in listOf("Sales", "AR", "Sales").withIndex()) {
+                clock.now = clock.now.plus(Duration.ofHours(1))
+                fake.writes.clear()
+                val id =
+                    prepare(
+                        { planned(listOf(heldFor(department)), keys = emptyList()) },
+                        program = "P",
+                        port = window(clock.instant()),
+                    )
+                closeRun(id)
+                withClue("run ${i + 1}: $department") {
+                    outcomes(id).values.single() shouldBe ("applied" to null)
+                    erpRows() shouldBe listOf(1)
+                }
+                heldBack()
+            }
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe listOf(listOf("Sales"))
+        }
+
+        "review-303 F1: a current key whose verdict went A → B → A is rewritten — the pair is not settled on run 1's" {
+            for (reason in listOf("A", "B", "A")) {
+                clock.now = clock.now.plus(Duration.ofHours(1))
+                val id =
+                    prepare(
+                        { run -> planned(listOf(verdict(run, "4711", "release", reason = reason))) },
+                        program = "P",
+                        port = window(clock.instant()),
+                    )
+                closeRun(id)
+                withClue("reason $reason") { outcomes(id).values.toSet() shouldBe setOf("applied" to null) }
+                heldBack()
+            }
+            rows(
+                "SELECT verdict_reason FROM wet_fixture.release_order_verdict_current WHERE order_number = '4711'",
+            ) shouldBe
+                listOf(listOf("A"))
+        }
+
+        "review-303 F2: a two-route current key where one route changes keeps both rows — the pair is resent whole" {
+            fun plan(holdReason: String) =
+                { run: UUID ->
+                    planned(
+                        listOf(
+                            verdict(run, "4711", "hold_sales", reason = holdReason),
+                            verdict(run, "4711", "release", reason = "R"),
+                        ),
+                    )
+                }
+            val first = prepare(plan("A"), program = "P", port = window(clock.instant()))
+            applyOnce(first)
+            ledger.closeCommitted(first, subject)
+            heldBack()
+            clock.now = clock.now.plus(Duration.ofHours(1))
+            fake.writes.clear()
+            // Only hold_sales's row changes; release's is as run 1 wrote it.
+            val again = prepare(plan("A2"), program = "P", port = window(clock.instant()))
+            applyOnce(again)
+            ledger.closeCommitted(again, subject)
+            val current = "er.entity.release_order_verdict_current"
+            ledger
+                .readRunBatch(again, subject)
+                .let { b -> b.rows.filter { it.entity == current }.map { b.status(it.seq).status } } shouldBe
+                listOf("applied", "applied", "applied")
+            rows(
+                "SELECT route, verdict_reason FROM wet_fixture.release_order_verdict_current " +
+                    "WHERE order_number = '4711' ORDER BY 1",
+            ) shouldBe listOf(listOf("hold_sales", "A2"), listOf("release", "R"))
+        }
+
+        "review-303 F3: a settlement carries on — a run overlapping only the settling one asks no rejection again" {
+            val t0 = clock.instant()
+            val plan = { _: UUID ->
+                planned(
+                    hold("4711").map { it.copy(group = key("4711")) } + release("4712"),
+                    listOf(listOf(0, 1)),
+                    keys = emptyList(),
+                )
+            }
+            val first = prepare(plan, deployment = "release_native_event", program = "P", port = window(t0))
+            closeRun(first)
+            ledger.decideHeld(first, key("4711"), "reject", "olga")
+            heldBack()
+            // Run 2 overlaps run 1 and settles all three rows (the group's by run 1's rejection).
+            val t1 = t0.plus(Duration.ofHours(1))
+            clock.now = t1
+            val second = prepare(plan, deployment = "release_native_event", program = "P", port = window(t1))
+            closeRun(second)
+            outcomes(second).values.toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
+            // Run 3 reads [t0, t2): it overlaps run 2's [epoch, t1) but not run 1's [epoch, t0).
+            sql("UPDATE automation.program_windows SET last_to = '$t0' WHERE program = 'P'")
+            clock.now = t1.plus(Duration.ofHours(1))
+            fake.writes.clear()
+            val third =
+                prepare(
+                    plan,
+                    deployment = "release_native_event",
+                    program = "P",
+                    port = Watermark.port(t0, clock.instant(), listOf("day"), watermark = true),
+                )
+            closeRun(third)
+            ledger.findRun(third)?.status shouldBe RunStatus.CLOSED
+            outcomes(third).values.toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
+            fake.writes shouldBe emptyList()
+            // The original decision is carried, not just "settled": the group's rows name run 1's rejection.
+            rows(
+                "SELECT br.op, br.row -> 'settled_by' ->> 'run', br.row -> 'settled_by' ->> 'status', " +
+                    "br.row -> 'settled_by' ->> 'error' FROM automation.batch_rows br " +
+                    "JOIN automation.batches b ON b.id = br.batch WHERE b.run = '$third' ORDER BY br.seq",
+            ) shouldBe
+                listOf(
+                    listOf("update", "$first", "skipped", RowOutcome.REJECTED),
+                    listOf("transition", "$first", "skipped", RowOutcome.REJECTED),
+                    listOf("transition", "$first", "applied", null),
+                )
+        }
+
+        // ---- review-303 N1: a held row is written when it is decided, not when its run started ----
+
+        fun heldFor(department: String) =
+            ApplyRow(1, "er.entity.order", "update", key("4711"), set = buildJsonObject { put("held_for", department) })
+
+        /**
+         * Run A of P holds `held_for=Sales` and waits; a debug replay B (`watermark: false`, the F8 fixture) applies
+         * `held_for=AR`; then the operator commits A's group, so Sales is sent last. P's watermark is put back for a re-read.
+         */
+        suspend fun lateCommit() {
+            val t0 = clock.instant()
+            val first =
+                prepare(
+                    { planned(listOf(heldFor("Sales").copy(group = key("4711"))), keys = emptyList()) },
+                    deployment = "release_native_event",
+                    program = "P",
+                    port = window(t0),
+                )
+            closeRun(first)
+            ledger.findRun(first)?.status shouldBe RunStatus.WAITING
+            clock.now = t0.plus(Duration.ofHours(1))
+            val replay =
+                prepare(
+                    { planned(listOf(heldFor("AR")), keys = emptyList()) },
+                    program = "P",
+                    port = Watermark.port(Watermark.EPOCH, clock.instant(), listOf("day"), watermark = false),
+                )
+            applyOnce(replay)
+            ledger.closeCommitted(replay, subject)
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe listOf(listOf("AR"))
+            // The run was opened under the served fingerprints (D-99); `prepare` claims without them.
+            val fps =
+                bundle.recipes
+                    .getValue("release_order")
+                    .recipe.fingerprints
+            transaction {
+                Runs.update({ Runs.id eq first }) {
+                    it[fpText] = fps.text
+                    it[fpValues] = fps.values
+                    it[fpDeployment] = bundle.deploymentFps["release_native_event"]
+                }
+            }
+            clock.now = t0.plus(Duration.ofHours(2))
+            fake.writes.clear()
+            Held(ledger, Apply(door(), clock), contexts, { bundle }, clock).commitHeld(first, key("4711"), ops)
+            erpRows() shouldBe listOf(1)
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe listOf(listOf("Sales"))
+            ledger.findRun(first)?.status shouldBe RunStatus.CLOSED
+            heldBack()
+            clock.now = t0.plus(Duration.ofHours(3))
+            fake.writes.clear()
+        }
+
+        "review-303 N1: a held row committed after a debug replay is the later write — the replay's value is resent" {
+            lateCommit()
+            val again =
+                prepare(
+                    { planned(listOf(heldFor("AR")), keys = emptyList()) },
+                    program = "P",
+                    port = window(clock.instant()),
+                )
+            closeRun(again)
+            outcomes(again).values.single() shouldBe ("applied" to null)
+            erpRows() shouldBe listOf(1)
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe listOf(listOf("AR"))
+        }
+
+        "review-303 N1 mirror: the late-committed held value is the one that settles the re-read" {
+            lateCommit()
+            val again =
+                prepare(
+                    { planned(listOf(heldFor("Sales")), keys = emptyList()) },
+                    program = "P",
+                    port = window(clock.instant()),
+                )
+            closeRun(again)
+            outcomes(again).values.single() shouldBe ("skipped" to RowOutcome.SETTLED)
+            fake.writes shouldBe emptyList()
+            rows("SELECT held_for FROM public.sales_order WHERE order_number = '4711'") shouldBe listOf(listOf("Sales"))
+        }
+
+        "review-293 R1: perform on a watermark re-read records a row an earlier run applied as settled, sends nothing" {
+            val t0 = clock.instant()
+            val plan = { _: UUID -> planned(hold("4711"), listOf(listOf(0, 1)), keys = emptyList()) }
+            closeRun(prepare(plan, program = "P", port = window(t0)))
+            heldBack()
+            clock.now = t0.plus(Duration.ofHours(1))
+            fake.writes.clear()
+            val again = prepare(plan, program = "P", port = window(clock.instant()))
+            val perform =
+                Perform(
+                    ledger,
+                    Apply(door(), clock),
+                    { _, _ -> contexts.resolve(again, RunNames("", null, null, null, null), identity.caller) },
+                    { _, b -> b() },
+                )
+            perform.perform(again, "hold", PerformRequest(), identity.caller)
+            fake.writes shouldBe emptyList()
+            outcomes(again).values.toSet() shouldBe setOf("skipped" to RowOutcome.SETTLED)
         }
     })
 

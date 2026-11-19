@@ -63,9 +63,20 @@ an annotated document.
   untouched. Pack **content** is per-world and never part of the suite (NL-17) —
   mount it at `packs.sources` / `lists.sources` (the chart's `packs.configMapName` /
   `lists.configMapName`), and name the world's pipelines with `NLP_PIPELINES`: a JSON
-  object of name → `{ops, gazetteer, rules, morph}`, merged over config.yaml's
+  object of name → `{ops, gazetteer, stages, morph}`, merged over config.yaml's
   `pipelines:` by name (DX-P3 T8f). A value that does not read is logged and dropped
   whole; config.yaml's pipelines stay.
+- **Stages come from the `ttrnlp.stages` group (OL-C6…C10).** After the gazetteer a
+  pipeline runs its `stages: [{stage: <name>, …the stage's own keys}]` in order; the
+  older `rules: [{pack, phase}]` stays valid and means the same entries with
+  `stage: rules` (writing both is refused). The runner does not import the rule
+  engine — it asks the installed stage by name, and a trace's `kind` is the stage's
+  name. A stage is any installed distribution's entry in the group (what it must
+  provide: the `ttr-nlp` README, *Pipeline stages*); this image has `rules`, from
+  the `ttr-nlp` wheel. A pipeline naming a stage the image lacks fails the load with
+  `NLS-PACK-006` at boot and on reload, like any pack error.
+  `GetStatus.pack_state.packs_loaded` is the installed stages' `packs_loaded`
+  summed — 0 with no packs mounted.
 
 > **Proto stubs.** nlp owns its generated `org.tatrman.{nlp,common}.v1`
 > Python stubs under `generated/` (gitignored), produced from the shared

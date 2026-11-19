@@ -27,7 +27,7 @@ WORKDIR /build/services/golem-py
 COPY services/golem-py/pyproject.toml services/golem-py/uv.lock ./
 RUN pip install --upgrade pip && pip install uv && uv sync --frozen
 
-# ===== proto generation layer (org.tatrman.{resolver,nlp,common}.v1 stubs) =====
+# ===== proto generation layer (org.tatrman.*.v1 stubs; plan.v1 from the ttr-plan-proto wheel) =====
 FROM deps AS protogen
 ENV PATH="/build/services/golem-py/.venv/bin:${PATH}"
 COPY shared/proto/src/main/proto /build/shared/proto/src/main/proto
@@ -54,6 +54,24 @@ COPY --chown=appuser:appuser services/golem-py/config ./config
 ENV PATH="/build/services/golem-py/.venv/bin:${PATH}"
 ENV PYTHONPATH=/app/src:/app/generated
 ENV GOLEM_LADDER_CONFIG=/app/config/golem-ladder.yaml
+
+# ===== the LLM lane (OL W1c, contracts §C) =====
+# Every GOLEM_* default lives in one place, `golem_py.settings.GolemSettings` (the switch is on,
+# the model class is `smart`, the slice cap is 40), and the image sets none of them. Five
+# variables name the estate, and one Secret authenticates the lane:
+#   GOLEM_QUERY_TARGET    the query door, `query.v1` (host:port)
+#   GOLEM_QUERY_WORLD     the world every lane query runs in
+#   GOLEM_LLM_TARGET      the open LLM gateway's HTTP base URL, ending in `/v1` (OL-C13, D-43)
+#   GOLEM_META_TARGET     `meta.v1` (host:port), for the model slice
+#   GOLEM_META_PACKAGES   the packages the slice reads, comma-separated
+#   GOLEM_LLM_API_KEY     the team's gateway key — from a Secret (secretKeyRef), never baked in
+# The lane is ON only when the switch is on AND GOLEM_QUERY_TARGET AND GOLEM_LLM_TARGET are set
+# (OL-C11). Leave either out and the image answers structurally, as it did before W1c.
+# GOLEM_LLM_MODEL optionally pins a model (empty: the gateway picks within the class).
+# The CLI checks the startup configuration BEFORE the turn: the ladder file and the profile
+# always; for a lane that is on, also the gateway URL and key, the world, the slice, the
+# `capable` rung's clock and the prompt file (/app/config/llm-lane-prompt.md). A bad configuration exits 2 and names what is
+# wrong.
 
 ENTRYPOINT ["python", "src/main.py"]
 CMD ["--help"]

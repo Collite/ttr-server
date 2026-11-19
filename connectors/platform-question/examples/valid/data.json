@@ -1,0 +1,53 @@
+{
+  "core": {
+    "items": {
+      "entity": "item",
+      "columns": [
+        "id",
+        "amount"
+      ],
+      "where": "amount > {minimum}"
+    },
+    "totals": {
+      "table": "sales_totals"
+    },
+    "open_items": {
+      "query": "catalog.query.open_items"
+    },
+    "selected": {
+      "sql": "SELECT id FROM er.item WHERE id = {item_id}"
+    }
+  },
+  "variables": {
+    "n": {
+      "kind": "row_count",
+      "over": "items",
+      "distinct": "id"
+    },
+    "any_items": {
+      "kind": "exists",
+      "over": "items"
+    },
+    "total": {
+      "kind": "aggregate",
+      "over": "items",
+      "agg": "sum",
+      "column": "amount",
+      "null_is_zero": true
+    },
+    "ids": {
+      "kind": "column",
+      "over": "items",
+      "column": "id",
+      "distinct": true
+    },
+    "rows": {
+      "kind": "table",
+      "over": "items"
+    },
+    "grand_total": {
+      "kind": "scalar",
+      "sql": "SELECT sum(amount) FROM items"
+    }
+  }
+}

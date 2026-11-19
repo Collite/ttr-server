@@ -88,6 +88,38 @@ Kotlin shell needs its own.
 | `core_calls_total` · `measures` · `subjects` · `operators` · `inapplicable_operators` · `member_filters` · `gaps_carried` · `gaps_carried_spans` · `provenance_lexicon_artifact_hash` · `gated_refs` | `answer` | what compose selected, what it dropped and why, and the RV-39 tuple that bound it |
 | `proposing_rung` | `answer` after a pin, and every `resolve.gate:v1` turn | who PROPOSED — for a pin, `user`, deliberately outside the four-rung vocabulary so the ladder's health numbers cannot be made to lie by it |
 | `gated_refs` · `evidence_classes` · `gap_kinds` | `resolve.gate:v1` | what survived the gate, at what class |
+| `door_calls` · `door_subject` · `prompt_states` | a turn with `lane:` | the door was called this often, every time under the caller's subject, in the lane's world and with the slice as the allow-list; the n-th gateway prompt states each string of `prompt_states[n]`, and there are exactly as many prompts as entries. Every recorded reply and door outcome must be consumed |
+| `lane` · `llm_model` · `sql` · `rows` · `llm_handled_spans` | `answer` through the lane | OL-C17's envelope: `provenance.lane`, `provenance.llm_model`, the SQL (it is also the last query the door ran, and `provenance.sql_sha256` hashes it), the row count, and the spans the LLM claims |
+| `explanation_contains` | `refusal` | the refusal names its last error: the broken rule, the door's text, or the leg that was down |
+
+## `lane:` — the LLM lane's legs, recorded (OL W1c·S3)
+
+A `golem.turn:v1` or `golem.resume:v1` turn may carry a `lane:` block. When it does, the
+lane is ON for that turn (OL-C11: the switch is on, and there is a gateway and a door), and
+all three of its legs are that turn's recordings:
+
+```jsonc
+"lane": {
+  "slice": "cost-ledger",          // lane/<id>.slice.json: the meta.v1 model slice
+  "world": "hartland_cz",          // the world every lane query runs in
+  "reference_date": "2026-11-16",  // what "last month" is counted from (OL-C14)
+  "gateway": { "model": "…", "replies": [ {"sql": "…", "handled_spans": [], "note": "…"},
+                                          {"raw": "not an object"}, {"unavailable": "…"} ] },
+  "door": [ {"columns": ["…"], "rows": [["…"]], "provenance": {}},
+            {"rejected": {"code": "translator_rejected", "message": "…"}}, {"unavailable": "…"} ]
+}
+```
+
+A turn without `lane:` runs with the lane OFF, which is how every fixture written before
+W1c·S3 still runs. A resume never inherits the previous turn's legs: a resume after a lane
+turn either carries its own `lane:` block or runs with the lane off. A gateway reply that is an object is sent as its JSON text. The door's
+`rejected` text is handed back verbatim, as a real door's would be. **Recorded** means
+*replayed*, in the same sense that the core is recorded. The four `ol-lane-*` fixtures
+replay the resolver's own goldens. Their gateway replies and door results are AUTHORED
+from contracts §C, because when they were written no live `llm.v1` gateway existed to
+record from (W1c·S3 Found while doing). The repair fixture's door text has the shape that
+bp-dsk's door returned for the same mistake. A shell with no LLM lane cannot run a turn
+that carries `lane:`. It skips that fixture and says so: it does not run it with the lane off.
 
 ## The invariant vocabulary
 

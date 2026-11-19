@@ -156,7 +156,7 @@ class RunRuntime(
         val staging = Staging(store, protocol)
         val planner =
             org.tatrman.automation.apply
-                .ApplyPlanner(clock)
+                .ApplyPlanner(clock, config.worldZones)
         val policy =
             Open(
                 served,
@@ -199,6 +199,7 @@ class RunRuntime(
                 clock,
                 closer::authorizeExecution,
                 EngineRuns(engineHistory, config.engine.clientId),
+                AnswerRuns(policy, ledger, held),
             )
         workers =
             RunWorkers(

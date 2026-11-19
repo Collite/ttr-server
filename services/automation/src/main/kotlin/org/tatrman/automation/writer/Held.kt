@@ -29,7 +29,7 @@ import java.util.UUID
 /**
  * S2.3 — the held groups of a waiting run (Amendment 2026-11-03 `hold`; D-60, D-97, D-99, D-100). The internal API
  * `commitHeld(batch, group, by)` / `rejectHeld(batch, group, by)` behind P2's dev routes; the production entry is the
- * answer run (P3·S3.2, D-159).
+ * answer run — [commitKey] (S3.5, D-230: D-159 completed).
  *
  * A commit first checks D-99: the run's pinned fingerprints (text, values, program, deployment) must still be the served
  * ones, else `409 superseded` and nothing is applied (the group stays held: a reject still decides it). Then the
@@ -58,52 +58,84 @@ class Held(
         group: JsonObject,
         by: Caller,
     ): HeldDecision =
-        decide(run, group, by) { held ->
-            superseded(held)?.let { throw it }
-            val context = contexts.resolve(run, held.names, by)
-            val input =
-                ApplyInput(
-                    run,
-                    context.world,
-                    context.identity,
-                    context.modelFp,
-                    clock.instant().plus(held.budget),
-                    held.rows,
-                    held.actions,
-                    context.source,
-                    context.entities,
-                    context.routes,
-                    held.statuses.mapNotNull { it.recorded() }.associateBy { it.seq },
-                    // review-293 F8 (✅R293-B): a re-read's held row an earlier run already applied is not resent.
-                    settled = held.settled,
-                )
-            // review-258 B3 (D-188): a retried commit re-reads each request an earlier attempt lost the answer to. A request
-            // the re-read proves applied is never resent; otherwise only a lone transition whose key is in a state its
-            // compare-and-set accepts is sent again, and anything else keeps the group undecided.
-            val settled = apply.reconcile(input, journal(held.batch), resend = true)
-            val outcomes = apply.apply(input.copy(recorded = input.recorded + settled), journal(held.batch))
-            val open = held.rows.map { it.seq }.filter { outcomes[it] == null || outcomes[it]?.status == "staged" }
-            if (open.isNotEmpty()) {
-                // No decision over an unknown outcome: the group stays held and the run waiting (D-97).
-                throw AutomationException(
-                    ErrorCode.CLOSE_NOT_READY,
-                    "rows $open of the held group have no known outcome; the group stays undecided — commit it " +
-                        "again to re-read them",
-                    buildJsonObject {
-                        put("reason", "unresolved-outcome")
-                        put("rows", JsonArray(open.map(::JsonPrimitive)))
-                    },
-                )
-            }
-            io { ledger.decideHeld(run, group, "commit", by.principal) }
+        decide(run, group, { requireOps(by, it.names.deployment) }) { held ->
+            commit(held, group, by, by.principal, answer = null)
         }
+
+    /**
+     * S3.5 (D-230, ⚑AU-S35-1 contract 2): the production entry — an engine answer run decides the answered [key]'s held
+     * group of [run]. The hold group is the candidate key (⚑20-2), so this commits exactly that key's held rows (the
+     * other keys stay held). [by] is the person the engine's history verified (`engine.answeredBy`), recorded as the
+     * decider with the [answer] run's id; `role.ops` is not asked of the engine client [decider] (contract 5: the
+     * approval is the person's, proved by the engine's history). D-99 first: a moved fingerprint applies nothing. A key
+     * already decided answers its recorded decision, [HeldDecision.replayed]; a key the run does not hold is
+     * [org.tatrman.automation.ledger.NoHeldGroup], raised to the caller.
+     */
+    suspend fun commitKey(
+        run: UUID,
+        key: JsonObject,
+        decider: Caller,
+        by: String,
+        answer: UUID,
+    ): HeldDecision {
+        require(by.isNotBlank())
+        return decide(run, key, {}, raw = true) { held -> commit(held, key, decider, by, answer) }
+    }
+
+    private suspend fun commit(
+        held: HeldGroup,
+        group: JsonObject,
+        decider: Caller,
+        by: String,
+        answer: UUID?,
+    ): HeldDecision {
+        val run = held.run
+        superseded(held)?.let { throw it }
+        val context = contexts.resolve(run, held.names, decider)
+        val input =
+            ApplyInput(
+                run,
+                context.world,
+                context.identity,
+                context.modelFp,
+                clock.instant().plus(held.budget),
+                held.rows,
+                held.actions,
+                context.source,
+                context.entities,
+                context.routes,
+                held.statuses.mapNotNull { it.recorded() }.associateBy { it.seq },
+                // review-293 F8 (✅R293-B): a re-read's held row an earlier run already applied is not resent.
+                settled = held.settlement.settled,
+                unknown = held.settlement.unknown,
+            )
+        // review-258 B3 (D-188): a retried commit re-reads each request an earlier attempt lost the answer to. A request
+        // the re-read proves applied is never resent; otherwise only a lone transition whose key is in a state its
+        // compare-and-set accepts is sent again, and anything else keeps the group undecided.
+        val settled = apply.reconcile(input, journal(held.batch), resend = true)
+        val outcomes = apply.apply(input.copy(recorded = input.recorded + settled), journal(held.batch))
+        val open = held.rows.map { it.seq }.filter { outcomes[it] == null || outcomes[it]?.status == "staged" }
+        if (open.isNotEmpty()) {
+            // No decision over an unknown outcome: the group stays held and the run waiting (D-97).
+            throw AutomationException(
+                ErrorCode.CLOSE_NOT_READY,
+                "rows $open of the held group have no known outcome; the group stays undecided — commit it " +
+                    "again to re-read them",
+                buildJsonObject {
+                    put("reason", "unresolved-outcome")
+                    put("rows", JsonArray(open.map(::JsonPrimitive)))
+                },
+            )
+        }
+        return io { ledger.decideHeld(run, group, "commit", by, answer) }
+    }
 
     suspend fun rejectHeld(
         run: UUID,
         group: JsonObject,
         by: Caller,
     ): HeldDecision =
-        decide(run, group, by) { held ->
+        decide(run, group, { requireOps(by, it.names.deployment) }) { held ->
             // review-258 B3: a commit that already sent rows cannot be rejected; only a commit can finish it.
             val sent = held.statuses.filter { it.status == "applied" || it.status == "staged" && it.error != null }
             if (sent.isNotEmpty()) {
@@ -119,19 +151,28 @@ class Held(
             io { ledger.decideHeld(run, group, "reject", by.principal) }
         }
 
+    /** [raw]: a missing run/group is raised as the ledger's own exception (the answer path maps it, contract 1). */
     private suspend fun decide(
         run: UUID,
         group: JsonObject,
-        by: Caller,
+        authorize: (HeldGroup) -> Unit,
+        raw: Boolean = false,
         block: suspend (HeldGroup) -> HeldDecision,
     ): HeldDecision =
         withContext(NonCancellable) {
             lock.withLock {
-                val held = io { ledger.heldGroup(run, group) }
-                requireOps(by, held.names.deployment)
+                val held =
+                    if (raw) {
+                        withContext(Dispatchers.IO) {
+                            ledger.heldGroup(run, group)
+                        }
+                    } else {
+                        io { ledger.heldGroup(run, group) }
+                    }
+                authorize(held)
                 if (held.statuses.any { it.decided != null }) {
                     // Already decided: its recorded answer, nothing applied or appended again.
-                    return@withLock io { ledger.decideHeld(run, group, "commit", "-") }
+                    return@withLock io { ledger.decideHeld(run, group, "commit", "-") }.copy(replayed = true)
                 }
                 if (held.status != RunStatus.WAITING || held.batchState != "held") {
                     throw AutomationException(

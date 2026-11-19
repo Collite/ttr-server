@@ -171,6 +171,8 @@ private fun JsonObjectBuilder.putState(s: SourceLoadBoard.SourceLoadState) {
     put("branch", s.origin.branch)
     put("commit", s.origin.commit)
     put("source_type", s.origin.source)
+    put("kind", s.origin.kind)
+    put("profile", s.origin.profile)
     put("source", s.description)
     put("loaded", s.loadedOnce)
     put("serving_fallback", s.servingFallback)

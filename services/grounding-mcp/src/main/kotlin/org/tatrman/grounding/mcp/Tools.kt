@@ -22,6 +22,9 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import org.slf4j.LoggerFactory
 import org.tatrman.grounding.mcp.client.GroundingClient
+import org.tatrman.grounding.mcp.client.ScanCapability
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The grounding MCP tools — thin wrappers over the chrono / geo / money `GroundingService`s, plus `scan_time` over
@@ -37,6 +40,8 @@ class Tools(
     private val chrono: GroundingClient,
     private val geo: GroundingClient,
     private val money: GroundingClient,
+    // OL-C4 — `scan_time` calls chrono's Scan only while chrono declares capabilities["scan"] = "true".
+    private val chronoScan: ScanCapability = ScanCapability(DEFAULT_STATUS_TTL) { chrono.getStatus() },
 ) {
     private val logger = LoggerFactory.getLogger(Tools::class.java)
     private val json = Json { ignoreUnknownKeys = true }
@@ -119,6 +124,7 @@ class Tools(
                 logger.warn("bad scan args: {}", e.message)
                 return argError("Invalid arguments: ${e.message}")
             }
+        if (!chronoScan.available()) return notAvailable(chrono.serviceName)
         val response =
             try {
                 chrono.scan(scanRequest)
@@ -254,6 +260,21 @@ class Tools(
                     put("error", message)
                 },
         )
+
+    /** OL-C4 — the grounder does not declare `scan`; Scan is not called. */
+    private fun notAvailable(service: String): CallToolResult {
+        val message = "The time service '$service' does not offer scan_time; ground each time phrase with ground_time."
+        return CallToolResult(
+            isError = true,
+            content = listOf(TextContent(text = message)),
+            structuredContent =
+                buildJsonObject {
+                    put("errorCode", NOT_AVAILABLE)
+                    put("service", service)
+                    put("error", message)
+                },
+        )
+    }
 
     private fun transportError(
         service: String,
@@ -403,6 +424,14 @@ class Tools(
                 },
             required = listOf("status"),
         )
+
+    companion object {
+        /** OL-C4 — the tool error code when the grounder does not declare `scan`. */
+        const val NOT_AVAILABLE = "not_available"
+
+        /** `grounding.status-ttl-seconds`' default: how long chrono's `scan` answer is kept. */
+        val DEFAULT_STATUS_TTL: Duration = 60.seconds
+    }
 }
 
 private val kotlinx.serialization.json.JsonPrimitive.contentOrNull: String?

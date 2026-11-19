@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.apply
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import org.slf4j.LoggerFactory
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.ManifestColumn
+import org.tatrman.automation.bundle.BundleFixture
+import org.tatrman.automation.bundle.legacyPreviewMetadata
 import org.tatrman.automation.runner.BoundValue
 import org.tatrman.automation.runner.Table
 import java.math.BigDecimal
@@ -134,6 +146,132 @@ class PreviewExpressionsSpec :
         "no scalar arguments still retain one empty argument record per selected row" {
             project().rows shouldBe List(3) { emptyList() }
         }
+        // S2.8 (D-239, ttr-server#443): the refusal names its wiring and cause; the log carries the redacted cause.
+        val site = PreviewSite("run-s28", "#2:way.hold->release", "release")
+        val secret = "SECRET-VALUE-7"
+        val secrets = bindings + ("code" to BoundValue("text", secret))
+
+        fun refusal(
+            vararg expressions: Pair<String, String>,
+            table: Table = input,
+        ): AutomationException =
+            shouldThrow<AutomationException> {
+                PreviewExpressions.project(linkedMapOf(*expressions), table, secrets, site = site)
+            }
+
+        fun JsonObject.text(name: String): String? = (this[name] as? JsonPrimitive)?.content
+
+        fun AutomationException.public(): String = envelope().toString()
+
+        fun captured(block: () -> Unit): List<ILoggingEvent> {
+            val logger = LoggerFactory.getLogger(PreviewRefusals::class.java) as Logger
+            val appender = ListAppender<ILoggingEvent>().apply { start() }
+            logger.addAppender(appender)
+            try {
+                block()
+            } finally {
+                logger.detachAppender(appender)
+            }
+            return appender.list.toList()
+        }
+
+        "(a) a column the staged table lacks names the wiring, action, expression and cause, never SQL or data" {
+            val error = refusal("key" to "id", "value" to "missing_column = :code")
+            error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+            error.message shouldBe "unsupported action expression"
+            val detail = error.detail as JsonObject
+            detail.text("wiring") shouldBe "#2:way.hold->release"
+            detail.text("action") shouldBe "release"
+            detail.text("kind") shouldBe "expression"
+            detail.text("expression") shouldBe "value"
+            detail.text("cause") shouldBe "TTRP-EXP-001"
+            detail.keys shouldBe setOf("wiring", "action", "kind", "expression", "cause")
+            for (leak in listOf(secret, "SELECT", "select", "au_condition", "FROM", "missing_column")) {
+                error.public() shouldNotContain leak
+            }
+        }
+        "(b) an unknown function has the same shape and a different cause" {
+            val missing = refusal("value" to "missing_column").detail as JsonObject
+            val error = refusal("value" to "no_such_function(id)")
+            val detail = error.detail as JsonObject
+            detail.keys shouldBe missing.keys
+            detail.text("wiring") shouldBe "#2:way.hold->release"
+            detail.text("expression") shouldBe "value"
+            detail.text("cause") shouldBe "TTRP-FN-001"
+            detail.text("cause") shouldNotBe missing.text("cause")
+            error.public() shouldNotContain "no_such_function"
+        }
+        "an execution error names the exception class, and a bound value never reaches the public error" {
+            val error = refusal("key" to "id", "value" to "cast(:code as int)")
+            val detail = error.detail as JsonObject
+            detail.text("expression") shouldBe "value"
+            detail.text("cause") shouldBe "SQLException"
+            error.public() shouldNotContain secret
+        }
+        "(c) a condition names its kind and the wiring" {
+            val error =
+                shouldThrow<AutomationException> {
+                    PreviewExpressions.select("missing_column > :code", input, secrets, site = site)
+                }
+            error.message shouldBe "unsupported action condition"
+            val detail = error.detail as JsonObject
+            detail.text("kind") shouldBe "condition"
+            detail.text("wiring") shouldBe "#2:way.hold->release"
+            detail.text("action") shouldBe "release"
+            detail.text("expression") shouldBe "when"
+            detail.text("cause") shouldBe "TTRP-EXP-001"
+        }
+        "(d) one WARN line per refusal names the run and wiring and carries the cause with bound values as ?" {
+            val events = captured { refusal("key" to "id", "value" to "cast(:code as int)") }
+            events.size shouldBe 1
+            val line = events.single()
+            line.level shouldBe Level.WARN
+            val text = line.formattedMessage
+            text shouldContain "run=run-s28"
+            text shouldContain "wiring=#2:way.hold->release"
+            text shouldContain "cause=SQLException: "
+            text shouldNotContain secret
+            text shouldContain "?"
+            // The redaction is by the bound values, not a pattern: the rest of the engine's message survives.
+            text shouldContain "INT32"
+        }
+        "(d) a nested refusal through the wiring values logs once" {
+            val ask = legacyPreviewMetadata(BundleFixture.load()).actions.getValue("ask")
+            val events =
+                captured {
+                    shouldThrow<AutomationException> {
+                        PreviewWiringValues.project(
+                            PreviewWiringValues.prepare(mapOf("value" to "missing_column + 1"), ask, site),
+                            input,
+                            secrets,
+                            roleNames = emptySet(),
+                            site = site,
+                        )
+                    }.let { (it.detail as JsonObject).text("expression") shouldBe "value" }
+                }
+            events.size shouldBe 1
+        }
+
+        "S2.8 (review-368 F3): a short bound value is redacted as a whole token only" {
+            PreviewRefusals.redact(
+                "Could not convert string 'abc' to INT32 at row 3",
+                sequenceOf(3L, "abc"),
+            ) shouldBe "Could not convert string '?' to INT32 at row ?"
+        }
+
+        "S2.8 (review-368 F4): a date derived from a binding is redacted too" {
+            val bindings = mapOf("as_of" to BoundValue("datetime", Instant.parse("2026-10-24T12:30:00Z")))
+            val data = PreviewExpressions.values(Table(emptyList(), emptyList()), bindings, listOf(":as_of - days(30)"))
+            val redacted =
+                PreviewRefusals.redact(
+                    "Conversion Error: date field value out of range: \"2026-09-24 12:30:00\" (2026-09-24)",
+                    data.bound,
+                    data.routed,
+                )
+            redacted shouldNotContain "2026-09-24"
+            redacted shouldBe "Conversion Error: date field value out of range: \"?\" (?)"
+        }
+
         "generated projection aliases do not mask source columns or reorder rows" {
             val collision = Table(listOf(ManifestColumn("_au_value_0", "int")), listOf(listOf(8L), listOf(7L)))
             PreviewExpressions.project(mapOf("key" to "_au_value_0 + 1"), collision, emptyMap()).rows shouldBe
