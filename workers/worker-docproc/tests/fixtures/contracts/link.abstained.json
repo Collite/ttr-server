@@ -44,7 +44,7 @@
       "payloadJson": "{\"candidates\":[{\"code\":\"HL-2040\",\"label\":\"Breeze Tower Fan\",\"score\":0.95,\"source\":\"lexicon\",\"system\":\"cn.Item\"}],\"concept\":\"cn.Item\",\"kind\":\"item\",\"linkMethod\":\"lexicon\",\"member\":{\"category\":\"er.entity.item.product_name\",\"display\":\"Breeze Tower Fan\",\"id\":\"HL-2040\"},\"surface\":\"ventilátor Breeze\"}",
       "producer": "link-mentions",
       "producerVersion": "sha256:3c6e271cdb65c7597051703adaff7239c65bfac571a6acf4fba4994f57ed57e3",
-      "runId": "link-mentions-review-001.en.json/1",
+      "runId": "link-mentions-review-002.cs.json/1",
       "spans": [
         {
           "end": 48,

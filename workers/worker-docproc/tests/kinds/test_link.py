@@ -357,9 +357,24 @@ class _Ambiguous:
         return pb.BatchMatchResponse(results=[pb.FuzzyMatchResponse(matches=hits) for _ in queries])
 
 
-def _aurora(engine: dict[str, object] | None = None) -> tuple[Unit, Annotation, RunContext]:
+# What cz-mentions writes (nlp_pipeline): every gazetteer Mention carries its Lookup's `concept`, no `member` (review-381 F1).
+def cz_mention(surface: str, **extra: object) -> dict[str, object]:
+    return {
+        "kind": "item",
+        "surface": surface,
+        "linkMethod": "gazetteer",
+        "candidates": [],
+        "concept": "cn.Item",
+        **extra,
+    }
+
+
+def _aurora(
+    engine: dict[str, object] | None = None, payload: dict[str, object] | None = None
+) -> tuple[Unit, Annotation, RunContext]:
     unit = Unit(id=1, content_text="Aurora")
-    mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"}, [Span(unit_id=1, start=0, end=6)])
+    payload = payload or {"kind": "item", "surface": "Aurora"}
+    mention = annotation(unit, "Mention", payload, [Span(unit_id=1, start=0, end=6)])
     mention.id = 7
     ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
     if engine is not None:
@@ -368,36 +383,71 @@ def _aurora(engine: dict[str, object] | None = None) -> tuple[Unit, Annotation, 
 
 
 @pytest.mark.parametrize(
-    "engine,codes",
+    "engine,codes,payload",
     [
-        ({}, ["HL-1001", "HL-1003", "HL-1002"]),  # default 5, three found
-        ({"candidates_on_abstain": 2}, ["HL-1001", "HL-1003"]),
-        ({"candidates_on_abstain": 5, "k": 1}, ["HL-1001"]),  # never more than the linker ranked (k)
+        ({}, ["HL-1001", "HL-1003", "HL-1002"], None),  # default 5, three found
+        ({"candidates_on_abstain": 2}, ["HL-1001", "HL-1003"], None),
+        ({"candidates_on_abstain": 5, "k": 1}, ["HL-1001"], None),  # never more than the linker ranked (k)
+        ({}, ["HL-1001", "HL-1003", "HL-1002"], cz_mention("Aurora", lemma="aurora")),  # review-381 F1
     ],
-    ids=["default", "on-abstain-2", "k-1"],
+    ids=["default", "on-abstain-2", "k-1", "cz-mentions-shaped"],
 )
 def test_an_abstaining_link_writes_its_top_candidates_on_a_derived_mention(
-    engine: dict[str, object], codes: list[str]
+    engine: dict[str, object], codes: list[str], payload: dict[str, object] | None
 ) -> None:
     """DX-D42 (S4.1f): link-pick reads candidates off a Mention, so an abstaining linker writes one: no `concept`, no
     `member`, `linkMethod: abstain`, its top min(candidates_on_abstain, k, found) candidates by score, each with its
     source. The abstaining Decision is unchanged and the run still abstains."""
-    _, mention, ctx = _aurora(engine)
+    _, mention, ctx = _aurora(engine, payload)
     result = Link(_Ambiguous(), FakeWarehouse(list(ctx.units.values()))).run(ctx)
+    assert result.abstained
+    [abstained] = [a for a in result.annotations if a.type == "Mention"]
+    written = abstained.payload()
+    assert "concept" not in written and "member" not in written and written["linkMethod"] == "abstain"
+    assert written["surface"] == "Aurora" and written["kind"] == "item"
+    assert [c["code"] for c in written["candidates"]] == codes
+    assert [c["score"] for c in written["candidates"]] == sorted(
+        (c["score"] for c in written["candidates"]), reverse=True
+    )
+    assert all(c["source"] == "lexicon" and c["system"] == "cn.Item" for c in written["candidates"])
+    assert abstained.derived_from == [mention.id] and abstained.spans == mention.spans
+    registry().schema_for("Mention").validate(written)
+    decision = next(a.payload() for a in result.annotations if a.type == "Decision")
+    assert "chosen" not in decision and decision["score"] == 0.45
+
+
+def test_a_margin_abstain_on_a_cz_mentions_mention_drops_its_concept_so_link_pick_sees_it() -> None:
+    """review-381 F1: cz-mentions gives every Mention `concept: cn.Item`. A margin abstain's best is ≥ `abstain_below`,
+    and link-pick skips a Mention that has a concept and such a best as a confident link (LinkPickKind band rule). So
+    the derived Mention drops the input's `concept` and `member`; its candidates are already that concept's."""
+
+    class Tie:
+        def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
+            hits = [
+                pb.FuzzyMatch(
+                    candidate_id=f"MX-{n}",
+                    candidate=f"Voltaic Sluchátka MX-{n}",
+                    score=1.0058,
+                    source=pb.MEMBER,
+                    category="er.entity.item.name",
+                )
+                for n in range(5)
+            ]
+            return pb.BatchMatchResponse(results=[pb.FuzzyMatchResponse(matches=hits) for _ in queries])
+
+    unit = Unit(id=1, content_text="sluchátka")
+    mention = annotation(unit, "Mention", cz_mention("sluchátka", lemma="sluchátko"), [Span(unit_id=1, start=0, end=9)])
+    mention.id = 7
+    ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
+    result = Link(Tie(), FakeWarehouse([unit])).run(ctx)
     assert result.abstained
     [abstained] = [a for a in result.annotations if a.type == "Mention"]
     payload = abstained.payload()
     assert "concept" not in payload and "member" not in payload and payload["linkMethod"] == "abstain"
-    assert payload["surface"] == "Aurora" and payload["kind"] == "item"
-    assert [c["code"] for c in payload["candidates"]] == codes
-    assert [c["score"] for c in payload["candidates"]] == sorted(
-        (c["score"] for c in payload["candidates"]), reverse=True
-    )
-    assert all(c["source"] == "lexicon" and c["system"] == "cn.Item" for c in payload["candidates"])
-    assert abstained.derived_from == [mention.id] and abstained.spans == mention.spans
+    assert payload["lemma"] == "sluchátko" and len(payload["candidates"]) == 5
+    assert max(c["score"] for c in payload["candidates"]) >= ctx.manifest["engine"].get("abstain_below", 0.6)
+    assert {c["system"] for c in payload["candidates"]} == {"cn.Item"}
     registry().schema_for("Mention").validate(payload)
-    decision = next(a.payload() for a in result.annotations if a.type == "Decision")
-    assert "chosen" not in decision and decision["score"] == 0.45
 
 
 def test_a_margin_abstain_carries_both_sources() -> None:
@@ -444,6 +494,17 @@ def test_candidates_on_abstain_must_be_a_non_negative_integer(bad: object) -> No
         Link(_Ambiguous(), FakeWarehouse(list(ctx.units.values()))).run(ctx)
 
 
+def test_candidates_on_abstain_five_point_zero_is_five() -> None:
+    """review-381 F2: the manifest schema's `integer` accepts 5.0, so the linker reads it as 5, never as a failed run."""
+    outputs = []
+    for value in (5, 5.0):
+        _, _, ctx = _aurora({"candidates_on_abstain": value})
+        outputs.append(
+            [a.dump() for a in Link(_Ambiguous(), FakeWarehouse(list(ctx.units.values()))).run(ctx).annotations]
+        )
+    assert outputs[0] == outputs[1] and len(outputs[0]) == 2
+
+
 @pytest.mark.parametrize("doc", ["review-001.en.json", "review-002.cs.json", "claim-001.cs.txt", "claim-002.en.md"])
 def test_confident_links_are_unchanged_by_candidates_on_abstain(doc: str) -> None:
     """S4.1f T1(d): every PX mention links, and the output is the same bytes with the knob at its default and at 0
@@ -474,7 +535,7 @@ def link_pick_input() -> dict[str, list[dict[str, Any]]]:
     from google.protobuf.json_format import ParseDict
 
     rows = {row["query"]: row for row in RecordedLexMatcher("hartland.json").rows}
-    out: list[Annotation] = []
+    out: list[tuple[Annotation, RunContext]] = []
     for n, query in enumerate(["sluchátka", "Aurora lamp"]):
 
         class Lex:
@@ -482,12 +543,10 @@ def link_pick_input() -> dict[str, list[dict[str, Any]]]:
                 return pb.BatchMatchResponse(results=[ParseDict(rows[query]["response"], pb.FuzzyMatchResponse())])  # noqa: B023
 
         unit = Unit(id=201 + n, content_text=query)
-        mention = annotation(
-            unit, "Mention", {"kind": "item", "surface": query}, [Span(unit_id=unit.id, start=0, end=len(query))]
-        )
+        mention = annotation(unit, "Mention", cz_mention(query), [Span(unit_id=unit.id, start=0, end=len(query))])
         mention.id = 5001 + n
         ctx = replace(context("review-001.en.json", "link-mentions"), units={unit.id: unit}, annotations=[mention])
-        out += [a for a in Link(Lex(), FakeWarehouse([unit])).run(ctx).annotations if a.type == "Mention"]
+        out += [(a, ctx) for a in Link(Lex(), FakeWarehouse([unit])).run(ctx).annotations if a.type == "Mention"]
     doc = "review-002.cs.json"
     px = context(doc, "cz-mentions")
     with recorded_nlp() as nlp:
@@ -496,16 +555,20 @@ def link_pick_input() -> dict[str, list[dict[str, Any]]]:
     linkctx = replace(context(doc, "link-mentions"), annotations=[mention])
     with recorded_lexmatcher() as lex:
         out += [
-            a for a in Link(lex, FakeWarehouse(list(px.units.values()))).run(linkctx).annotations if a.type == "Mention"
+            (a, linkctx)
+            for a in Link(lex, FakeWarehouse(list(px.units.values()))).run(linkctx).annotations
+            if a.type == "Mention"
         ]
-    for n, a in enumerate(out):  # as the runner stamps them and the store numbers them
+    for n, (a, run) in enumerate(
+        out
+    ):  # as the runner stamps them (each its own document's run) and the store numbers them
         a.id, a.producer, a.producer_version, a.run_id = (
             7001 + n,
-            ctx.item.family,
-            ctx.item.version_hash,
-            ctx.item.run_id,
+            run.item.family,
+            run.item.version_hash,
+            run.item.run_id,
         )
-    return {"annotations": [a.dump() for a in out]}
+    return {"annotations": [a.dump() for a, _ in out]}
 
 
 def test_the_link_pick_input_fixture_is_this_linkers_output() -> None:
@@ -516,6 +579,10 @@ def test_the_link_pick_input_fixture_is_this_linkers_output() -> None:
     want = link_pick_input()
     methods = [json.loads(a["payloadJson"])["linkMethod"] for a in want["annotations"]]
     assert methods == ["abstain", "abstain", "lexicon"]
+    # review-381 F1: the inputs are cz-mentions-shaped (`concept: cn.Item`), the abstain Mentions still carry none.
+    assert ["concept" in json.loads(a["payloadJson"]) for a in want["annotations"]] == [False, False, True]
+    # review-381 F3: each Mention names its own document's run.
+    assert [a["runId"].split("-")[-1].split(".")[0] for a in want["annotations"]] == ["001", "001", "002"]
     if os.environ.get("DX_RECORD"):
         LINK_PICK_INPUT.write_text(canonical(want))
     assert LINK_PICK_INPUT.read_text() == canonical(want)

@@ -221,7 +221,7 @@ model qnames into cn concepts; MEMBER hits supply the instance id. It enriches
 unlinked mentions and gazetted concepts that still lack a member. A score/margin
 failure emits a Decision without chosen and yields ABSTAINED when nothing links.
 Since 0.11.7 (DX S4.1f, DX-D42) it also derives a Mention from each abstained input that had candidates:
-`linkMethod: abstain`, no `concept` or `member`, and its top `engine.candidates_on_abstain` candidates (default 5,
+`linkMethod: abstain`, no `concept` or `member` (the input's are dropped), and its top `engine.candidates_on_abstain` candidates (default 5,
 never more than `k`) by score, each with its `source`. kantheon's `link-pick` chooses among them. `0` writes none,
 which is the pre-0.11.7 output. Such a Mention counts as abstention output, so the run stays ABSTAINED, on recovery too.
 Concept-page hits are limited to the family targets. They support a member
