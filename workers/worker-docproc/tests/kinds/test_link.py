@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -7,8 +9,9 @@ from docproc._generated.org.tatrman.fuzzy.v1 import fuzzy_pb2 as pb
 from docproc.kinds.common import annotation
 from docproc.kinds.link import Link
 from docproc.kinds.nlp_pipeline import NlpPipeline
-from docproc.runtime.registry import RunContext
-from docproc.sdk.models import Annotation, Span, Unit, UnitKind
+from docproc.runtime.registry import KindResult, RunContext
+from docproc.sdk.models import Annotation, Span, Unit, UnitKind, canonical
+from tests.conftest import WORKER
 from tests.extraction import registry
 from tests.fakes import FakeWarehouse, concept_page, page_hit
 from tests.fakes_lexmatcher import RecordedLexMatcher, recorded_lexmatcher
@@ -20,6 +23,11 @@ from tests.pack import assert_golden, context, golden_rows, new_context
 REALISTIC = page_hit(9001)["score"]
 #: A cosine at or above `abstain_below` (0.6): a page close enough to link on the kNN alone.
 CLOSE = 0.72
+
+
+def linked(result: KindResult) -> list[Annotation]:
+    """The Mentions a run linked; an abstaining link's own Mention (`linkMethod: abstain`, S4.1f) links nothing."""
+    return [a for a in result.annotations if a.type == "Mention" and a.payload()["linkMethod"] != "abstain"]
 
 
 def with_page(units: list[Unit], qname: str, cosine: float, page_id: int = 9001) -> FakeWarehouse:
@@ -56,12 +64,14 @@ def test_ambiguous_abstains_and_real_hartland_does_not_invent_px_members() -> No
     ctx = replace(context("review-001.en.json", "link-mentions"), units={9: unit}, annotations=[mention])
     with recorded_lexmatcher() as lex:
         result = Link(lex, FakeWarehouse([unit])).run(ctx)
-    assert result.abstained and len(result.annotations) == 1
-    assert result.annotations[0].type == "Decision" and "chosen" not in result.annotations[0].payload()
-    registry().schema_for("Decision").validate(result.annotations[0].payload())
+    # S4.1f: the abstaining Decision, beside the Mention that carries its candidates to link-pick
+    [decision] = [a for a in result.annotations if a.type == "Decision"]
+    assert result.abstained and "chosen" not in decision.payload() and not linked(result)
+    assert [a.payload()["linkMethod"] for a in result.annotations if a.type == "Mention"] == ["abstain"]
+    registry().schema_for("Decision").validate(decision.payload())
     with recorded_lexmatcher(RecordedLexMatcher("hartland.json")) as lex:
         result = Link(lex, FakeWarehouse([unit])).run(ctx)
-    assert result.abstained and not any(a.type == "Mention" for a in result.annotations)
+    assert result.abstained and not linked(result)
 
 
 def test_knn_union_mapping_and_refusal() -> None:
@@ -131,7 +141,7 @@ def test_page_never_boosts_member(score: float, chosen: bool) -> None:
     result = Link(Lex(), with_page([unit], "cn.Item", CLOSE)).run(ctx)
     decision = next(a.payload() for a in result.annotations if a.type == "Decision")
     assert ("chosen" in decision) == chosen and decision["score"] == pytest.approx(score)
-    assert any(a.type == "Mention" for a in result.annotations) == chosen
+    assert bool(linked(result)) == chosen
     if chosen:
         assert result.annotations[0].payload()["linkMethod"] == "both"
 
@@ -148,7 +158,7 @@ def test_knn_respects_family_targets(concept: str, chosen: bool) -> None:
     mention = annotation(unit, "Mention", {"kind": "item", "surface": "Aurora"})
     ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
     result = Link(EmptyLex(), with_page([unit], concept, CLOSE)).run(ctx)
-    assert any(a.type == "Mention" for a in result.annotations) == chosen
+    assert bool(linked(result)) == chosen
     if chosen:
         assert result.annotations[0].payload()["linkMethod"] == "knn"
 
@@ -242,7 +252,7 @@ def test_every_real_hartland_replay_abstains(cosine: float | None) -> None:
         ctx = replace(context("review-001.en.json", "link-mentions"), units={1: unit}, annotations=[mention])
         store = FakeWarehouse([unit]) if cosine is None else with_page([unit], "cn.Item", cosine)
         result = Link(Lex(), store).run(ctx)
-        assert result.abstained and not any(a.type == "Mention" for a in result.annotations), row["query"]
+        assert result.abstained and not linked(result), row["query"]
         assert len(store.similar_calls) == 1 and store.page_reads == []
         logged = [c for item in result.sections["candidates"]["items"] for c in item["items"]]
         assert all(c["source"] == "lexicon" for c in logged), row["query"]
@@ -451,3 +461,61 @@ def test_confident_links_are_unchanged_by_candidates_on_abstain(doc: str) -> Non
             outputs.append(Link(lex, FakeWarehouse(list(ctx.units.values()))).run(c).annotations)
     assert [golden_rows(doc, o, ctx.units) for o in outputs[:1]] == [golden_rows(doc, outputs[1], ctx.units)]
     assert all(a.payload().get("linkMethod") != "abstain" for a in outputs[0])
+
+
+LINK_PICK_INPUT = WORKER / "tests/fixtures/contracts/link.abstained.json"
+
+
+def link_pick_input() -> dict[str, list[dict[str, Any]]]:
+    """What link-pick reads after this linker ran (S4.1f T3, mirrored byte for byte into kantheon's
+    `shared/proto/fixtures/dx/`): the Mentions of two real Hartland replays (hartland.json) the linker abstains on, a
+    five-way tie at 1.006 ("sluchátka", a margin abstain) and a best of 0.348 ("Aurora lamp", below `abstain_below`),
+    then the first PX mention it links (review-002), all as the store lists them (ids, producer, run)."""
+    from google.protobuf.json_format import ParseDict
+
+    rows = {row["query"]: row for row in RecordedLexMatcher("hartland.json").rows}
+    out: list[Annotation] = []
+    for n, query in enumerate(["sluchátka", "Aurora lamp"]):
+
+        class Lex:
+            def batch(self, queries: list[pb.SpanQuery]) -> pb.BatchMatchResponse:
+                return pb.BatchMatchResponse(results=[ParseDict(rows[query]["response"], pb.FuzzyMatchResponse())])  # noqa: B023
+
+        unit = Unit(id=201 + n, content_text=query)
+        mention = annotation(
+            unit, "Mention", {"kind": "item", "surface": query}, [Span(unit_id=unit.id, start=0, end=len(query))]
+        )
+        mention.id = 5001 + n
+        ctx = replace(context("review-001.en.json", "link-mentions"), units={unit.id: unit}, annotations=[mention])
+        out += [a for a in Link(Lex(), FakeWarehouse([unit])).run(ctx).annotations if a.type == "Mention"]
+    doc = "review-002.cs.json"
+    px = context(doc, "cz-mentions")
+    with recorded_nlp() as nlp:
+        mention = next(a for a in NlpPipeline(nlp).run(px).annotations if a.type == "Mention")
+    mention.id = 5003
+    linkctx = replace(context(doc, "link-mentions"), annotations=[mention])
+    with recorded_lexmatcher() as lex:
+        out += [
+            a for a in Link(lex, FakeWarehouse(list(px.units.values()))).run(linkctx).annotations if a.type == "Mention"
+        ]
+    for n, a in enumerate(out):  # as the runner stamps them and the store numbers them
+        a.id, a.producer, a.producer_version, a.run_id = (
+            7001 + n,
+            ctx.item.family,
+            ctx.item.version_hash,
+            ctx.item.run_id,
+        )
+    return {"annotations": [a.dump() for a in out]}
+
+
+def test_the_link_pick_input_fixture_is_this_linkers_output() -> None:
+    """kantheon's link-pick spec reads only linker-produced Mentions (S4.1f: no hand-written candidates). Re-record
+    with DX_RECORD=1 and copy the file to kantheon's shared/proto/fixtures/dx/ (fixtures-check holds them equal)."""
+    import os
+
+    want = link_pick_input()
+    methods = [json.loads(a["payloadJson"])["linkMethod"] for a in want["annotations"]]
+    assert methods == ["abstain", "abstain", "lexicon"]
+    if os.environ.get("DX_RECORD"):
+        LINK_PICK_INPUT.write_text(canonical(want))
+    assert LINK_PICK_INPUT.read_text() == canonical(want)

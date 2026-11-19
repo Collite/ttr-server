@@ -50,6 +50,14 @@ log = logging.getLogger(__name__)
 ABSTAINING_DECIDERS = {"link/rule"}
 
 
+def is_abstention(a: Annotation) -> bool:
+    """Output that leaves an abstaining run ABSTAINED: abstentions, decisions, verdicts, and the Mention an abstaining
+    link writes to carry its candidates to link-pick (`linkMethod: abstain`, DX-D42) — it links nothing."""
+    return a.type in ("Abstention", "Decision", "Verdict") or (
+        a.type == "Mention" and a.payload().get("linkMethod") == "abstain"
+    )
+
+
 def recovered_status(existing: list[Annotation]) -> CompletionStatus:
     abstains = any(
         a.type == "Abstention"
@@ -58,7 +66,7 @@ def recovered_status(existing: list[Annotation]) -> CompletionStatus:
         and "chosen" not in a.payload()
         for a in existing
     )
-    if all(a.type in ("Abstention", "Decision", "Verdict") for a in existing) and abstains:
+    if all(is_abstention(a) for a in existing) and abstains:
         return CompletionStatus.ABSTAINED
     return CompletionStatus.SUCCEEDED
 
@@ -350,7 +358,7 @@ class ProcessorRunner:
                     completion.status = (
                         CompletionStatus.ABSTAINED
                         if only_abstentions
-                        or (result.abstained and not any(a.type not in ("Decision", "Verdict") for a in output))
+                        or (result.abstained and all(is_abstention(a) and a.type != "Abstention" for a in output))
                         else CompletionStatus.SUCCEEDED
                     )
                     completion.usage = result.usage

@@ -94,6 +94,10 @@ class Link:
         k = int(engine.get("k", 5))
         if k < 1:
             raise ValueError("link/invalid-k")
+        # DX-D42: an abstaining link still hands link-pick its top candidates, on a derived Mention (0 = none).
+        on_abstain = engine.get("candidates_on_abstain", 5)
+        if type(on_abstain) is not int or on_abstain < 0:
+            raise ValueError("link/invalid-candidates-on-abstain")
         sources = engine.get("candidates", ["lexicon", "knn"])
         target_concepts = set(engine.get("targets", {}).values())
         abstain_below = float(engine.get("abstain_below", 0.6))
@@ -207,6 +211,13 @@ class Link:
                 }
                 if top["_member"]:
                     payload["member"] = top["_member"]
+                new = annotation(mention.unit_id, "Mention", payload, mention.spans)
+                new.derived_from = [mention.id]
+                result.annotations.append(new)
+            elif on_abstain and candidates:
+                # The linker sets no concept and no member: link-pick chooses among these (S4.1f). The input's own
+                # payload is kept as it came; the run still abstains (runner.is_abstention).
+                payload = {**mention.payload(), "linkMethod": "abstain", "candidates": candidates[:on_abstain]}
                 new = annotation(mention.unit_id, "Mention", payload, mention.spans)
                 new.derived_from = [mention.id]
                 result.annotations.append(new)
