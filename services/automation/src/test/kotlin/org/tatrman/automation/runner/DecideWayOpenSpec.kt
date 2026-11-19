@@ -56,6 +56,7 @@ class DecideWayOpenSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    doorRoutes = setOf("demo/erp_db"),
                     engineClient = "process-engine",
                 ).open(
                     "decide_return",

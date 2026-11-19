@@ -324,6 +324,7 @@ class ApprovalDependenciesSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    doorRoutes = setOf("demo/erp_db"),
                     engineClient = "process-engine",
                 ).open(
                     "monitor_inbound",
@@ -362,6 +363,7 @@ class ApprovalDependenciesSpec :
                     Duration.ofSeconds(60),
                     Duration.ofMinutes(30),
                     BundleFixture.clock,
+                    doorRoutes = setOf("demo/erp_db"),
                     engineClient = "process-engine",
                 ).open("monitor_inbound", OpenRequest(deploymentName, buildJsonObject { put("none", true) }), caller)
                     .httpStatus shouldBe 201
