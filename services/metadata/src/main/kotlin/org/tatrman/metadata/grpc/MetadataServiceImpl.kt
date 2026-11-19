@@ -1815,8 +1815,8 @@ private fun Er2DbEntityMapping.toEr2DbEntityMappingDetail(): Er2DbEntityMappingD
                 is MappingTarget.SqlQuery -> it.sqlQuery = t.qname.toProto()
             }
         }
-        // `where_filter` is not modelled on the domain Er2DbEntityMapping (filtered targets are
-        // expanded into synthesised queries instead), so it's left unset.
+        // `where_filter` stays unset: a `whereFilter: {sql}` mapping arrives here already retargeted to its synthesized
+        // `<entity>__filter` query (`read/FilteredBindingSource`, MW S4.2 T2b), so `sql_query` carries the filter.
         .build()
 
 private fun Er2DbAttributeMapping.toEr2DbAttributeMappingDetail(): Er2DbAttributeMappingDetail =
