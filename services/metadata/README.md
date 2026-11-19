@@ -600,12 +600,16 @@ the file's own header, else `ttr.yaml`, else the entry's `profile` (`METADATA_PR
 - A profile error drops its file with a located `ys/*` issue (`file:line:col`). The strict swap then keeps
   the last good model; with the strict swap off, the rest is served and `/status.issues[]` names the file.
 - `/status` `sources[]` and gRPC `GetStatus.sources` carry `kind` and `profile` (the profile read, as
-  `<name>/<major>`; `canonical/1` for a tree without a declaration; empty for `ttr`).
-- A CN promotion target must be canonical: a `yaml` source read through a dialect is refused with
-  `409 promotion_target_dialect`.
+  `<name>/<major>`; `canonical/1` for a tree without a declaration; empty for `ttr`). It is the tree's profile, the
+  configured one or `ttr.yaml`'s (block or flow); a file's own header does not change it.
+- A CN promotion target must be canonical: a `yaml` source is refused with `409 promotion_target_dialect` when
+  its configured profile or `ttr.yaml` names a dialect, or when any content file's own `ttr` header does.
 - A tree read through a profile may hold at most `metadata.yaml.maxInputCodePoints` code points of dialect
   input (`METADATA_YAML_MAX_INPUT_CODE_POINTS`; by default half the heap at ~500 B per code point). Over it, the
-  load fails with `yaml_input_budget` before anything is read, instead of the engine exhausting the heap.
+  load fails with `yaml_input_budget` before anything is read, instead of the engine exhausting the heap. The
+  count covers the files a dialect profile reads, selected as the loader selects them: a file's own header
+  counts as the tree's declaration does; canonical files (`canonical/1`, a scalar `ttr` version header) and files
+  outside the content walk or matched by `model.ignore` are not counted.
 - A `.ttrm` tree converted to canonical YAML must list its other YAML files in `model.ignore` (hartland's
   `model/reports/`): a `ttr` source never reads them, a `yaml` source reads every `.yaml` as a model document.
   The two exports then differ only in the entry order of mapping-valued attributes such as `transitions`, which

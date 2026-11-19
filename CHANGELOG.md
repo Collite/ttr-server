@@ -22,9 +22,11 @@ outside this repo could notice is in.
   `profiles/`. `profile` / `METADATA_PROFILE` (chart `metadata.profile`) applies only to a tree without `ttr.yaml`; both
   is a startup error on a filesystem source and a `profile_conflict` load failure on a git source. `meta.v1.SourceStatus`
   gains `kind` (16) and `profile` (17), `/status` `sources[]` gains `kind` and `profile`, and a strict-swap refusal
-  names `ys/*` issues `file:line:col`. A CN promotion source read through a dialect is `409 promotion_target_dialect`.
+  names `ys/*` issues `file:line:col`. A CN promotion source whose tree profile or any content file's own `ttr` header names a dialect is
+  `409 promotion_target_dialect`.
   `metadata.yaml.maxInputCodePoints` (`METADATA_YAML_MAX_INPUT_CODE_POINTS`, default half the heap at ~500 B per code
-  point) fails a profile run's load with `yaml_input_budget` before the engine reads an oversized tree. For every
+  point) fails the load with `yaml_input_budget` before the engine runs when the files dialect profiles read exceed it
+  (a file's own header counts; canonical and `model.ignore`d files do not). For every
   source kind, an `er2db_entity` with `whereFilter: {sql: <c>}` is served as the query `<entity>__filter`
   (`SELECT * FROM <table> WHERE <c>`) and its mapping as that query; another form is a located warning, a name clash
   a load error (✅D-MW-67 (c′)).

@@ -69,6 +69,9 @@ dependencies {
     // ttr-parser/writer/semantics as `api`, so those three are NOT declared here
     // (MetadataExportRoutes still imports them — they arrive transitively).
     implementation(libs.tatrman.ttr.metadata)
+    // MW S4.2 review-380: ttr-metadata's POM has ttr-profile at runtime only; the yaml source's cap and the
+    // promotion guard read declarations (DeclarationReader, FileSelector) as the loader does. Same version as its POM.
+    implementation(libs.tatrman.ttr.profile)
     implementation(libs.tomlj)
     // #272: YAML validity and JSON projection only; no report renderer dependency.
     implementation(libs.snakeyaml.engine)

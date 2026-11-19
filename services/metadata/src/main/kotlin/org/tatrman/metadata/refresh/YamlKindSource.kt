@@ -91,37 +91,25 @@ internal class YamlKindSource(
                     root = root ?: listed.firstNotNullOfOrNull { it.rootPath }
                     val declaration = listed.firstOrNull { it.underRoot() == TREE_DECLARATION } ?: return@also
                     if (profile != null) throw IllegalStateException(conflict(sourceId, profile))
-                    declared = runCatching { declaredProfile(storage.read(declaration)) }.getOrNull()
+                    declared = TreeProfiles.declaration(storage, declaration)
                 }.also { listed -> checkInputBudget(listed) }
 
         /**
-         * ✅D-MW-96 (2): a tree read through a profile runs the engine over its inputs, at ≈ 500 B of heap per input
-         * code point (S4.2a's measurements), so the service refuses one whose dialect inputs (every listed YAML file
-         * outside `profiles/` and `layouts/`, without the declaration) total more than [maxInputCodePoints] before the
-         * library reads them. A canonical tree runs no engine and is not counted.
+         * ✅D-MW-96 (2): a file read through a dialect profile runs the engine over it, at ≈ 500 B of heap per input
+         * code point (S4.2a's measurements), so the service refuses a tree whose dialect inputs total more than
+         * [maxInputCodePoints] before the library reads them. The dialect inputs are the loader's ([TreeProfiles],
+         * review-380): a file's own header counts as the tree's declaration does; canonical files, ignored files and
+         * files outside the content walk run no engine and are not counted.
          */
         private fun checkInputBudget(listed: List<StorageFile>) {
             if (budgetChecked || maxInputCodePoints == Long.MAX_VALUE) return
             if (listed.none { it.underRoot().endsWith(".yaml") || it.underRoot().endsWith(".yml") }) return
             budgetChecked = true
-            if (profile == null && listed.none { it.underRoot() == TREE_DECLARATION }) return
             var total = 0L
-            listed
-                .filter { file ->
-                    val path = file.underRoot()
-                    (path.endsWith(".yaml") || path.endsWith(".yml")) &&
-                        path != TREE_DECLARATION &&
-                        !path.startsWith("profiles/") &&
-                        !path.startsWith("layouts/")
-                }.forEach { file ->
-                    val text = storage.read(file)
-                    total += text.codePointCount(0, text.length)
-                    if (total >
-                        maxInputCodePoints
-                    ) {
-                        throw IllegalStateException(overBudget(sourceId, maxInputCodePoints))
-                    }
-                }
+            for (file in TreeProfiles.read(listed, storage, profile).dialect) {
+                total += file.text.codePointCount(0, file.text.length)
+                if (total > maxInputCodePoints) throw IllegalStateException(overBudget(sourceId, maxInputCodePoints))
+            }
         }
     }
 
@@ -150,11 +138,6 @@ internal class YamlKindSource(
                 "profile engine holds ~$ENGINE_BYTES_PER_CODE_POINT B of heap per code point. Raise " +
                 "metadata.yaml.maxInputCodePoints (METADATA_YAML_MAX_INPUT_CODE_POINTS) with the heap, or split the tree"
 
-        /** `profile:` as [ProfileCatalog] reads a profile's identity; the library reports a malformed declaration. */
-        private val PROFILE_KEY = Regex("""^profile:\s*['"]?([^'"\s#]+)""", RegexOption.MULTILINE)
-
-        fun declaredProfile(text: String): String? = PROFILE_KEY.find(text)?.groupValues?.get(1)
-
         fun conflict(
             sourceId: String,
             profile: String,
@@ -175,7 +158,7 @@ internal class YamlKindSource(
     }
 }
 
-private fun StorageFile.underRoot(): String {
+internal fun StorageFile.underRoot(): String {
     val root = rootPath ?: return path.replace('\\', '/')
     return runCatching { root.relativize(Path.of(path)).toString().replace('\\', '/') }.getOrDefault(path)
 }
