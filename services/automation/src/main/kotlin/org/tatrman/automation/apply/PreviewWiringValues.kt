@@ -2,8 +2,6 @@
 package org.tatrman.automation.apply
 
 import kotlinx.serialization.json.*
-import org.tatrman.automation.api.AutomationException
-import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.api.scalar
 import org.tatrman.automation.runner.BoundValue
 import org.tatrman.automation.runner.RecipeBindings
@@ -11,6 +9,7 @@ import org.tatrman.automation.runner.Table
 import org.tatrman.ttr.metadata.model.AutomationAction
 import org.tatrman.ttrp.ast.ActionsBlock
 import org.tatrman.ttrp.ast.RecipeDecl
+import org.tatrman.ttrp.ast.SourceLocation
 import org.tatrman.ttrp.ast.WiringValue
 import org.tatrman.ttrp.diagnostics.Severity
 import org.tatrman.ttrp.expr.ColumnRef
@@ -22,6 +21,12 @@ import org.tatrman.ttrp.expr.Literal
 import org.tatrman.ttrp.expr.LiteralValue
 import org.tatrman.ttrp.graph.recipe.RecipeChecker
 import org.tatrman.ttrp.parser.TtrpParser
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /** Wiring data, not dispatch: partial calls and relative durations never execute or resolve a deadline. */
 internal object PreviewWiringValues {
@@ -41,22 +46,34 @@ internal object PreviewWiringValues {
         val sources: Map<String, String>,
         val parsed: Map<String, WiringValue>,
         val defaultDue: JsonObject?,
-    )
+        /**
+         * S2.9a (D-249): a declared `due: date` column given a duration — the explicit value, else the action's default.
+         * It is projected as the date `as_of` (in the world's zone) plus the duration, never as the duration itself.
+         */
+        val dueDate: DurationExpr? = null,
+    ) {
+        /** The argument names this preparation supplies besides the wiring's own: a defaulted `due`. */
+        val suppliesDue: Boolean get() = defaultDue != null || (dueDate != null && "due" !in sources)
+    }
 
     /** Parse pinned syntax once per wiring, independently of routes and selected rows. */
     fun prepare(
         sources: Map<String, String>,
         action: AutomationAction,
-    ): Prepared =
-        guarded {
+        site: PreviewSite? = null,
+    ): Prepared {
+        var current: String? = null
+        return guarded(site, { current }) {
             val parsed =
                 sources
                     .filterKeys { name ->
                         val column = action.columns.singleOrNull { it.name == name }
                         column?.type == "action" || (wiringProperty(action, name) in PARSED_PROPERTIES)
                     }.mapValues { (name, source) ->
+                        current = name
                         parse(source).also { validateKinds(it, wiringProperty(action, name)) }
                     }
+            current = "due"
             val defaultDue =
                 if ("due" !in sources && wiringProperty(action, "due") != null) {
                     action.due?.let {
@@ -69,7 +86,73 @@ internal object PreviewWiringValues {
                 } else {
                     null
                 }
-            Prepared(action, sources.toMap(), parsed, defaultDue)
+            Prepared(action, sources.toMap(), parsed, defaultDue, dueDate(sources, action))
+        }
+    }
+
+    /**
+     * S2.9a: a declared `due` of type `date` whose value (or, when the wiring omits it, the action's default) is a
+     * duration. A working-days duration needs the calendar and is refused by name until its read is declared (S2.9b).
+     * Any other value keeps its typed date projection.
+     */
+    private fun dueDate(
+        sources: Map<String, String>,
+        action: AutomationAction,
+    ): DurationExpr? {
+        if (action.columns.singleOrNull { it.name == "due" }?.type != "date") return null
+        val source = sources["due"]
+        val duration =
+            if (source != null) {
+                // Not a wiring value at all: the typed projection reports it as before.
+                (runCatching { parse(source) }.getOrNull() as? WiringValue.Expr)?.expression as? DurationExpr
+            } else {
+                action.due?.let {
+                    require(it.amount.isFinite() && it.amount >= 0 && it.amount < Long.MAX_VALUE.toDouble())
+                    require(it.amount == kotlin.math.floor(it.amount))
+                    val unit = requireNotNull(DurationUnit.entries.singleOrNull { unit -> unit.spelling == it.unit })
+                    DurationLiteral(it.amount.toLong(), unit, SourceLocation.UNKNOWN)
+                }
+            }
+        if (duration?.unit == DurationUnit.WORKING_DAYS) {
+            throw PreviewRefused(
+                WORKING_DAYS_DUE,
+                "a working-days due is computed over the calendar, which this recipe does not declare (S2.9b)",
+            )
+        }
+        // A date plus hours or minutes is a moment, not a due date.
+        require(duration == null || duration.unit in DATE_UNITS) { "a due date is days, weeks or months away" }
+        return duration
+    }
+
+    /** `:<base> + <unit>(<count>)` — the call spelling of a duration, valid in an expression. */
+    private fun dueExpression(
+        base: String,
+        duration: DurationExpr,
+        bindings: Map<String, BoundValue>,
+    ): String {
+        val count =
+            when (duration) {
+                is DurationLiteral -> duration.amount.toString()
+                is DurationParam -> {
+                    val amount = requireNotNull(RecipeBindings.integralAmount(bindings.getValue(duration.param)))
+                    require(amount >= 0)
+                    ":${duration.param}"
+                }
+            }
+        return ":$base + ${duration.unit.spelling}($count)"
+    }
+
+    /** `as_of`'s calendar date in [zone]: a run instant names a moment, the due date is a day in the world. */
+    private fun localDate(
+        value: Any?,
+        zone: ZoneId,
+    ): LocalDate =
+        when (value) {
+            is Instant -> value.atZone(zone).toLocalDate()
+            is OffsetDateTime -> value.atZoneSameInstant(zone).toLocalDate()
+            is LocalDateTime -> value.atOffset(ZoneOffset.UTC).atZoneSameInstant(zone).toLocalDate()
+            is LocalDate -> value
+            else -> error("as_of is not temporal")
         }
 
     fun project(
@@ -79,12 +162,36 @@ internal object PreviewWiringValues {
         expectedTypes: Map<String, String> = emptyMap(),
         roleNames: Set<String>,
         calendar: CalendarSnapshot? = null,
-    ): List<Map<String, JsonElement>> =
-        guarded {
+        site: PreviewSite? = null,
+        zone: ZoneId = ZoneOffset.UTC,
+    ): List<Map<String, JsonElement>> {
+        var current: String? = null
+        var values = bindings
+        return guarded(site, { current }, { PreviewExpressions.values(table, values) }) {
+            // S2.9a: a `due` duration is added to `as_of`'s local date, bound under a name no source spells:
+            // a name any authored text contains is skipped, so an unknown authored reference stays unknown.
+            val dueBase =
+                prepared.dueDate?.let {
+                    current = "due"
+                    generateSequence(0) { i -> i + 1 }
+                        .map { i -> "_au_due_on_$i" }
+                        .first { name ->
+                            name !in bindings &&
+                                table.columns.none { c -> c.name == name } &&
+                                prepared.sources.values.none { source -> name in source }
+                        }.also { name ->
+                            values =
+                                bindings +
+                                (name to BoundValue("date", localDate(bindings.getValue("as_of").value, zone)))
+                        }
+                }
+            current = null
             val action = prepared.action
             val sources = prepared.sources
             val scalars = linkedMapOf<String, String>()
-            val reserved = (sources.keys + table.columns.map { it.name } + bindings.keys).toMutableSet()
+            // S2.8: a generated alias's declared name — its argument, and the call argument it sits in.
+            val declared = mutableMapOf<String, String>()
+            val reserved = (sources.keys + table.columns.map { it.name } + values.keys + "due").toMutableSet()
             var ordinal = 0
 
             fun leaf(
@@ -93,6 +200,7 @@ internal object PreviewWiringValues {
                 symbolic: Boolean = true,
             ): (Map<String, JsonElement>) -> JsonElement {
                 val alias = name ?: generateSequence { "_au_wiring_${ordinal++}" }.first { reserved.add(it) }
+                if (name == null) current?.let { declared[alias] = it }
                 val text = source.trim()
                 scalars[alias] =
                     if (symbolic &&
@@ -123,7 +231,13 @@ internal object PreviewWiringValues {
                         )
                         // Until P3 pins callees, neither named capture nor a bare role reference is safe.
                         require(node.args.none { it.name in setOf("rows", "detail") })
-                        val args = node.args.associate { it.name to value(it.value, depth + 1, source) }
+                        val outer = current
+                        val args =
+                            node.args.associate {
+                                current = "$outer.${it.name}"
+                                it.name to value(it.value, depth + 1, source)
+                            }
+                        current = outer
                         return { row ->
                             buildJsonObject {
                                 put("action", node.action)
@@ -175,12 +289,15 @@ internal object PreviewWiringValues {
             val outputs =
                 sources
                     .mapValues { (name, source) ->
+                        current = name
                         val column = action.columns.singleOrNull { it.name == name }
                         val property = wiringProperty(action, name)
                         val isAction = column?.type == "action" || property == "on_due"
                         val isDue = property == "due"
                         val parsed = prepared.parsed[name]
                         when {
+                            name == "due" && prepared.dueDate != null ->
+                                leaf(dueExpression(requireNotNull(dueBase), prepared.dueDate, values), name, false)
                             parsed is WiringValue.Call -> {
                                 require(isAction)
                                 value(parsed, 0, source)
@@ -194,22 +311,30 @@ internal object PreviewWiringValues {
                         }
                     }.toMutableMap()
             prepared.defaultDue?.let { data -> outputs["due"] = { data } }
+            if (prepared.dueDate != null && "due" !in sources) {
+                current = "due"
+                outputs["due"] = leaf(dueExpression(requireNotNull(dueBase), prepared.dueDate, values), "due", false)
+            }
+            current = null
             val projected =
                 PreviewExpressions.project(
                     scalars,
                     table,
-                    bindings,
+                    values,
                     expectedTypes.filterKeys {
                         it in
                             scalars
                     },
                     calendar = calendar,
+                    site = site,
+                    declared = declared,
                 )
             projected.rows.map { values ->
                 val row = projected.columns.mapIndexed { i, column -> column.name to scalar(values[i]) }.toMap()
                 outputs.mapValues { it.value(row) }
             }
         }
+    }
 
     /** Callees are not pinned yet: nested property names conservatively use the wiring contract. */
     private fun validateKinds(
@@ -309,20 +434,30 @@ internal object PreviewWiringValues {
             put("unit", unit)
         }
 
-    private inline fun <T> guarded(block: () -> T): T =
+    /** S2.8: names the wiring and the argument being built; a refusal already named inside passes through. */
+    private inline fun <T> guarded(
+        site: PreviewSite?,
+        expression: () -> String?,
+        noinline data: () -> PreviewRefusals.Redaction = { PreviewRefusals.Redaction.NONE },
+        block: () -> T,
+    ): T =
         try {
             block()
-        } catch (_: Exception) {
-            unsupported()
-        } catch (_: StackOverflowError) {
-            unsupported()
+        } catch (e: Exception) {
+            PreviewRefusals.refuse(MESSAGE, site, expression(), e, data)
+        } catch (e: StackOverflowError) {
+            PreviewRefusals.refuse(MESSAGE, site, expression(), e)
         }
+
+    private const val MESSAGE = "unsupported action expression"
+
+    /** S2.9a (D-249): the cause token of a working-days `due` refused before the calendar read exists. */
+    internal const val WORKING_DAYS_DUE = "working-days-due-needs-calendar"
+
+    private val DATE_UNITS = setOf(DurationUnit.DAYS, DurationUnit.WEEKS, DurationUnit.MONTHS)
 
     private const val PREFIX =
         "recipe { key: preview.id as of: now actions { " +
             "way.preview -> _preview_action { payload: "
     private val SYMBOL = Regex("[A-Za-z_][A-Za-z_0-9]*(?:\\.[A-Za-z_][A-Za-z_0-9]*)*")
-
-    private fun unsupported(): Nothing =
-        throw AutomationException(ErrorCode.PREVIEW_UNSUPPORTED, "unsupported action expression")
 }

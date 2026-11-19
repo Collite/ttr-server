@@ -1,0 +1,59 @@
+name: n8n base mirror (GHCR)
+
+# Copy the pinned upstream n8n base (`FROM ghcr.io/collite/n8n:<x.y.z>` in
+# connectors/n8n-nodes-tatrman/Dockerfile) to GHCR, keeping the upstream multi-platform digest.
+# Moved from kantheon's release-image.yml (`mirror_n8n`) in OL W6·S1 with the connector.
+#
+# Run it by hand before a Dockerfile bump lands: the requested version must equal the Dockerfile pin
+# on the dispatched ref. `--no-clobber` never overwrites an existing tag. The push uses this
+# repository's GITHUB_TOKEN, so ttr-server needs Actions write access on `ghcr.io/collite/n8n`
+# (the package was created by kantheon).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The n8n version pinned in connectors/n8n-nodes-tatrman/Dockerfile, e.g. 2.44.6'
+        required: true
+        type: string
+
+jobs:
+  mirror-n8n:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install registry copier
+        run: |
+          set -euo pipefail
+          base="https://github.com/google/go-containerregistry/releases/download/v0.20.2"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o crane.tgz "$base/go-containerregistry_Linux_x86_64.tar.gz"
+          curl -fsSL -o checksums.txt "$base/checksums.txt"
+          grep ' go-containerregistry_Linux_x86_64.tar.gz$' checksums.txt | sed 's/ go-containerregistry_Linux_x86_64.tar.gz$/ crane.tgz/' | sha256sum -c -
+          tar -xzf crane.tgz crane
+          sudo install crane /usr/local/bin/crane
+      - name: Copy pinned base with repository package access
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(sed -nE 's|^FROM .*n8n:([0-9]+\.[0-9]+\.[0-9]+)$|\1|p' connectors/n8n-nodes-tatrman/Dockerfile)
+          [[ -n "$version" && "$version" == "$REQUESTED_VERSION" ]] || { echo 'Requested mirror version differs from Dockerfile pin' >&2; exit 1; }
+          export DOCKER_CONFIG="$RUNNER_TEMP/n8n-mirror-auth"
+          mkdir -m 700 -p "$DOCKER_CONFIG"
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$GHCR_TOKEN" | crane auth login ghcr.io -u "$GHCR_USER" --password-stdin
+          source="docker.io/n8nio/n8n:$version"
+          target="ghcr.io/collite/n8n:$version"
+          digest=$(crane digest "$source")
+          crane copy --no-clobber "docker.io/n8nio/n8n@$digest" "$target"
+          test "$(crane digest "$target")" = "$digest"
+          printf 'Verified mirror %s@%s\n' "$target" "$digest" >> "$GITHUB_STEP_SUMMARY"

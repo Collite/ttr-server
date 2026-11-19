@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+# A standalone pnpm project: the connector has its own lockfile, outside any workspace.
+allowBuilds:
+  esbuild: true
+  # n8n-workflow's optional sandbox/SSH dependencies are unused by this HTTP-only connector.
+  cpu-features: false
+  isolated-vm: false
+  ssh2: false
+  eslint-plugin-n8n-nodes-base: false

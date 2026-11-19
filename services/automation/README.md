@@ -50,6 +50,10 @@ An unmapped world or destructive column change refuses refresh with `422 bundle-
 bundle. DDL runs for served refreshes only, on the service's own connection before publication; preview refreshes
 change no table. Recipe rows remain unapplied in S2.1. Set the schema mapping on each cluster in the same commit
 as its first automation image bump containing #374; there is no default schema.
+
+S2.9a (D-249): configure `automation.worldZones` / `AUTOMATION_WORLD_ZONES` as comma-separated `world=Region/City`
+pairs (bp-dsk: `demo=Europe/Prague`). An `expect` row's `due` date is `as_of`'s date in that zone plus the duration;
+an unmapped world is UTC. A fixed offset (`+01:00`, `GMT+1`, or a region with fixed rules such as `Etc/GMT+1`) or an unknown zone fails at start.
 `automation.pgDoorRole` / `AUTOMATION_PG_DOOR_ROLE`, when set, grants that database role schema USAGE and
 SELECT/INSERT/UPDATE/DELETE on the created model tables; unset grants no role.
 
@@ -366,6 +370,23 @@ large integers remain exact typed columns, avoiding the plan literal's Double re
 scalar kinds require an explicit cast. Invalid predicates refuse even on empty routes; syntax, typing,
 lowering and local execution failures return `501 preview-unsupported` before decision/batch completion.
 Repeated wiring stays repeated and the selected rows retain original route order.
+
+The refusal names where it happened (S2.8, D-239): `detail` is `{ wiring, action, kind, expression?, cause }` —
+`wiring` is the wiring's key `#<position>:<routes>-><action>` (`#1:way.hold->release`), `kind` is `expression`,
+`condition`, `mapping` (a native writer, obligation or obligation transition mapping) or `snapshot` (the obligation
+snapshot every wiring shares; it names no wiring and no action), `expression` the declared argument name (`when` for a condition;
+`on_due.order` for an argument inside a deferred call), and `cause` a compiler diagnostic id (`TTRP-EXP-001` unknown
+column, `TTRP-FN-001` unknown function), the name of a preview check (`comparison-kinds`, `assignment-type`,
+`condition-not-boolean`, `non-finite`, `decimal-range`, `column-type`, `unbound-parameter`; for the mappings
+`writer-mapping`, `obligation-mapping`, `obligation-transition`, `obligation-snapshot`) or
+the exception class (`SQLException` from the scratch engine, `IllegalArgumentException` …). It **never** shows generated
+SQL, a bound value or a route value. The failed run keeps the same detail in its `error` and in an `automation`
+protocol entry `{ event: "failed" }`. The cause's full message goes to one WARN line of
+`org.tatrman.automation.apply.PreviewRefusals` with the run id, every bound value, every date derived from one
+(`:as_of - days(30)`) and every route value of three characters or more replaced by `?`. A bound value shorter than three
+characters is replaced only where it stands alone (a binding of `3` hides `row 3`, not `INT32`), and short literal
+fragments such as type names may survive redaction. A mapping refusal logs its fixed cause only: its own message may quote
+data.
 
 Action-typed wiring calls and explicit `on_due` calls now produce deferred preview evidence, for example
 `{"action":"start","arguments":{"process":"purchasing"},"deferred":true}`. Supplied scalar leaves use
@@ -789,7 +810,16 @@ routes still validate. The published 0.18.14 fixture under `src/test/resources/c
 governed Open/evaluate/retry/close/restart with the real PostgreSQL ledger; only Query tables are canned.
 It does not certify a live Query database or perform physical writes.
 
-Relative `due` values remain descriptive. Absolute working-day deadlines, adding/subtracting a duration
+**`expect.due` (S2.9a, D-249).** `due` is authored as a duration; the obligation row's `due` is a `date`, and
+the Server computes it. A declared `due: date` column given a duration — `days(n)`, `weeks(n)`, the juxtaposed
+`2 days`, a bound parameter in either, or the action's `due:` default when the wiring omits `due` — is projected as
+`as_of`'s date (in the world's zone, `automation.worldZones`) plus the duration, through the same compiler
+date lowering as `:as_of + days(n)`. A working-days `due` needs the calendar, which the recipe does not yet declare
+(`objectsRead`): it refuses with `detail.cause: working-days-due-needs-calendar`, also on empty and unselected
+routes, until S2.9b computes the n-th working day over the governed calendar. A `due` given a date expression
+keeps its typed projection; an undeclared `due` stays wiring evidence (`{amount, unit}`).
+
+Apart from `expect.due` above, relative `due` values remain descriptive. Absolute working-day deadlines, adding/subtracting a duration
 to/from a route date, reverse/column-column date differences and integer calendar-key action inputs
 remain unsupported and refuse, including on empty routes. Action rows do not carry the key provenance
 needed to resolve calendar keys; no integer/date coercion is inferred. This stage changes no runtime/compiler dependency pin.

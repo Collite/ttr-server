@@ -23,7 +23,42 @@ outside this repo could notice is in.
   is a startup error on a filesystem source and a `profile_conflict` load failure on a git source. `meta.v1.SourceStatus`
   gains `kind` (16) and `profile` (17), `/status` `sources[]` gains `kind` and `profile`, and a strict-swap refusal
   names `ys/*` issues `file:line:col`. A CN promotion source read through a dialect is `409 promotion_target_dialect`.
-  At `grammar/v0.22.7` a `yaml` load retains ~240–400 MB of heap (ttr-core S4.2a cuts it); size the JVM before serving one.
+
+- **automation 0.11.45 — `expect.due` days/weeks/literal lowered; working_days named (S2.9a, D-249; refs #449).**
+  An action whose declared `due` column is a `date` (the stock `expect`) and whose wiring gives `due` a duration —
+  `days(n)`, `weeks(n)`, the juxtaposed `2 days`, a bound parameter in either (`days(:inbound_reminder)`), or the
+  action's own `due:` default when the wiring omits `due` — now previews the **date** `as_of` + the duration, where it
+  used to refuse with `cause: TtrpEmitException`. `as_of`'s date is taken in the world's zone: new setting
+  `automation.worldZones` / `AUTOMATION_WORLD_ZONES`, comma-separated `world=Region/City` pairs (`demo=Europe/Prague`);
+  an unmapped world is UTC; a fixed offset (`+01:00`, `GMT+1`, a fixed-rule region such as `Etc/GMT+1`) or an unknown zone fails at start. A `working_days` due
+  needs the calendar, and no recipe declares that read yet: it is refused by name — `501 preview-unsupported`,
+  `detail.cause: "working-days-due-needs-calendar"`, `expression: "due"` — even on an empty or unselected route.
+  S2.9b computes it. Undeclared `due` (wiring evidence) and every non-duration date expression are unchanged.
+
+- **Pin: `tatrman-grammar` / `tatrman-ttr-metadata` 0.22.7 → 0.22.9; translator/plan-proto 0.14.3 → 0.14.4
+  (MW S4.2b, ✅D-MW-99; absorbs AU S2.7).** ttr-core 0.22.9 (Collite/ttr-core#426): the YAML schemas are no longer
+  preloaded, so a `yaml` load no longer holds ~240 MB of schema validators for the life of the process (16 MB retained
+  after a canonical demo-cs load, measured in ttr-core); a dialect file over 6 000 000 code points is refused at read
+  with `ys/profile-invalid` "Canonical document <file> exceeds 6000000 code points" and the source loads the rest; the
+  typed `er2db_entity` mapping carries its `whereFilter`; an explicit `er2db_attribute` with a bare column anchors
+  under a standalone entity's table. Translator 0.14.4 (Collite/ttr-core#424) types a CASE/UNION of ragged string
+  literals as VARCHAR. grammar 0.22.9 was built on translator 0.14.4, so both lines move together: one translator line
+  across metadata, resolver, automation and translate.
+
+- **automation 0.11.44 — `preview-unsupported` names the wiring and logs its cause (ttr-server#443).**
+  A dry run's `501 preview-unsupported` from an action expression, a condition, a native writer, obligation or
+  obligation transition mapping, or the obligation snapshot now carries `detail: { wiring, action, kind, expression?,
+  cause }` — the wiring's key (`#<position>:<routes>-><action>`), `kind` (`expression` · `condition` · `mapping` ·
+  `snapshot`; a snapshot names no wiring), the expression's declared argument name (`when` for a condition) and the
+  cause: the compiler diagnostic id (`TTRP-EXP-001`, `TTRP-FN-001` …), the check's name (`comparison-kinds`,
+  `non-finite`, `writer-mapping`, `obligation-mapping`, `obligation-transition`, `obligation-snapshot` …) or the
+  exception class (`SQLException` …). The message is unchanged; generated SQL and bound values are still never shown.
+  The failed run stores the same detail in its `error` (`GET /automation/runs/{id}`) and its protocol gains one
+  `automation` entry `{ event: "failed", status: "failed", error }`; every other failure stays code-only, as before. One
+  WARN line per refusal (`org.tatrman.automation.apply.PreviewRefusals`) names the run id and the wiring and carries the
+  cause's message with bound values, dates derived from them, and route values of three characters or more replaced by
+  `?` (a bound value under three characters only where it stands alone). No migration; nothing that was supported
+  changes.
 
 - **automation 0.11.43 — an answer run decides the answered key's held rows at Open (D-159 completed; ttr-server#429).**
   A verified engine answer (`engine.taskId` + `answeredBy`, from the engine client) no longer re-runs the recipe and
@@ -2170,6 +2205,14 @@ artifact.
   Tag `platform-question/v0.11.0` runs `platform-question.yml` to build the folder
   archive, test it unpacked, and publish the GitHub release; the image lane excludes it.
   This release contains the contract and template; the bridge follows separately.
+
+- **n8n-nodes-tatrman 0.1.1 — the n8n nodes move to `ttr-server` (OL W6·S1).**
+  `connectors/n8n-nodes-tatrman` arrives from `kantheon` with its history (freeze commit
+  `9b886085`); nodes, credential and behaviour are unchanged from 0.1.0. The package is now
+  Apache-2.0, its `homepage` and `repository` point here, and it is a standalone pnpm project with
+  its own lockfile (the same resolved versions). `n8n-nodes.yml` runs the same checks; the tag
+  `n8n-nodes-tatrman/v0.1.1` publishes `@collite/n8n-nodes-tatrman@0.1.1` to GitHub Packages and
+  `ghcr.io/collite/n8n-tatrman:2.44.6-0.1.1`; the image lane excludes it.
 
 ## chrono 0.11.32 — 2026-11-12
 

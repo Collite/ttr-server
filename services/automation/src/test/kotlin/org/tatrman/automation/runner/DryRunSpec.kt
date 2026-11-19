@@ -5,6 +5,7 @@ import io.kotest.assertions.withClue
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import org.tatrman.automation.api.AutomationException
@@ -360,6 +361,17 @@ class DryRunSpec :
                         repeat(2) {
                             shouldThrow<AutomationException> { runner.evaluate() }.code shouldBe
                                 ErrorCode.PREVIEW_UNSUPPORTED
+                        }
+                        if (snapshot.isEmpty()) {
+                            // S2.8: the transition mapping's refusal names its wiring; it has no expression of its own.
+                            val detail = shouldThrow<AutomationException> { runner.evaluate() }.detail!!.jsonObject
+                            detail shouldBe
+                                buildJsonObject {
+                                    put("wiring", "#0:way.hold->fulfil")
+                                    put("action", "fulfil")
+                                    put("kind", "mapping")
+                                    put("cause", "obligation-transition")
+                                }
                         }
                         f.plan shouldBe null
                         f.journals.get() shouldBe 0
@@ -1393,6 +1405,307 @@ class DryRunSpec :
             }
         }
 
+        "S2.8: an assembled refusal names the failing wiring by position, routes and action" {
+            supervisorScope {
+                val good = ManifestWiring(listOf("way.release"), "release", mapOf("order" to "order_number"))
+                val variants =
+                    listOf(
+                        ManifestWiring(listOf("way.hold"), "release", mapOf("order" to "no_such_column + 1")) to
+                            ("expression" to "order"),
+                        ManifestWiring(
+                            listOf("way.hold", "way.release"),
+                            "release",
+                            mapOf("order" to "order_number"),
+                            "no_such_column > 1",
+                        ) to ("condition" to "when"),
+                    )
+                for ((bad, expected) in variants) {
+                    val f = PreviewFixture(this, previewRecipe().withWiring(listOf(good, bad)))
+                    f.runner.use { runner ->
+                        val error = shouldThrow<AutomationException> { runner.evaluate() }
+                        error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                        val detail = error.detail!!.jsonObject
+                        detail["wiring"] shouldBe JsonPrimitive("#1:${bad.routes.joinToString(",")}->release")
+                        detail["action"] shouldBe JsonPrimitive("release")
+                        detail["kind"] shouldBe JsonPrimitive(expected.first)
+                        detail["expression"] shouldBe JsonPrimitive(expected.second)
+                        detail["cause"] shouldBe JsonPrimitive("TTRP-EXP-001")
+                        f.journals.get() shouldBe 0
+                    }
+                }
+            }
+        }
+
+        suspend fun refusalLines(block: suspend () -> Unit): List<String> {
+            val logger =
+                org.slf4j.LoggerFactory.getLogger(PreviewRefusals::class.java) as ch.qos.logback.classic.Logger
+            val appender =
+                ch.qos.logback.core.read
+                    .ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>()
+                    .apply { start() }
+            logger.addAppender(appender)
+            try {
+                block()
+            } finally {
+                logger.detachAppender(appender)
+            }
+            return appender.list.map { it.formattedMessage }
+        }
+
+        // S2.9a (D-249): an `expect` row's `due` duration becomes a date: `as_of`'s date in the world's zone plus the
+        // duration; a working-days `due` is refused by name until the calendar read is declared (S2.9b).
+        val dueBindings =
+            mapOf(
+                "inbound_reminder" to BoundValue("days", 3L),
+                "settlement" to BoundValue("working_days", 5L),
+                "count" to BoundValue("int", 1L),
+            )
+
+        suspend fun CoroutineScope.dueOf(
+            due: String?,
+            asOf: Instant = PREVIEW_NOW,
+            zones: Map<String, java.time.ZoneId> = emptyMap(),
+            metadata: PreviewMetadata = legacyPreviewMetadata(BundleFixture.load()),
+        ): Pair<DryRunAction, ApplyRow> {
+            val base = obligationWiring()
+            val wiring = base.copy(columns = if (due == null) base.columns - "due" else base.columns + ("due" to due))
+            val f =
+                PreviewFixture(
+                    this,
+                    previewRecipe().withWiring(listOf(wiring)),
+                    metadata,
+                    asOf = asOf,
+                    extraBindings = dueBindings,
+                    zones = zones,
+                )
+            return f.runner.use { runner ->
+                runner.evaluate()
+                val plan = f.plan!!
+                plan.actions.single() to plan.rows.single { it.entity == "er.entity.obligation" }
+            }
+        }
+
+        fun dueDefault(duration: AutomationDuration): PreviewMetadata {
+            val metadata = legacyPreviewMetadata(BundleFixture.load())
+            val expect = metadata.actions.getValue("expect")
+            return metadata.copy(
+                actions =
+                    metadata.actions +
+                        (
+                            "expect" to
+                                expect.copy(
+                                    columns =
+                                        expect.columns.map {
+                                            if (it.name == "due") it.copy(optional = true) else it
+                                        },
+                                    due = duration,
+                                )
+                        ),
+            )
+        }
+
+        "S2.9a T1'(a)(b)(c)(g): an expect due duration is projected as the date as_of plus the duration" {
+            supervisorScope {
+                // PREVIEW_NOW = 2026-10-23T12:00Z (a Friday).
+                for ((due, date) in listOf(
+                    "days(:inbound_reminder)" to "2026-10-26",
+                    "2 days" to "2026-10-25",
+                    "days(2)" to "2026-10-25",
+                    "weeks(1)" to "2026-10-30",
+                    "weeks(:count)" to "2026-10-30",
+                )) {
+                    val (action, row) = dueOf(due)
+                    withClue(due) {
+                        action.arguments["due"] shouldBe JsonPrimitive(date)
+                        row.row!!["due"] shouldBe JsonPrimitive(date)
+                    }
+                }
+            }
+        }
+
+        "S2.9a T1'(d): the action-default due lowers the same way when the wiring omits due" {
+            supervisorScope {
+                val (action, row) = dueOf(null, metadata = dueDefault(AutomationDuration(2.0, "days")))
+                action.arguments["due"] shouldBe JsonPrimitive("2026-10-25")
+                row.row!!["due"] shouldBe JsonPrimitive("2026-10-25")
+                // presence wins: an explicit due overrides the default
+                dueOf("weeks(1)", metadata = dueDefault(AutomationDuration(2.0, "days")))
+                    .first
+                    .arguments["due"] shouldBe JsonPrimitive("2026-10-30")
+            }
+        }
+
+        "S2.9a T1'(e): a working-days due is refused by name, on empty and unselected routes too" {
+            for (source in listOf("working_days(:settlement)", "2 working_days", "working_days(5)", null)) {
+                for ((routes, condition) in listOf(
+                    listOf("way.hold") to null,
+                    listOf("way.empty") to null,
+                    listOf("way.hold") to "false",
+                )) {
+                    supervisorScope {
+                        val base = obligationWiring(routes).copy(whenCondition = condition)
+                        val wiring =
+                            base.copy(
+                                columns =
+                                    if (source ==
+                                        null
+                                    ) {
+                                        base.columns - "due"
+                                    } else {
+                                        base.columns + ("due" to source)
+                                    },
+                            )
+                        val metadata =
+                            if (source == null) {
+                                dueDefault(AutomationDuration(2.0, "working_days"))
+                            } else {
+                                legacyPreviewMetadata(BundleFixture.load())
+                            }
+                        val f =
+                            PreviewFixture(
+                                this,
+                                previewRecipe().withWiring(listOf(wiring)),
+                                metadata,
+                                extraBindings = dueBindings,
+                            )
+                        f.runner.use { runner ->
+                            var error: AutomationException? = null
+                            val lines = refusalLines { error = shouldThrow { runner.evaluate() } }
+                            withClue("$source $routes $condition") {
+                                error!!.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                                error!!.detail shouldBe
+                                    buildJsonObject {
+                                        put("wiring", "#0:${routes.single()}->expect")
+                                        put("action", "expect")
+                                        put("kind", "expression")
+                                        put("expression", "due")
+                                        put("cause", "working-days-due-needs-calendar")
+                                    }
+                                lines.size shouldBe 1
+                                lines.single() shouldContain "cause=working-days-due-needs-calendar"
+                                f.journals.get() shouldBe 0
+                                f.plan shouldBe null
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        "S2.9a T1'(f): the as_of date is taken in the world's zone" {
+            supervisorScope {
+                val late = Instant.parse("2026-11-18T23:30:00Z")
+                val prague = mapOf("demo" to java.time.ZoneId.of("Europe/Prague"))
+                dueOf("days(0)", asOf = late, zones = prague).first.arguments["due"] shouldBe
+                    JsonPrimitive("2026-11-19")
+                dueOf("2 days", asOf = late, zones = prague).first.arguments["due"] shouldBe
+                    JsonPrimitive("2026-11-21")
+                // an unmapped world keeps UTC
+                dueOf("days(0)", asOf = late).first.arguments["due"] shouldBe JsonPrimitive("2026-11-18")
+                dueOf("days(0)", asOf = late, zones = mapOf("other" to java.time.ZoneId.of("Europe/Prague")))
+                    .first
+                    .arguments["due"] shouldBe JsonPrimitive("2026-11-18")
+            }
+        }
+
+        "S2.9a: a due that is not a duration keeps its typed date projection; months lower, hours refuse" {
+            supervisorScope {
+                dueOf("cast(:as_of + days(14) as date)").first.arguments["due"] shouldBe JsonPrimitive("2026-11-06")
+                dueOf("months(1)").first.arguments["due"] shouldBe JsonPrimitive("2026-11-23")
+                for (source in listOf("hours(2)", "30 minutes")) {
+                    val error = shouldThrow<AutomationException> { dueOf(source) }
+                    withClue(source) {
+                        error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                        error.detail!!.jsonObject["expression"] shouldBe JsonPrimitive("due")
+                        error.detail!!.jsonObject["cause"] shouldBe JsonPrimitive("IllegalArgumentException")
+                    }
+                }
+            }
+        }
+
+        "S2.8 (review-368 F1a): opposing transitions of one obligation name the later wiring, logged once" {
+            supervisorScope {
+                val f =
+                    PreviewFixture(
+                        this,
+                        fulfilRecipe(listOf(fulfilWiring(), fulfilWiring("cancelled"))),
+                        obligationRows = existingObligations("open"),
+                    )
+                f.runner.use { runner ->
+                    lateinit var error: AutomationException
+                    val lines = refusalLines { error = shouldThrow { runner.evaluate() } }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.detail shouldBe
+                        buildJsonObject {
+                            put("wiring", "#1:way.hold->fulfil")
+                            put("action", "fulfil")
+                            put("kind", "mapping")
+                            put("cause", "obligation-transition")
+                        }
+                    lines.size shouldBe 1
+                    lines.single().startsWith("preview-unsupported run=") shouldBe true
+                    lines.single().contains("wiring=#1:way.hold->fulfil") shouldBe true
+                    lines.single().contains("cause=obligation-transition") shouldBe true
+                    f.journals.get() shouldBe 0
+                }
+            }
+        }
+
+        "S2.8 (review-368 F1b): a malformed obligation snapshot names the snapshot, no wiring" {
+            supervisorScope {
+                val f = PreviewFixture(this, fulfilRecipe(), obligationRows = existingObligations("unknown"))
+                f.runner.use { runner ->
+                    lateinit var error: AutomationException
+                    val lines = refusalLines { error = shouldThrow { runner.evaluate() } }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.detail shouldBe
+                        buildJsonObject {
+                            put("kind", "snapshot")
+                            put("cause", "obligation-snapshot")
+                        }
+                    lines.size shouldBe 1
+                    lines.single().contains("cause=obligation-snapshot") shouldBe true
+                    f.plan shouldBe null
+                    f.journals.get() shouldBe 0
+                }
+            }
+        }
+
+        "S2.8 (review-368 F2): a native writer mapping refusal names its wiring with a fixed cause" {
+            supervisorScope {
+                val original = writerMetadata()
+                val hold = original.actions.getValue("hold")
+                val metadata =
+                    original.copy(
+                        actions =
+                            original.actions + (
+                                "hold" to
+                                    hold.copy(
+                                        columns =
+                                            hold.columns.map {
+                                                if (it.name == "tenant") it.copy(optional = true) else it
+                                            },
+                                    )
+                            ),
+                    )
+                val good = ManifestWiring(listOf("way.release"), "release", mapOf("order" to "order_number"))
+                val bad = writerWiring().let { it.copy(columns = it.columns - "tenant") }
+                val f = PreviewFixture(this, previewRecipe().withWiring(listOf(good, bad)), metadata)
+                f.runner.use { runner ->
+                    val error = shouldThrow<AutomationException> { runner.evaluate() }
+                    error.code shouldBe ErrorCode.PREVIEW_UNSUPPORTED
+                    error.detail shouldBe
+                        buildJsonObject {
+                            put("wiring", "#1:way.hold->hold")
+                            put("action", "hold")
+                            put("kind", "mapping")
+                            put("cause", "writer-mapping")
+                        }
+                    f.journals.get() shouldBe 0
+                }
+            }
+        }
+
         "compound preview predicates preserve repeated wiring and share one atomic completion" {
             supervisorScope {
                 val wiring =
@@ -1575,6 +1888,14 @@ class DryRunSpec :
                         shouldThrow<AutomationException> { runner.evaluate() }.message shouldBe
                             "unsupported native writer mapping or value"
                     }
+                    // S2.8 (review-368 F2): a writer value refusal names its wiring; its own text stays out.
+                    shouldThrow<AutomationException> { runner.evaluate() }.detail shouldBe
+                        buildJsonObject {
+                            put("wiring", "#1:way.hold->hold")
+                            put("action", "hold")
+                            put("kind", "mapping")
+                            put("cause", "writer-mapping")
+                        }
                     f.journals.get() shouldBe 0
                     f.legacy.get() shouldBe 0
                     f.reads.get() shouldBe 5
@@ -2665,6 +2986,8 @@ private class PreviewFixture(
     filterLookup: Boolean = false,
     readCeiling: Int = 100_000,
     orderNumbers: List<Any> = listOf("4711", "4712", "4713"),
+    extraBindings: Map<String, BoundValue> = emptyMap(),
+    zones: Map<String, java.time.ZoneId> = emptyMap(),
 ) {
     val reads = AtomicInteger()
     val obligationReads = mutableListOf<DoorRead>()
@@ -2702,7 +3025,7 @@ private class PreviewFixture(
                         "as_of" to BoundValue("datetime", asOf),
                         "threshold" to BoundValue("decimal", BigDecimal("4.560")),
                         "unused_secret" to BoundValue("text", "must-not-forward"),
-                    ),
+                    ) + extraBindings,
             ),
             Door { read ->
                 reads.incrementAndGet()
@@ -2765,7 +3088,7 @@ private class PreviewFixture(
             Staging(store) {},
             scope,
             { _, _ -> legacy.incrementAndGet() },
-            preview = ApplyPlanner(Clock.fixed(PREVIEW_NOW.plusSeconds(1), ZoneOffset.UTC))::preview,
+            preview = ApplyPlanner(Clock.fixed(PREVIEW_NOW.plusSeconds(1), ZoneOffset.UTC), zones)::preview,
             recordPreview = { _, _, value ->
                 journals.incrementAndGet()
                 if (refuseJournal) error("journal refused")
