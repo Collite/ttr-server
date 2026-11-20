@@ -441,23 +441,6 @@ exports[`n8n descriptions > defines a valid Run description and stable parameter
 exports[`n8n descriptions > defines a valid Trigger description and stable parameter forms 1`] = `
 [
   {
-    "default": "webhook",
-    "displayName": "Mode",
-    "name": "mode",
-    "noDataExpression": true,
-    "options": [
-      {
-        "name": "Webhook",
-        "value": "webhook",
-      },
-      {
-        "name": "Poll",
-        "value": "poll",
-      },
-    ],
-    "type": "options",
-  },
-  {
     "default": "",
     "description": "Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>",
     "displayName": "Deployment Name or ID",
@@ -469,44 +452,9 @@ exports[`n8n descriptions > defines a valid Trigger description and stable param
     },
   },
   {
-    "default": [
-      "run_closed",
-    ],
-    "description": "Events to receive. Poll mode supports Run Closed only.",
-    "displayName": "Events",
-    "name": "kinds",
-    "options": [
-      {
-        "name": "Answer",
-        "value": "answer",
-      },
-      {
-        "name": "Run Closed",
-        "value": "run_closed",
-      },
-      {
-        "name": "Signal",
-        "value": "signal",
-      },
-      {
-        "name": "Window Closed",
-        "value": "window_closed",
-      },
-    ],
-    "required": true,
-    "type": "multiOptions",
-  },
-  {
     "default": "",
-    "description": "Optional creation-time lower bound for the first poll. Defaults to the first poll; values without an offset use the workflow timezone.",
+    "description": "Optional run start-time lower bound for the first poll. Defaults to the first poll; values without an offset use the workflow timezone.",
     "displayName": "Since",
-    "displayOptions": {
-      "show": {
-        "mode": [
-          "poll",
-        ],
-      },
-    },
     "name": "since",
     "type": "dateTime",
   },

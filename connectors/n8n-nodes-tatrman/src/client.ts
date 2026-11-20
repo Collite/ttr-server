@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { NodeApiError, NodeOperationError, sleep } from 'n8n-workflow';
-import type { IDataObject, IExecuteFunctions, IHookFunctions, IHttpRequestOptions, ILoadOptionsFunctions, IPollFunctions, IWebhookFunctions, INode, JsonObject } from 'n8n-workflow';
+import type { IDataObject, IExecuteFunctions, IHttpRequestOptions, ILoadOptionsFunctions, IPollFunctions, INode, JsonObject } from 'n8n-workflow';
 
-type Context = IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions | IWebhookFunctions | IPollFunctions;
+type Context = IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions;
 export interface Page extends IDataObject { rows: IDataObject[]; rowCount: number; truncated?: boolean }
 export interface OpenInput extends IDataObject { deployment: string; port: IDataObject; asOf?: string; bundle?: string; dryRun?: boolean; idempotencyKey?: string; origin?: string }
 export interface OpenResult extends IDataObject { runId: string; replayed?: boolean; status?: string }
 export interface Descriptor extends IDataObject { deployments: IDataObject[]; recipes: IDataObject[]; programs: IDataObject[] }
-export interface AutomationEvent extends IDataObject { kind: string; deployment: string; runId?: string; taskId?: string; payload: IDataObject }
+interface RunListing extends IDataObject { runId: string; status: string; startedAt: string; protocolRef: string }
 // Server defaults: syncDefault=60 s, batchDefault=30 min. These configurable client
 // defaults allow sync headroom and ten minutes of polling; programs may need larger values.
 export const DEFAULT_REQUEST_TIMEOUT_SECONDS = 90;
@@ -155,9 +155,5 @@ export class AutomationClient {
   task(id: string) { return this.request('GET', `tasks/${enc(id)}`); }
   createTask(input: IDataObject) { return this.request('POST', 'tasks', input); }
   answer(id: string, input: IDataObject) { return this.request('POST', `tasks/${enc(id)}/answer`, input); }
-  webhooks() { return this.request<{ webhooks: IDataObject[] }>('GET', 'webhooks'); }
-  createWebhook(input: IDataObject) { return this.request<{ id: string }>('POST', 'webhooks', input); }
-  deleteWebhook(id: string) { return this.request('DELETE', `webhooks/${enc(id)}`); }
-  event(input: IDataObject) { return this.request('POST', 'webhooks/events', input); }
-  runs(query: IDataObject) { return this.request<{ runs: IDataObject[]; truncated?: boolean }>('GET', 'runs', undefined, query); }
+  runs(query: IDataObject) { return this.request<{ runs: RunListing[]; next: string | null }>('GET', 'runs', undefined, query); }
 }

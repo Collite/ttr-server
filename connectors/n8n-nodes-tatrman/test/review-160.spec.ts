@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NodeApiError } from 'n8n-workflow';
-import type { IHookFunctions, IPollFunctions } from 'n8n-workflow';
+import type { IPollFunctions } from 'n8n-workflow';
 import { AutomationClient } from '../src/client';
 import { TatrmanRun } from '../nodes/Tatrman/TatrmanRun.node';
 import { TatrmanTrigger } from '../nodes/Tatrman/TatrmanTrigger.node';
@@ -97,44 +97,35 @@ it('L1 preserves the failing input index on an existing NodeApiError', async () 
 const trigger = new TatrmanTrigger();
 function pollFixture(respond: Parameters<typeof harness>[1], since = '2026-10-25T00:00:00Z') {
   const h = harness({}, respond);
-  const params: Record<string, unknown> = { mode: 'poll', kinds: ['run_closed'], deployment: 'd', since };
+  const params: Record<string, unknown> = { deployment: 'd', since };
   const context = Object.assign(h.context, { getNodeParameter: (key: string, fallback?: unknown) => params[key] ?? fallback, logger: { warn: vi.fn() } }) as unknown as IPollFunctions;
   return { ...h, params, context };
 }
 describe('R6/R7/R11 poll state', () => {
   it('processes 12000 runs without retaining their entire history', async () => {
     let tick = 0;
-    const h = pollFixture(() => ({ runs: [{ runId: `r${++tick}`, status: 'closed', createdAt: new Date(Date.parse('2026-10-25T00:00:00Z') + tick * 60_000).toISOString() }] }));
+    const h = pollFixture(() => ({ runs: [{ runId: `r${++tick}`, status: 'closed', protocolRef: 'protocol', startedAt: new Date(Date.parse('2026-10-25T00:00:00Z') + tick * 60_000).toISOString() }] }));
     for (let i = 0; i < 12000; i++) await trigger.poll.call(h.context);
     expect(Object.keys(h.state.pollSeen as object).length).toBeLessThanOrEqual(6);
   });
-  it('drops pending 403/404 runs and commits the tick', async () => {
-    let tick = 0;
-    const h = pollFixture(options => options.url.endsWith('/runs') ? { runs: ++tick === 1 ? [{ runId: 'gone', status: 'open', createdAt: '2026-10-25T00:01:00Z' }] : [] } : { statusCode: 403, body: { error: { code: 'identity' } } });
-    await trigger.poll.call(h.context);
-    await trigger.poll.call(h.context);
-    expect(h.state.pollPending).toEqual({});
-    expect(h.context.logger.warn).toHaveBeenCalled();
-  });
-  it('does not commit partially processed state on a 5xx', async () => {
-    let tick = 0;
-    const h = pollFixture(options => options.url.endsWith('/runs') ? { runs: ++tick === 1 ? [{ runId: 'pending', status: 'open', createdAt: '2026-10-25T00:01:00Z' }] : [] } : { statusCode: 503, body: { error: { code: 'unavailable' } } });
-    await trigger.poll.call(h.context);
-    const before = JSON.stringify(h.state);
+  it('does not commit partially processed state when a later page fails', async () => {
+    const h = pollFixture(options => options.qs?.cursor
+      ? { statusCode: 503, body: { error: { code: 'unavailable' } } }
+      : { runs: [{ runId: 'r1', status: 'closed', protocolRef: 'protocol', startedAt: '2026-10-25T00:01:00Z' }], next: 'page-2' });
     await expect(trigger.poll.call(h.context)).rejects.toThrow();
-    expect(JSON.stringify(h.state)).toBe(before);
+    expect(h.state).toEqual({});
+    expect(h.request.mock.calls[1][1].qs?.cursor).toBe('page-2');
   });
-  it('retains state through deactivate/reactivate and resets on deployment change', async () => {
-    const h = pollFixture(() => ({ runs: [{ runId: 'r', status: 'closed', createdAt: '2026-10-25T00:01:00Z' }] }));
+  it('retains state across ticks and resets on deployment change', async () => {
+    const h = pollFixture(() => ({ runs: [{ runId: 'r', status: 'closed', protocolRef: 'protocol', startedAt: '2026-10-25T00:01:00Z' }] }));
     expect((await trigger.poll.call(h.context))?.[0]).toHaveLength(1);
-    await trigger.webhookMethods.default.delete.call(h.context as unknown as IHookFunctions);
     expect(await trigger.poll.call(h.context)).toBeNull();
     h.params.deployment = 'other';
     expect((await trigger.poll.call(h.context))?.[0]).toHaveLength(1);
   });
   it('orders timestamps numerically and emits a late listed run exactly once', async () => {
     let tick = 0;
-    const h = pollFixture(() => ({ runs: ++tick === 1 ? [{ runId: 'r2', status: 'closed', createdAt: '2026-10-25T01:00:00.500Z' }] : [{ runId: 'r1', status: 'closed', createdAt: '2026-10-25T02:00:00+01:00' }, { runId: 'r2', status: 'closed', createdAt: '2026-10-25T01:00:00.500Z' }] }));
+    const h = pollFixture(() => ({ runs: ++tick === 1 ? [{ runId: 'r2', status: 'closed', protocolRef: 'protocol', startedAt: '2026-10-25T01:00:00.500Z' }] : [{ runId: 'r1', status: 'closed', protocolRef: 'protocol', startedAt: '2026-10-25T02:00:00+01:00' }, { runId: 'r2', status: 'closed', protocolRef: 'protocol', startedAt: '2026-10-25T01:00:00.500Z' }] }));
     await trigger.poll.call(h.context);
     expect((await trigger.poll.call(h.context))?.[0].map(item => item.json.runId)).toEqual(['r1']);
     expect(h.state.pollSince).toBe('2026-10-25T01:00:00.500Z');
