@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { IPollFunctions } from 'n8n-workflow';
 import { TatrmanTrigger } from '../nodes/Tatrman/TatrmanTrigger.node';
 import { harness } from './harness';
@@ -8,8 +8,8 @@ const trigger = new TatrmanTrigger();
 const deployment = 'release_morning';
 const since = '2026-11-20T07:00:00.000Z';
 
-function pollFixture(respond: Parameters<typeof harness>[1]) {
-  const parameters: Record<string, string> = { deployment, since };
+function pollFixture(respond: Parameters<typeof harness>[1], configuredSince = since) {
+  const parameters: Record<string, string> = { deployment, since: configuredSince };
   const h = harness(parameters, respond);
   const context = Object.assign(h.context, {
     getNodeParameter: (key: string, fallback?: unknown) => parameters[key] ?? fallback,
@@ -60,6 +60,34 @@ describe('Tatrman Trigger polling', () => {
     expect(h.state.pollSince).toBe(second.startedAt);
     expect(Date.parse(String(h.request.mock.calls[1][1].qs?.since))).toBeGreaterThan(Date.parse(since));
     expect(await trigger.poll.call(h.context)).toBeNull();
+  });
+
+  it('retains a blank Since first-poll bound on retry and emits the intervening run once', async () => {
+    const run = closedRun('r1', '2026-11-20T07:00:15.000Z');
+    const first = pollFixture(() => ({ statusCode: 503, body: { error: { code: 'unavailable' } } }), '');
+    // n8n can rebuild the poll context and discard the failed attempt's static data.
+    const retry = pollFixture(options => {
+      const bound = Date.parse(String(options.qs?.since));
+      return { runs: Date.parse(run.startedAt) > bound ? [run] : [], next: null };
+    }, '');
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(since));
+      await expect(trigger.poll.call(first.context)).rejects.toThrow();
+      expect(first.state).toEqual({});
+      expect(first.request.mock.calls[0][1].qs?.since).toBe(since);
+
+      vi.setSystemTime(new Date('2026-11-20T07:01:00.000Z'));
+      expect((await trigger.poll.call(retry.context))?.[0].map(item => item.json.runId)).toEqual([run.runId]);
+      expect(retry.state.pollSince).toBe(run.startedAt);
+
+      vi.setSystemTime(new Date('2026-11-20T07:02:00.000Z'));
+      expect(await trigger.poll.call(retry.context)).toBeNull();
+      expect(retry.request.mock.calls.map(([, options]) => options.qs?.since)).toEqual([since, since]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('emits nothing when the list is empty', async () => {
