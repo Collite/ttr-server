@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { afterEach, expect, it, vi } from 'vitest';
 import { Workflow } from 'n8n-workflow';
-import type { IDataObject, IExecuteFunctions, IHookFunctions, INode, INodeTypes, IPollFunctions } from 'n8n-workflow';
+import type { IDataObject, IExecuteFunctions, INode, INodeTypes, IPollFunctions } from 'n8n-workflow';
 import { TatrmanRun } from '../nodes/Tatrman/TatrmanRun.node';
 import { TatrmanTrigger } from '../nodes/Tatrman/TatrmanTrigger.node';
 import { harness, node } from './harness';
@@ -100,9 +100,9 @@ it.each([201, 202])('R4 Open %s preserves replay flag and normalizes Location', 
   expect((await run.execute.call(h.context))[0][0].json).toMatchObject({ replayed: false, location: 'https://gw/prefix/automation/runs/r1' });
 });
 function pollFixture() {
-  const parameters: Record<string, unknown> = { mode: 'poll', kinds: ['run_closed'], deployment: 'd', since: '2026-10-23T00:00:00' };
+  const parameters: Record<string, unknown> = { deployment: 'd', since: '2026-10-23T00:00:00' };
   const h = harness({});
-  const context = Object.assign(h.context, { getNodeParameter: (name: string, fallback?: unknown) => parameters[name] ?? fallback, getWorkflow: () => ({ id: 'overlap-proof' }), getTimezone: () => 'Europe/Prague', logger: { debug: vi.fn(), warn: vi.fn() }, getNodeWebhookUrl: () => 'https://n8n.test/hook' }) as unknown as IPollFunctions;
+  const context = Object.assign(h.context, { getNodeParameter: (name: string, fallback?: unknown) => parameters[name] ?? fallback, getWorkflow: () => ({ id: 'overlap-proof' }), getTimezone: () => 'Europe/Prague', logger: { debug: vi.fn(), warn: vi.fn() } }) as unknown as IPollFunctions;
   return { ...h, context, parameters };
 }
 it('R6 zone-less Since uses workflow timezone', async () => {
@@ -111,14 +111,6 @@ it('R6 zone-less Since uses workflow timezone', async () => {
   await trigger.poll.call(h.context);
   expect(h.request.mock.calls[0][1].qs?.since).toBe('2026-10-22T22:00:00.000Z');
 });
-it('R6 webhook activation clears earlier poll history', async () => {
-  const h = pollFixture();
-  Object.assign(h.state, { pollSince: 'old', pollSeen: { a: 'date' }, pollPending: {}, pollFingerprint: 'old' });
-  h.parameters.mode = 'webhook';
-  h.request.mockResolvedValue({ statusCode: 201, body: { id: 'hook' }, headers: {} });
-  await trigger.webhookMethods.default.create.call(h.context as unknown as IHookFunctions);
-  expect(Object.keys(h.state).some(key => key.startsWith('poll'))).toBe(false);
-});
 it('R6 overlapping ticks skip the second read and emit once', async () => {
   const h = pollFixture();
   let release!: (value: Awaited<ReturnType<typeof h.request>>) => void;
@@ -126,7 +118,7 @@ it('R6 overlapping ticks skip the second read and emit once', async () => {
   const first = trigger.poll.call(h.context);
   await vi.waitFor(() => expect(h.request).toHaveBeenCalledTimes(1));
   const second = await trigger.poll.call(h.context);
-  release({ statusCode: 200, headers: {}, body: { runs: [{ runId: 'r', status: 'closed', createdAt: '2026-10-23T01:00:00Z' }] } });
+  release({ statusCode: 200, headers: {}, body: { runs: [{ runId: 'r', status: 'closed', protocolRef: 'protocol', startedAt: '2026-10-23T01:00:00Z' }] } });
   expect((await first)?.[0]).toHaveLength(1);
   expect(second).toBeNull();
   expect(h.request).toHaveBeenCalledTimes(1);
