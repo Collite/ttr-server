@@ -4,9 +4,9 @@
 Governed automation recipes from n8n, using the identity stored in the Tatrman Automation credential.
 
 P0 provides **Tatrman Run** and **Tatrman Trigger**. Platform Logical Query and Golem Question are planned in P1.
-Tested with **n8n 2.44.6**, using its **n8n-workflow 2.44.2** SDK. Node version 1; package version 0.1.1.
+Tested with **n8n 2.44.6**, using its **n8n-workflow 2.44.2** SDK. Node version 1; package version 0.2.0.
 Apache-2.0. The package `@collite/n8n-nodes-tatrman` is built and published from `ttr-server` to GitHub
-Packages (npmjs only when a public release is called); it moved here from `kantheon` with its history. It has not been published or certified on hartland yet.
+Packages (npmjs only when a public release is called); it moved here from `kantheon` with its history. Live certification for the poll-only Trigger targets bp-dsk.
 
 ## Install
 
@@ -17,10 +17,10 @@ then install that artifact in the self-hosted n8n community-package directory:
 npm config set @collite:registry https://npm.pkg.github.com
 # Configure a read:packages credential for npm.pkg.github.com using your secret manager.
 mkdir -p /tmp/n8n-package
-npm pack @collite/n8n-nodes-tatrman@0.1.1 --pack-destination /tmp/n8n-package
+npm pack @collite/n8n-nodes-tatrman@0.2.0 --pack-destination /tmp/n8n-package
 mkdir -p ~/.n8n/nodes
 cd ~/.n8n/nodes
-npm install --offline --ignore-scripts --legacy-peer-deps --no-audit --no-fund /tmp/n8n-package/collite-n8n-nodes-tatrman-0.1.1.tgz
+npm install --offline --ignore-scripts --legacy-peer-deps --no-audit --no-fund /tmp/n8n-package/collite-n8n-nodes-tatrman-0.2.0.tgz
 export NODE_PATH=/usr/local/lib/node_modules/n8n/node_modules
 n8n start
 ```
@@ -35,8 +35,8 @@ Build and verify it from the packed package (repository root, Docker required):
 
 ```sh
 (cd connectors/n8n-nodes-tatrman && pnpm install --frozen-lockfile)
-just build-n8n-image n8n-tatrman:2.44.6-0.1.1
-just test-n8n-image n8n-tatrman:2.44.6-0.1.1
+just build-n8n-image n8n-tatrman:2.44.6-0.2.0
+just test-n8n-image n8n-tatrman:2.44.6-0.2.0
 ```
 
 The image is Linux/amd64, based on the approved `ghcr.io/collite/n8n` mirror. The Dockerfile is the
@@ -52,7 +52,7 @@ An unprivileged entrypoint creates only a symlink under n8n's scanned
 to overwrite an existing physical npm installation. n8n's package loader therefore uses the same
 `@collite/n8n-nodes-tatrman.tatrmanRun` and `@collite/n8n-nodes-tatrman.tatrmanTrigger` IDs as npm.
 No npm credential is baked into a layer. `N8N_CUSTOM_EXTENSIONS` must not point at this package.
-The olymp image switch and live Server/hartland certification remain pending.
+The bp-dsk image and live Server certification are tracked in AU n8n P0 S0.3.
 
 ## Credentials
 
@@ -119,28 +119,19 @@ Read Routes before Close; the connector omits `limit`, accepting the Server's co
 
 ## Tatrman Trigger
 
-Choose Deployment and Events: Signal, Answer, Window Closed, or Run Closed. Route Rows is removed
-from P0 because the current Server releases route sessions on close; restoration is tracked in
-[kantheon#257](https://github.com/Collite/kantheon/issues/257). Use Run → Routes before Close instead.
-A run-closed notification can open a fresh follow-up run for action work; never mutate the sealed source.
+Choose a Deployment and set the interval with n8n’s Poll Times. The node lists the credential
+holder’s closed runs via `GET /automation/runs`, sending `deployment`, `since` and
+`status=closed`. Each item includes `_tatrman: { run, protocolRef }` and the listed run in
+`payload`. Use `_tatrman.run` as the source run ID.
 
-Webhook activation registers `{ deployment, url, secret, kinds }` via `POST /automation/webhooks`.
-GET `/automation/webhooks` must return `{ webhooks: [{id,...}] }`; DELETE `/automation/webhooks/{id}`
-unregisters it on deactivation (already-gone 404 is accepted). GET/DELETE and exact HMAC/event shapes
-remain proposed Server P3 contracts. The receiver checks hex HMAC-SHA256 (`X-Tatrman-Signature`, optional
-`sha256=` prefix) over raw JSON bytes; bad signatures return 401 and malformed envelopes return 400.
-Filtered events produce no execution. Signature freshness/timestamp binding remains a Server handoff
-follow-up; current signatures alone do not prevent replay of a captured event.
+Since is an exclusive lower bound on run **start time**. It defaults to the first poll, and a value
+without an offset uses the workflow timezone. The node follows the Server’s page cursors, advances
+its saved start-time watermark only after all pages succeed, and deduplicates a five-minute overlap.
+A run that closes after its start time has fallen outside that overlap can be missed.
+n8n retains the cursor across republish. Changing the deployment or configured Since starts a new cursor.
 
-Poll supports Run Closed only. Since defaults to the first poll. The proposed list endpoint is
-`GET /automation/runs?deployment&since` → `{ runs: [{ runId (or id), status, createdAt }], truncated? }`.
-Timestamps are compared numerically; the cursor is canonical ISO. A five-minute creation-time overlap
-catches bounded late commits, with seen IDs pruned to that window. Pending runs are tracked separately;
-403/404 and terminal runs are dropped and logged. Transport/5xx failures do not commit partial state;
-truncated lists fail explicitly. Poll state survives re-publication; switching to webhook mode clears it. It resets when deployment
-or configured Since changes, and overlapping ticks for the same workflow/node are skipped. Since
-values without an offset use the workflow timezone. Server P3 still needs to confirm durable terminal reads, inclusive time filtering,
-creation-versus-commit ordering and the maximum late-commit delay. These client tests do not certify that API.
+To perform action work on a closed-run notification, open and evaluate a fresh follow-up run.
+The closed source run’s route session has been released. Use Run → Routes before closing the follow-up run.
 
 ## Development and checks
 
@@ -161,16 +152,14 @@ just test-n8n-install-parity /path/to/checked-package-directory
 ```
 
 Vitest uses fake service responses constrained by the checked Server source: route limits/defaults,
-closed-session refusal, request budgets and idempotent replay handles. Recorded H-1 P3 fixtures and
-hartland certification remain pending. The old adapter-only smoke script was removed.
+closed-session refusal, request budgets and idempotent replay handles. Live certification uses the bp-dsk estate. The old adapter-only smoke script was removed.
 
 `test-n8n-image` checks the actual package manifest, compiled entry points, runtime/SDK pairing,
 unprivileged user, root-owned/write-protected package/entrypoint and scoped package loader with a fresh `.n8n` mount. Its persisted workflow proof
 exercises authenticated credential testing (including a bad token), scoped workflow IDs, a 450-row
-route in server-default 200/200/50 pages, HMAC delivery, filtered-event suppression, expressions,
-perform/outcome/close, closed-route refusal, persisted success and webhook deactivation. A separate
-real poll-mode workflow is edited, saved and re-published while active: deduplication and pending-run
-state must survive. Only the Automation service is fake; outbound networking is disabled and only
+route in server-default 200/200/50 pages, expressions, perform/outcome/close, closed-route refusal,
+and persisted success. A separate poll workflow is edited, saved and republished while active. It
+retains deduplication state and emits a newly visible closed run. Only the Automation service is fake; outbound networking is disabled and only
 harness scripts are mounted. `test-n8n-install-parity` consumes the same single checked tarball used for the image and publication
 (no second pack), prints its SHA-256, and installs it with the exact npm flags and NODE_PATH above in a fresh runtime
 and runs the same scoped workflow JSON. This proves installation/runtime mechanics, not Server P3.
@@ -187,30 +176,28 @@ PRs build, check, scan and pack the connector, then build/test the derived image
 After review and merge, from a clean current master with the tag still free, the agent cuts the exact tag:
 
 ```sh
-just publish n8n-nodes-tatrman set 0.1.1
+just publish n8n-nodes-tatrman set 0.2.0
 ```
 
-`n8n-nodes-tatrman/v0.1.1` runs the dedicated `n8n-nodes.yml` workflow. Before any registry write it
+`n8n-nodes-tatrman/v0.2.0` runs the dedicated `n8n-nodes.yml` workflow. Before any registry write it
 checks that the tag equals the package version, derives the image tag from the Dockerfile runtime pin
 plus that version, and runs the package/image proofs. The publishing job rebuilds from the checked
 package artifact and repeats the actual-image proof before pushing that exact local image as
-`ghcr.io/collite/n8n-tatrman:2.44.6-0.1.1`; it then publishes the private scoped npm package to GitHub
+`ghcr.io/collite/n8n-tatrman:2.44.6-0.2.0`; it then publishes the private scoped npm package to GitHub
 Packages. Both writes use the job's `GITHUB_TOKEN` with `packages: write`; base pulls authenticate before builds. No public registry release
 is required. The generic `release-image.yml` excludes these tags to avoid a competing publisher.
 Local build/test recipes do not cut tags or publish.
 
-After publication, verify the digest and a pulled image, then confirm `collite-registry` has Read on
-this new package (via `registry-read` where necessary) before the separate olymp P4 PR changes
-Hartland. Existing private-package access does not establish access to this new package. A failed
+After publication, verify the digest and a pulled image, then verify that `collite-registry` can pull the image before the
+olymp bp-dsk rollout. Existing private-package access does not establish access to this new package. A failed
 release can leave one artifact published; inspect both registries before rerunning or cutting another
-version. Server P3 endpoint/lifecycle agreement, recorded H-1 fixtures and live AU certification remain
-open independently of this image release.
+version. The live certification is recorded in the stage PR.
 
 If image publication succeeded but npm publication failed, inspect both registries first. Recover only npm
 from the existing tag after fixing the publishing workflow on master:
 
 ```sh
-gh workflow run n8n-nodes.yml --repo Collite/ttr-server --ref master -f release_tag=n8n-nodes-tatrman/v0.1.1
+gh workflow run n8n-nodes.yml --repo Collite/ttr-server --ref master -f release_tag=n8n-nodes-tatrman/v0.2.0
 ```
 
 This manual action checks out `refs/tags/<release_tag>` in both jobs, validates the tag/package version,
