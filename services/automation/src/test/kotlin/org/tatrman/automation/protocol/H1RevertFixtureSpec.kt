@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.protocol
 
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.Json
@@ -28,8 +29,19 @@ class H1RevertFixtureSpec :
         "the live revert response identifies its inverse and all 181 successful row outcomes" {
             result.batch shouldBe "f6aced16-b550-45fc-8315-1c2bbc8db6cd"
             result.revOf shouldBe "e9d47e9d-9cd6-3efc-bba2-6a96a1c5e385"
-            (result.batch != result.revOf) shouldBe true
             result.rows shouldBe 181
+            val invertedSequences =
+                original.statuses
+                    .filter { it.prior != null }
+                    .map { it.seq }
+                    .toSet()
+            invertedSequences.size shouldBe result.rows
+            val invertedEntities =
+                original.rows
+                    .filter { it.seq in invertedSequences }
+                    .map { it.entity }
+                    .toSet()
+            invertedEntities shouldBe setOf("er.entity.order")
             result.applied shouldBe result.rows
             result.failed shouldBe 0
         }
@@ -41,7 +53,12 @@ class H1RevertFixtureSpec :
             original.rows.size shouldBe 670
             original.statuses.size shouldBe original.rows.size
             original.statuses.map { it.seq }.toSet() shouldBe original.rows.map { it.seq }.toSet()
-            original.statuses.all { it.status == "applied" && it.error == null } shouldBe true
+            original.statuses.forEach { status ->
+                withClue("original batch row ${status.seq}") {
+                    status.status shouldBe "applied"
+                    status.error shouldBe null
+                }
+            }
             original.rows.count { it.entity == "er.entity.release_order_verdict" } shouldBe 155
             val heldSequences =
                 original.rows
@@ -49,15 +66,12 @@ class H1RevertFixtureSpec :
                     .map { it.seq }
                     .toSet()
             heldSequences.size shouldBe 2
-            val decisions = original.statuses.filter { it.seq in heldSequences }.map { checkNotNull(it.decided) }
-            decisions.all {
-                it["decision"] ==
-                    JsonPrimitive(
-                        "commit",
-                    ) &&
-                    it["by"] == JsonPrimitive("operator")
-            } shouldBe
-                true
+            original.statuses.filter { it.seq in heldSequences }.forEach { status ->
+                withClue("held batch row ${status.seq}") {
+                    status.decided?.get("decision") shouldBe JsonPrimitive("commit")
+                    status.decided?.get("by") shouldBe JsonPrimitive("operator")
+                }
+            }
             original.statuses.count { it.history == "applied" } shouldBe 150
         }
     })

@@ -1,0 +1,45 @@
+{
+  "runId": "58518f84-8952-4dea-9e45-a9faa91262d2",
+  "status": "closed",
+  "verdict": null,
+  "guards": [],
+  "mode": null,
+  "protocolRef": "/automation/runs/58518f84-8952-4dea-9e45-a9faa91262d2/protocol",
+  "recipe": "release_order",
+  "program": "release_on_placement_cz",
+  "deployment": "release_event_cz",
+  "runAs": "svc-hartland-automation",
+  "author": null,
+  "asOf": null,
+  "bundle": "served:master@4f56e5277c50",
+  "fingerprints": {
+    "text": "sha256:c64489baf6cefe99e3ba1f8ce952049ead8ecbd3c7015fdf3656333ec1c26121",
+    "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
+    "program": "sha256:32c22a386226df67be62fd15443fdfdddcc4c9285aa3c2eb4d631939e759a822",
+    "deployment": "sha256:d5516d0545f139614b1dd47182ae3d6f968229b6e6b21e69b7844d1d13ef23c8",
+    "model": "sha256:db5dca69bcb739a2063f003fa6a67c3d302c6e9a064386f18aa6c7d26e9a3f4a"
+  },
+  "dryRun": false,
+  "replayOf": null,
+  "startedAt": "2026-11-20T16:30:40.595155Z",
+  "endedAt": "2026-11-20T16:30:40.699070Z",
+  "error": null,
+  "batch": null,
+  "actions": [],
+  "warnings": [],
+  "kind": "answer",
+  "answer": {
+    "original": "fd993033-b7eb-45db-9ed5-927ee38db53b",
+    "batch": "f4fa3454-16f8-3176-972f-91fdccb324da",
+    "key": {
+      "order_number": 200117739
+    },
+    "decision": "commit",
+    "by": "approver",
+    "applied": 1,
+    "skipped": 0,
+    "failed": 0,
+    "unknown": 0,
+    "replayed": false
+  }
+}
