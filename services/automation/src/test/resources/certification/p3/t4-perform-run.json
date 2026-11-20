@@ -1,0 +1,32 @@
+{
+  "runId": "3ba92dc7-ad17-431b-a96e-25f6f7b3995c",
+  "status": "closed",
+  "verdict": null,
+  "guards": [],
+  "mode": null,
+  "protocolRef": "/automation/runs/3ba92dc7-ad17-431b-a96e-25f6f7b3995c/protocol",
+  "recipe": "hold",
+  "program": "release_on_placement_cz",
+  "deployment": "release_event_cz",
+  "runAs": "svc-hartland-automation",
+  "author": "operator",
+  "asOf": null,
+  "bundle": "served:master@4f56e5277c50",
+  "fingerprints": {
+    "text": null,
+    "values": null,
+    "program": null,
+    "deployment": null,
+    "model": "sha256:db5dca69bcb739a2063f003fa6a67c3d302c6e9a064386f18aa6c7d26e9a3f4a"
+  },
+  "dryRun": false,
+  "replayOf": null,
+  "startedAt": "2026-11-20T17:19:59.322222Z",
+  "endedAt": "2026-11-20T17:19:59.394409Z",
+  "error": null,
+  "batch": null,
+  "actions": [],
+  "warnings": [],
+  "kind": "perform",
+  "answer": null
+}

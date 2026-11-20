@@ -1,0 +1,130 @@
+{
+  "run": "3ba92dc7-ad17-431b-a96e-25f6f7b3995c",
+  "sections": {
+    "automation": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T17:19:59.322222Z",
+        "payload": {
+          "key": {
+            "order": 219990264
+          },
+          "kind": "perform",
+          "runAs": "svc-hartland-automation",
+          "action": "hold",
+          "bundle": "served:master@4f56e5277c50",
+          "caller": "process-engine",
+          "params": {
+            "department": "Sales"
+          },
+          "recipe": "release_order",
+          "modelFp": "sha256:db5dca69bcb739a2063f003fa6a67c3d302c6e9a064386f18aa6c7d26e9a3f4a",
+          "deployment": "release_event_cz"
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-20T17:19:59.394409Z",
+        "payload": {
+          "sealed": true
+        }
+      }
+    ],
+    "islands": [],
+    "decision": [],
+    "actions": [],
+    "writes": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T17:19:59.329621Z",
+        "payload": {
+          "seqs": [
+            1,
+            2
+          ],
+          "event": "begin",
+          "request": "b0fe23bc-017f-40c9-b2ff-3eaae66c9d15"
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-20T17:19:59.364024Z",
+        "payload": {
+          "rows": [
+            {
+              "seq": 1,
+              "error": null,
+              "prior": {
+                "state": "placed",
+                "held_for": null
+              },
+              "status": "applied"
+            },
+            {
+              "seq": 2,
+              "error": null,
+              "prior": {
+                "state": "placed",
+                "held_for": null
+              },
+              "status": "applied",
+              "history": "pending"
+            }
+          ],
+          "event": "outcome"
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-20T17:19:59.389856Z",
+        "payload": {
+          "rows": [
+            {
+              "seq": 2,
+              "error": null,
+              "prior": {
+                "state": "placed",
+                "held_for": null
+              },
+              "status": "applied",
+              "history": "applied"
+            }
+          ],
+          "event": "outcome"
+        }
+      },
+      {
+        "seq": 4,
+        "at": "2026-11-20T17:19:59.394409Z",
+        "payload": {
+          "key": {
+            "order": 219990264
+          },
+          "rows": [
+            {
+              "op": "update",
+              "seq": 1,
+              "entity": "er.entity.order",
+              "status": "applied"
+            },
+            {
+              "op": "transition",
+              "seq": 2,
+              "entity": "er.entity.order",
+              "status": "applied",
+              "history": "applied"
+            }
+          ],
+          "event": "performed",
+          "action": "hold",
+          "outcome": "applied"
+        }
+      }
+    ],
+    "people": [],
+    "turns": [],
+    "signals": [],
+    "receipts": []
+  },
+  "schema": "protocol/v1"
+}

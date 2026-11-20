@@ -87,6 +87,48 @@ class H1EngineCertificationFixtureSpec :
             identity["verified"] shouldBe JsonPrimitive(true)
             identity.getValue("history").jsonObject["assignee"] shouldBe JsonPrimitive(decision.by)
         }
+
+        "the timeout applies a separate Sales hold for the same order as the approval run" {
+            val original = certificationFixture<RunProgress>("t4-original-run")
+            val originalProtocol = certificationFixture<ProtocolDocument>("t4-original-protocol")
+            val perform = certificationFixture<RunProgress>("t4-perform-run")
+            val performProtocol = certificationFixture<ProtocolDocument>("t4-perform-protocol")
+            originalProtocol.assertSealedFixture()
+            performProtocol.assertSealedFixture()
+            originalProtocol.run shouldBe original.runId
+            performProtocol.run shouldBe perform.runId
+
+            val approval = original.actions.single()
+            approval.action shouldBe "release_confirmed"
+            val order = approval.key.getValue("order_number")
+            order shouldBe JsonPrimitive(219990264)
+            val originalOpen =
+                originalProtocol.sections
+                    .getValue("automation")
+                    .first()
+                    .payload.jsonObject
+            val engine = originalOpen.getValue("engine").jsonObject
+            engine["instanceId"] shouldBe JsonPrimitive("6a7e1c88-e506-11f1-942b-7e60a2870a34")
+            engine["businessKey"] shouldBe JsonPrimitive("219990264")
+
+            perform.kind shouldBe "perform"
+            perform.status shouldBe "closed"
+            val hold =
+                performProtocol.sections
+                    .getValue("automation")
+                    .first()
+                    .payload.jsonObject
+            hold["action"] shouldBe JsonPrimitive("hold")
+            hold.getValue("key").jsonObject["order"] shouldBe order
+            hold.getValue("params").jsonObject["department"] shouldBe JsonPrimitive("Sales")
+            val outcome =
+                performProtocol.sections
+                    .getValue("writes")
+                    .last()
+                    .payload.jsonObject
+            outcome["event"] shouldBe JsonPrimitive("performed")
+            outcome["outcome"] shouldBe JsonPrimitive("applied")
+        }
     })
 
 private inline fun <reified T> certificationFixture(name: String): T {
