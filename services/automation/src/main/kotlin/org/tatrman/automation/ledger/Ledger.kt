@@ -1372,13 +1372,7 @@ class Ledger(
             lockRun(runId)
             val run = Runs.selectAll().where { Runs.id eq runId }.single()
             val batchId = run[Runs.batchId] ?: throw NoRunBatch(runId)
-            val rows =
-                BatchRows
-                    .selectAll()
-                    .where { BatchRows.batch eq batchId }
-                    .orderBy(BatchRows.seq to SortOrder.ASC)
-                    .toList()
-            val mine = rows.filter { it[BatchRows.groupKey] == group }
+            val mine = groupRows(batchId, group)
             if (mine.isEmpty()) throw NoHeldGroup(runId, group)
             val recorded = (mine.first()[BatchRows.row] as? JsonObject)?.get(DECIDED) as? JsonObject
             if (recorded != null) {
@@ -1395,73 +1389,180 @@ class Ledger(
                     by = (recorded["by"] as? JsonPrimitive)?.content,
                 )
             }
-            val now = clock.instant().utc()
-            val evidence =
+            val attribution =
                 kotlinx.serialization.json.buildJsonObject {
-                    put("decision", JsonPrimitive(decision))
                     put("by", JsonPrimitive(by))
-                    put("at", JsonPrimitive(now.toInstant().toString()))
                     answer?.let { put("answer", JsonPrimitive(it.toString())) }
                 }
-            for (r in mine) {
-                BatchRows.update({ (BatchRows.batch eq batchId) and (BatchRows.seq eq r[BatchRows.seq]) }) {
-                    if (decision == "reject" && r[BatchRows.status] == "staged" && r[BatchRows.error] == null) {
-                        it[status] = "skipped"
-                        it[error] = "rejected"
-                    }
-                    it[row] = JsonObject((r[BatchRows.row] as? JsonObject).orEmpty() + (DECIDED to evidence))
-                }
-            }
-            val after = BatchRows.selectAll().where { BatchRows.batch eq batchId }.toList()
-            val decided = after.filter { it[BatchRows.groupKey] == group }
-            val counts =
-                decided
-                    .groupingBy { if (it[BatchRows.status] == "staged") "unknown" else it[BatchRows.status] }
-                    .eachCount()
-            val last = after.none(::undecidedHeld)
-            RunProtocol.insert {
-                it[RunProtocol.run] = runId
-                it[section] = ProtocolSection.WRITES.wire
-                it[seq] = nextSeq(runId, ProtocolSection.WRITES)
-                it[payload] =
-                    kotlinx.serialization.json.buildJsonObject {
-                        put("event", JsonPrimitive("held-$decision"))
-                        put("batch", JsonPrimitive(batchId.toString()))
-                        put("group", group)
-                        put("by", JsonPrimitive(by))
-                        answer?.let { put("answer", JsonPrimitive(it.toString())) }
-                        put("rows", JsonPrimitive(decided.size))
-                        for (name in listOf("applied", "failed", "skipped", "unknown")) {
-                            put(name, JsonPrimitive(counts[name] ?: 0))
-                        }
-                        put("last", JsonPrimitive(last))
-                        put("after_seal", JsonPrimitive(true))
-                    }
-                it[at] = now
-            }
-            if (last) {
-                Batches.update({ Batches.id eq batchId }) {
-                    it[state] = "committed"
-                    it[committedBy] = by
-                    it[committedAt] = now
-                }
-                Runs.update({ Runs.id eq runId }) {
-                    it[status] = RunStatus.CLOSED.wire
-                    it[endedAt] = now
-                }
-            }
-            HeldDecision(
-                batchId.toString(),
-                group,
-                decision,
-                decided.count { it[BatchRows.status] == "applied" },
-                decided.count { it[BatchRows.status] == "skipped" },
-                if (last) RunStatus.CLOSED.wire else RunStatus.of(run[Runs.status]).wire,
-                failed = counts["failed"] ?: 0,
-                unknown = counts["unknown"] ?: 0,
-                by = by,
-            )
+            settleHeld(runId, batchId, group, mine, RunStatus.of(run[Runs.status]), decision, attribution)
         }
+    }
+
+    /**
+     * D-267: after verification and under Held's decision lock, create the fallback run and decide the original group
+     * in one transaction. The decision links a real run as soon as the expiry is recorded. That run's sealed outcome
+     * alone says whether the hold applied. Retrying a verified occurrence resumes or replays the same run.
+     */
+    fun claimExpiredHold(
+        original: UUID,
+        group: JsonObject,
+        evidence: JsonObject,
+        active: Boolean,
+        taskStartedAt: Instant,
+        hold: RunOpen,
+    ): Claim {
+        outermost("claimExpiredHold")
+        return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
+            lockRun(original)
+            val run = Runs.selectAll().where { Runs.id eq original }.single()
+            val batch = run[Runs.batchId] ?: throw NoRunBatch(original)
+            val rows = groupRows(batch, group)
+            if (rows.isEmpty()) throw NoHeldGroup(original, group)
+            val decided = (rows.first()[BatchRows.row] as? JsonObject)?.get(DECIDED) as? JsonObject
+            if (decided != null) {
+                val holdId = (decided["holdRun"] as? JsonPrimitive)?.content
+                if (decided["decision"] != JsonPrimitive("expire") || decided["expiry"] != evidence || holdId == null) {
+                    expiryConflict("approval-already-decided", "the held group already has a different decision")
+                }
+                val id = UUID.fromString(holdId)
+                val status = RunStatus.of(Runs.select(Runs.status).where { Runs.id eq id }.single()[Runs.status])
+                return@transaction when (status) {
+                    RunStatus.CLOSED -> Claim.Replay(id, dryRun = false)
+                    RunStatus.OPEN -> Claim.Running(id, status, dryRun = false)
+                    else -> expiryConflict("hold-unavailable", "the verified expiry's hold cannot be resumed")
+                }
+            }
+            if (!active || run[Runs.startedAt].toInstant() > taskStartedAt) {
+                val message =
+                    if (!active) {
+                        "the process instance is no longer active"
+                    } else {
+                        "the approval task predates the original run"
+                    }
+                throw AutomationException(
+                    ErrorCode.IDENTITY,
+                    message,
+                    JsonObject(mapOf("reason" to JsonPrimitive("unverified-expiry"))),
+                )
+            }
+            val status = RunStatus.of(run[Runs.status])
+            val batchState = Batches.select(Batches.state).where { Batches.id eq batch }.single()[Batches.state]
+            if (status != RunStatus.WAITING || batchState != "held" || rows.none(::undecidedHeld)) {
+                expiryConflict("approval-not-waiting", "the group is no longer waiting for a decision")
+            }
+            if (rows.any {
+                    it[BatchRows.status] == "applied" ||
+                        it[BatchRows.status] == "staged" &&
+                        it[BatchRows.error] != null
+                }
+            ) {
+                expiryConflict("commit-started", "a commit of this group has already sent rows")
+            }
+            val now = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS)
+            val id = insertRun(hold, now)
+            val attribution =
+                kotlinx.serialization.json.buildJsonObject {
+                    put("expiry", evidence)
+                    put("holdRun", JsonPrimitive(id.toString()))
+                }
+            settleHeld(original, batch, group, rows, status, "expire", attribution)
+            Claim.Claimed(id, startedAt = now)
+        }
+    }
+
+    private fun groupRows(
+        batch: UUID,
+        group: JsonObject,
+    ): List<org.jetbrains.exposed.v1.core.ResultRow> =
+        BatchRows
+            .selectAll()
+            .where { BatchRows.batch eq batch }
+            .orderBy(BatchRows.seq to SortOrder.ASC)
+            .filter { it[BatchRows.groupKey] == group }
+
+    private fun expiryConflict(
+        reason: String,
+        message: String,
+    ): Nothing =
+        throw AutomationException(
+            ErrorCode.CLOSE_NOT_READY,
+            message,
+            JsonObject(mapOf("reason" to JsonPrimitive(reason))),
+        )
+
+    /** The caller holds the original run lock. Preserve the seal and close only after the last group settles. */
+    private fun settleHeld(
+        runId: UUID,
+        batchId: UUID,
+        group: JsonObject,
+        mine: List<org.jetbrains.exposed.v1.core.ResultRow>,
+        status: RunStatus,
+        decision: String,
+        attribution: JsonObject,
+    ): HeldDecision {
+        val now = clock.instant().utc()
+        val evidence =
+            kotlinx.serialization.json.buildJsonObject {
+                put("decision", JsonPrimitive(decision))
+                put("at", JsonPrimitive(now.toInstant().toString()))
+                attribution.forEach { (name, value) -> put(name, value) }
+            }
+        for (r in mine) {
+            BatchRows.update({ (BatchRows.batch eq batchId) and (BatchRows.seq eq r[BatchRows.seq]) }) {
+                if (decision != "commit" && r[BatchRows.status] == "staged" && r[BatchRows.error] == null) {
+                    it[BatchRows.status] = "skipped"
+                    it[BatchRows.error] = RowOutcome.REJECTED
+                }
+                it[row] = JsonObject((r[BatchRows.row] as? JsonObject).orEmpty() + (DECIDED to evidence))
+            }
+        }
+        val after = BatchRows.selectAll().where { BatchRows.batch eq batchId }.toList()
+        val decided = after.filter { it[BatchRows.groupKey] == group }
+        val counts =
+            decided
+                .groupingBy { if (it[BatchRows.status] == "staged") "unknown" else it[BatchRows.status] }
+                .eachCount()
+        val last = after.none(::undecidedHeld)
+        insertProtocol(
+            runId,
+            ProtocolSection.WRITES,
+            kotlinx.serialization.json.buildJsonObject {
+                put("event", JsonPrimitive("held-$decision"))
+                put("batch", JsonPrimitive(batchId.toString()))
+                put("group", group)
+                attribution.forEach { (name, value) -> put(name, value) }
+                put("rows", JsonPrimitive(decided.size))
+                for (name in listOf("applied", "failed", "skipped", "unknown")) {
+                    put(name, JsonPrimitive(counts[name] ?: 0))
+                }
+                put("last", JsonPrimitive(last))
+                put("after_seal", JsonPrimitive(true))
+            },
+            now,
+        )
+        val by = (attribution["by"] as? JsonPrimitive)?.content
+        if (last) {
+            Batches.update({ Batches.id eq batchId }) {
+                it[state] = "committed"
+                it[committedBy] = by
+                it[committedAt] = now
+            }
+            Runs.update({ Runs.id eq runId }) {
+                it[Runs.status] = RunStatus.CLOSED.wire
+                it[endedAt] = now
+            }
+        }
+        return HeldDecision(
+            batchId.toString(),
+            group,
+            decision,
+            counts["applied"] ?: 0,
+            counts["skipped"] ?: 0,
+            if (last) RunStatus.CLOSED.wire else status.wire,
+            failed = counts["failed"] ?: 0,
+            unknown = counts["unknown"] ?: 0,
+            by = by,
+        )
     }
 
     /**
@@ -1922,6 +2023,8 @@ class Ledger(
                         """
                         SELECT id, recipe FROM automation.runs
                         WHERE status IN ('open', 'running', 'evaluated')
+                          -- A verified expiry is linked to its original approval and retries only this hold run.
+                          AND NOT (kind = '$RUN_KIND_PERFORM' AND engine_task_id IS NOT NULL)
                           AND EXTRACT(EPOCH FROM (?::timestamptz - started_at)) * 1000
                               > (CASE WHEN mode = ? THEN COALESCE(budget_sync, budget_batch, ?)
                                       ELSE COALESCE(budget_batch, budget_sync, ?) END)::numeric + ?

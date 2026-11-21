@@ -4,6 +4,8 @@ package org.tatrman.automation.runner
 import com.sun.net.httpserver.HttpServer
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.spyk
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -25,6 +27,7 @@ import kotlinx.coroutines.async
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -33,6 +36,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.tatrman.automation.LedgerTestDb
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.api.installAutomationErrors
 import org.tatrman.automation.api.runRoutes
 import org.tatrman.automation.bundle.actions
@@ -88,24 +93,34 @@ class ApprovalExpirySpec :
                 expired["holdRun"] shouldBe JsonPrimitive(hold)
                 expired["by"] shouldBe null
                 val other = actions.single { it["key"] == orderKey("4712") }
-                other["decided"]?.toString() shouldBe null
+                other["decided"] shouldBe JsonNull
                 val originalWrites = writes(original.toString(), engine.token)
                 val entry = originalWrites.single { it["event"] == JsonPrimitive("held-expire") }
                 entry["after_seal"] shouldBe JsonPrimitive(true)
                 entry["holdRun"] shouldBe JsonPrimitive(hold)
                 val holdProtocol = read("/automation/runs/$hold/protocol", engine.token).getValue("sections").jsonObject
                 holdProtocol["people"]?.jsonArray.orEmpty() shouldBe emptyList()
-                val opening = holdProtocol.getValue("automation").jsonArray.first().jsonObject.getValue("payload").jsonObject
+                val opening =
+                    holdProtocol
+                        .getValue(
+                            "automation",
+                        ).jsonArray
+                        .first()
+                        .jsonObject
+                        .getValue("payload")
+                        .jsonObject
                 opening.getValue("engine").jsonObject["instanceId"] shouldBe JsonPrimitive("pi-1")
                 opening.getValue("expiry").jsonObject["originalRunId"] shouldBe JsonPrimitive(original.toString())
 
+                history.processState = "COMPLETED"
                 val retry = perform(engine.token, expiryRequest(original, idempotencyKey = "different"))
                 retry.status shouldBe HttpStatusCode.OK
                 val replay = Json.parseToJsonElement(retry.bodyAsText()).jsonObject
                 replay["runId"] shouldBe JsonPrimitive(hold)
                 replay["replayed"] shouldBe JsonPrimitive(true)
                 fake.writes.size shouldBe before + 2
-                writes(original.toString(), engine.token).count { it["event"] == JsonPrimitive("held-expire") } shouldBe 1
+                writes(original.toString(), engine.token).count { it["event"] == JsonPrimitive("held-expire") } shouldBe
+                    1
             }
         }
 
@@ -132,8 +147,23 @@ class ApprovalExpirySpec :
                 history.deleteReason = "deleted"
                 history.original = UUID.randomUUID().toString()
                 perform(engine.token, expiryRequest(original)).status shouldBe HttpStatusCode.Forbidden
+                history.original = original.toString()
+                history.processState = "COMPLETED"
+                val refused = perform(engine.token, expiryRequest(original))
+                refused.status shouldBe HttpStatusCode.Forbidden
+                val error =
+                    Json
+                        .parseToJsonElement(refused.bodyAsText())
+                        .jsonObject
+                        .getValue("error")
+                        .jsonObject
+                error["code"] shouldBe JsonPrimitive("identity")
+                error.getValue("detail").jsonObject["reason"] shouldBe JsonPrimitive("unverified-expiry")
                 fake.writes.size shouldBe before
-                f.ledger.heldGroup(original, orderKey("4711")).statuses.all { it.decided == null } shouldBe true
+                f.ledger
+                    .heldGroup(original, orderKey("4711"))
+                    .statuses
+                    .all { it.decided == null } shouldBe true
                 salesState("4711") shouldBe listOf("placed", "AR")
             }
         }
@@ -151,7 +181,15 @@ class ApprovalExpirySpec :
                         proving.await(5, TimeUnit.SECONDS) shouldBe true
                     }
                     try {
-                        val operator = Caller("operator", "operator", emptySet(), TokenKind.PERSON, "token", groups = setOf("hartland-ops"))
+                        val operator =
+                            Caller(
+                                "operator",
+                                "operator",
+                                emptySet(),
+                                TokenKind.PERSON,
+                                "token",
+                                groups = setOf("hartland-ops"),
+                            )
                         runtime.held.commitHeld(original, orderKey("4711"), operator).decision shouldBe "commit"
                     } finally {
                         release.countDown()
@@ -160,8 +198,88 @@ class ApprovalExpirySpec :
                     pending.await() shouldBe HttpStatusCode.Conflict
                     fake.writes.size shouldBe before
                     salesState("4711").first() shouldBe "released"
-                    writes(original.toString(), engine.token).any { it["event"] == JsonPrimitive("held-expire") } shouldBe false
+                    writes(
+                        original.toString(),
+                        engine.token,
+                    ).any { it["event"] == JsonPrimitive("held-expire") } shouldBe
+                        false
                 }
+            }
+        }
+
+        "retry after the hold committed but before sealing reuses the linked run and journaled writes" {
+            var failSeal = true
+            expiryFixture(keys = listOf("4711"), ledgerFor = { ledger ->
+                spyk(ledger).also { spy ->
+                    every { spy.finishAdHocRun(any(), any(), any()) } answers {
+                        if (failSeal) {
+                            failSeal = false
+                            throw AutomationException(ErrorCode.EXPIRY_HOLD_PENDING, "injected seal failure")
+                        }
+                        callOriginal()
+                    }
+                }
+            }) { (f, runtime, engine, history, fake) ->
+                val original = waiting(f, runtime, engine, keys = listOf("4711"))
+                history.original = original.toString()
+                val before = fake.writes.size
+                val request = expiryRequest(original)
+                perform(engine.token, request).status shouldBe HttpStatusCode.ServiceUnavailable
+                salesState("4711") shouldBe listOf("held", "Sales")
+                fake.writes.size shouldBe before + 2
+
+                val status = read("/automation/runs/$original", engine.token)
+                status["status"] shouldBe JsonPrimitive("closed")
+                val decision =
+                    status
+                        .getValue("actions")
+                        .jsonArray
+                        .single()
+                        .jsonObject
+                        .getValue("decided")
+                        .jsonObject
+                val hold = decision.getValue("holdRun").jsonPrimitive.content
+                read("/automation/runs/$hold", engine.token)["status"] shouldBe JsonPrimitive("open")
+                writes(hold, engine.token).none { it["event"] == JsonPrimitive("performed") } shouldBe true
+                f.base.now = f.base.now.plusSeconds(3600)
+                f.ledger.abandonExpiredRuns() shouldBe emptyList()
+
+                val retry = perform(engine.token, request)
+                retry.status shouldBe HttpStatusCode.OK
+                val result = Json.parseToJsonElement(retry.bodyAsText()).jsonObject
+                result["runId"] shouldBe JsonPrimitive(hold)
+                result["outcome"] shouldBe JsonPrimitive("applied")
+                read("/automation/runs/$hold", engine.token)["status"] shouldBe JsonPrimitive("closed")
+                fake.writes.size shouldBe before + 2
+                writes(hold, engine.token).count { it["event"] == JsonPrimitive("performed") } shouldBe 1
+            }
+        }
+
+        "retry reconciles a lost Door response without sending the hold write twice" {
+            expiryFixture { (f, runtime, engine, history, fake) ->
+                val original = waiting(f, runtime, engine)
+                history.original = original.toString()
+                val before = fake.writes.size
+                fake.loseCommit = { true }
+                val request = expiryRequest(original)
+                val pending = perform(engine.token, request)
+                pending.status shouldBe HttpStatusCode.ServiceUnavailable
+                val envelope = Json.parseToJsonElement(pending.bodyAsText()).jsonObject
+                val error = envelope.getValue("error").jsonObject
+                error["code"] shouldBe JsonPrimitive("expiry-hold-pending")
+                val hold = error.getValue("detail").jsonObject.getValue("runId")
+                fake.writes.size shouldBe before + 1
+                salesState("4711") shouldBe listOf("held", "Sales")
+
+                fake.loseCommit = { false }
+                val retry = perform(engine.token, request)
+                retry.status shouldBe HttpStatusCode.OK
+                val result = Json.parseToJsonElement(retry.bodyAsText()).jsonObject
+                result["outcome"] shouldBe JsonPrimitive("applied")
+                result["runId"] shouldBe hold
+                val rowResults = result.getValue("rows").jsonArray.map(JsonElement::jsonObject)
+                rowResults.all { it["error"] == JsonPrimitive("reconciled") } shouldBe true
+                fake.writes.size shouldBe before + 2 // The original write and the read-only reconciliation probe.
             }
         }
 
@@ -177,7 +295,10 @@ class ApprovalExpirySpec :
                 result["expiry"] shouldBe null
                 perform(engine.token, request).status shouldBe HttpStatusCode.OK
                 fake.writes.size shouldBe before + 2
-                f.ledger.heldGroup(original, orderKey("4711")).statuses.all { it.decided == null } shouldBe true
+                f.ledger
+                    .heldGroup(original, orderKey("4711"))
+                    .statuses
+                    .all { it.decided == null } shouldBe true
             }
         }
     })
@@ -193,12 +314,14 @@ private data class ExpiryFixture(
 
 private suspend fun expiryFixture(
     ledgerFor: (Ledger) -> Ledger = { it },
+    keys: List<String> = listOf("4711", "4712"),
     test: suspend ApplicationTestBuilder.(ExpiryFixture) -> Unit,
 ) {
     TestRealm().use { realm ->
         val bearer = realm.service("process-engine")
         ExpiryHistoryStub(bearer).use { history ->
-            val engine = Caller("sub-process-engine", "process-engine", setOf("hartland-ops"), TokenKind.SERVICE, bearer)
+            val engine =
+                Caller("sub-process-engine", "process-engine", setOf("hartland-ops"), TokenKind.SERVICE, bearer)
             val root = Files.createTempDirectory("automation-expiry-")
             val (f, fake) =
                 wetRuntimeFixture(
@@ -206,16 +329,22 @@ private suspend fun expiryFixture(
                     initial = "placed",
                     keys = listOf("4711", "4712"),
                     wire = "release_confirmed",
+                    candidates = { keys },
                     engineHistory = HttpEngineHistory(history.url),
-                    tokens = ServiceTokens(
-                        mapOf("AUTOMATION_DECIDER" to "svc-hartland-automation:s"),
-                        { realm.service("svc-hartland-automation") },
-                    ),
+                    tokens =
+                        ServiceTokens(
+                            mapOf("AUTOMATION_DECIDER" to "svc-hartland-automation:s"),
+                            { realm.service("svc-hartland-automation") },
+                        ),
                     runAsCaller = false,
                     ledgerFor = ledgerFor,
                     afterPrepare = { bundle ->
                         val recipe = bundle.recipes.getValue("release_order")
-                        val coverage = recipe.coverage.copy(actions = recipe.coverage.actions + ("hold" to bundle.actions.getValue("hold")))
+                        val coverage =
+                            recipe.coverage.copy(
+                                actions =
+                                    recipe.coverage.actions + ("hold" to bundle.actions.getValue("hold")),
+                            )
                         bundle.copy(recipes = bundle.recipes + ("release_order" to recipe.copy(coverage = coverage)))
                     },
                 )
@@ -227,7 +356,13 @@ private suspend fun expiryFixture(
                         install(ContentNegotiation) { json() }
                         install(StatusPages) { installAutomationErrors() }
                         val verifier =
-                            CallerVerifier(JwksBearerVerifier(HttpJwksKeySource(realm.jwksUrl), TestRealm.ISSUER, TestRealm.AUDIENCE))
+                            CallerVerifier(
+                                JwksBearerVerifier(
+                                    HttpJwksKeySource(realm.jwksUrl),
+                                    TestRealm.ISSUER,
+                                    TestRealm.AUDIENCE,
+                                ),
+                            )
                         install(Authentication) { AutomationBearerProvider.register(this, verifier) }
                         routing { authenticate(AUTOMATION_AUTH) { runRoutes(runtime) } }
                     }
@@ -246,25 +381,33 @@ private suspend fun waiting(
     f: DurableRuntimeFixture,
     runtime: RunRuntime,
     engine: Caller,
+    keys: List<String> = listOf("4711", "4712"),
 ): UUID {
     val request =
         f.request.copy(
             dryRun = null,
-            port = buildJsonObject { put("keys", JsonArray(listOf(JsonPrimitive("4711"), JsonPrimitive("4712")))) },
+            port = buildJsonObject { put("keys", JsonArray(keys.map(::JsonPrimitive))) },
             engine = EngineRef("pi-1", "orders-0417", "dep-7"),
         )
-    val id = UUID.fromString(runtime.sessions.open("release_order", request, engine).response.runId)
+    val id =
+        UUID.fromString(
+            runtime.sessions
+                .open("release_order", request, engine)
+                .response.runId,
+        )
     runtime.sessions.evaluate(id, engine)
     runtime.closer.close(id, engine).status shouldBe "waiting"
     return id
 }
 
-private suspend fun ApplicationTestBuilder.perform(token: String, payload: String) =
-    client.post(PERFORM) {
-        bearerAuth(token)
-        contentType(ContentType.Application.Json)
-        setBody(payload)
-    }
+private suspend fun ApplicationTestBuilder.perform(
+    token: String,
+    payload: String,
+) = client.post(PERFORM) {
+    bearerAuth(token)
+    contentType(ContentType.Application.Json)
+    setBody(payload)
+}
 
 private fun kotlinx.coroutines.CoroutineScope.asyncPerform(
     app: ApplicationTestBuilder,
@@ -272,17 +415,28 @@ private fun kotlinx.coroutines.CoroutineScope.asyncPerform(
     payload: String,
 ) = async { app.perform(token, payload).status }
 
-private suspend fun ApplicationTestBuilder.read(path: String, token: String): JsonObject {
+private suspend fun ApplicationTestBuilder.read(
+    path: String,
+    token: String,
+): JsonObject {
     val response = client.get(path) { bearerAuth(token) }
     response.status shouldBe HttpStatusCode.OK
     return Json.parseToJsonElement(response.bodyAsText()).jsonObject
 }
 
-private suspend fun ApplicationTestBuilder.writes(run: String, token: String) =
-    read("/automation/runs/$run/protocol", token)
-        .getValue("sections").jsonObject.getValue("writes").jsonArray.map { it.jsonObject.getValue("payload").jsonObject }
+private suspend fun ApplicationTestBuilder.writes(
+    run: String,
+    token: String,
+) = read("/automation/runs/$run/protocol", token)
+    .getValue(
+        "sections",
+    ).jsonObject
+    .getValue("writes")
+    .jsonArray
+    .map { it.jsonObject.getValue("payload").jsonObject }
 
 private fun orderKey(order: String) = buildJsonObject { put("order_number", order) }
+
 private fun salesState(order: String) =
     wetQuery("SELECT state, held_for FROM public.sales_order WHERE order_number = '$order'").single()
 
@@ -314,9 +468,13 @@ private class ExpiryHistoryStub(
     bearer: String,
 ) : AutoCloseable {
     @Volatile var original = ""
+
     @Volatile var timerCanceled = false
+
     @Volatile var deleteReason = "deleted"
+
     @Volatile var processState = "ACTIVE"
+
     @Volatile var proving: Pair<CountDownLatch, CountDownLatch>? = null
 
     private val server =
@@ -330,8 +488,8 @@ private class ExpiryHistoryStub(
                         !authorized -> "{}"
                         path == "task" && "taskId=task-1" in query ->
                             """[{"id":"task-1","processInstanceId":"pi-1","processDefinitionId":"definition-1",
-                              "taskDefinitionKey":"approval-task","executionId":"task-execution","deleteReason":"$deleteReason",
-                              "due":"2000-01-01T12:02:00.000+0000","endTime":"2000-01-01T12:02:05.010+0000"}]"""
+                              "taskDefinitionKey":"approval-task","executionId":"task-execution","deleteReason":"$deleteReason","assignee":"maya",
+                              "startTime":"2000-01-01T12:01:45.000+0000","due":"2000-01-01T12:02:00.000+0000","endTime":"2000-01-01T12:02:05.010+0000"}]"""
                         path == "activity-instance" && "activityId=$TIMER" in query -> {
                             proving?.let { (entered, release) ->
                                 entered.countDown()

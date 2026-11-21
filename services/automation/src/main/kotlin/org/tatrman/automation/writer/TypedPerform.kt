@@ -4,6 +4,7 @@ package org.tatrman.automation.writer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -11,6 +12,11 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import org.tatrman.automation.api.AutomationException
@@ -49,6 +55,7 @@ data class TypedPerformRequest(
     val by: String? = null,
     val idempotencyKey: String? = null,
     val origin: String? = null,
+    val expiry: ApprovalExpiryRequest? = null,
 )
 
 @Serializable
@@ -71,6 +78,7 @@ data class TypedPerformResponse(
     val rows: List<TypedPerformRow>,
     val protocolRef: String,
     val replayed: Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val expiry: JsonObject? = null,
 )
 
 /**
@@ -90,6 +98,8 @@ class TypedPerform(
     private val clock: Clock = Clock.systemUTC(),
     /** ✅R273-A: a paused service refuses a typed perform like Open and the query step (`503 paused`). */
     private val paused: () -> Boolean = { false },
+    private val expiryVerifier: ApprovalExpiry? = null,
+    private val held: Held? = null,
 ) {
     suspend fun perform(
         deploymentName: String,
@@ -129,6 +139,13 @@ class TypedPerform(
             )
         }
         if (request.idempotencyKey != null && request.idempotencyKey.isBlank()) bad("idempotencyKey cannot be blank")
+        val expiry =
+            request.expiry?.let {
+                val verifier =
+                    expiryVerifier
+                        ?: throw AutomationException(ErrorCode.ENGINE_UNREACHABLE, "no engine history is configured")
+                verifier.verify(caller, actionName, request, it)
+            }
         val columns = action.columns.associateBy { it.name }
         val args = LinkedHashMap<String, JsonElement>()
         // review-273 F2: key and params are read apart — a column in both is refused, never overridden by params.
@@ -179,87 +196,143 @@ class TypedPerform(
                 put("bundle", bundle.id)
                 put("modelFp", bundle.modelFp)
             }
-        val claim =
-            withContext(Dispatchers.IO) {
-                ledger.claimRun(
-                    RunOpen(
-                        recipe = actionName,
-                        program = deployment.program,
-                        deployment = deploymentName,
-                        bundle = bundle.id,
-                        modelFp = bundle.modelFp,
-                        port = buildJsonObject { put("key", request.key) },
-                        author = bundle.author,
-                        runAs = identity.principal,
-                        caller = caller.principal,
-                        callerSubject = caller.sub,
-                        origin = request.origin ?: "engine",
-                        idempotencyKey = request.idempotencyKey?.let { key(caller, deploymentName, actionName, it) },
-                        budgetSync = budget,
-                        kind = RUN_KIND_PERFORM,
-                        openingProtocol = opening,
+        val expiryEvidence = expiry?.evidence()
+        val open =
+            RunOpen(
+                recipe = actionName,
+                program = deployment.program,
+                deployment = deploymentName,
+                bundle = bundle.id,
+                modelFp = bundle.modelFp,
+                port = buildJsonObject { put("key", request.key) },
+                author = bundle.author,
+                runAs = identity.principal,
+                caller = caller.principal,
+                callerSubject = caller.sub,
+                origin = request.origin ?: "engine",
+                idempotencyKey =
+                    if (expiry ==
+                        null
+                    ) {
+                        request.idempotencyKey?.let { key(caller, deploymentName, actionName, it) }
+                    } else {
+                        null
+                    },
+                budgetSync = budget,
+                kind = RUN_KIND_PERFORM,
+                openingProtocol =
+                    if (expiryEvidence ==
+                        null
+                    ) {
+                        opening
+                    } else {
+                        JsonObject(opening + ("expiry" to expiryEvidence))
+                    },
+            )
+
+        if (expiry != null && rows.singleOrNull { it.op == "transition" }?.to != JsonPrimitive("held")) {
+            unverifiedExpiry("the Sales fallback must perform a hold transition")
+        }
+        val write: suspend (Claim) -> TypedPerformResponse = { claim ->
+            val input =
+                ApplyInput(
+                    claim.runId,
+                    world.name,
+                    identity,
+                    bundle.modelFp,
+                    clock.instant().plus(budget),
+                    rows,
+                    listOf(
+                        DryRunAction(
+                            request.key,
+                            "perform",
+                            actionName,
+                            sink,
+                            JsonObject(args),
+                            rows.map { it.seq },
+                            dryRun = false,
+                        ),
                     ),
+                    source,
+                    bundle.entities,
+                    recipe.recipe.roles
+                        ?.routes
+                        .orEmpty()
+                        .map { it.name },
+                    units = listOf(rows.map { it.seq }),
                 )
-            }
+            complete(claim, input, request.key, caller, actionName, expiryEvidence, bundle.id)
+        }
+        return if (expiry == null) {
+            write(withContext(Dispatchers.IO) { ledger.claimRun(open) })
+        } else {
+            requireNotNull(held).performExpiry(expiry, open, recipe.name, write)
+        }
+    }
+
+    private suspend fun complete(
+        claim: Claim,
+        input: ApplyInput,
+        key: JsonObject,
+        caller: Caller,
+        action: String,
+        expiry: JsonObject?,
+        bundle: String,
+    ): TypedPerformResponse {
         val run = claim.runId
         val ref = "/automation/runs/$run/protocol"
         when (claim) {
-            is Claim.Replay -> return replay(run, caller, actionName, request.key, ref)
-            is Claim.Running -> throw AutomationException(
-                ErrorCode.CLOSE_NOT_READY,
-                "the key's perform run $run is still running",
-            )
+            is Claim.Replay -> return replay(run, caller, action, key, ref, expiry)
+            is Claim.Running -> {
+                if (expiry == null) {
+                    throw AutomationException(ErrorCode.CLOSE_NOT_READY, "the key's perform run $run is still running")
+                }
+                val pinned = withContext(Dispatchers.IO) { ledger.findRun(run) }?.open
+                if (pinned?.bundle != bundle ||
+                    pinned.modelFp != input.modelFp ||
+                    pinned.runAs != input.identity.principal
+                ) {
+                    throw AutomationException(
+                        ErrorCode.SUPERSEDED,
+                        "the pending expiry hold's bundle or identity has changed",
+                    )
+                }
+            }
             is Claim.Claimed -> Unit
         }
-        val journal = ProtocolJournal(ledger, run)
+        val journal = ProtocolJournal(ledger, run, recoverable = expiry != null)
         val outcomes =
             try {
-                apply.apply(
-                    ApplyInput(
-                        run,
-                        world.name,
-                        identity,
-                        bundle.modelFp,
-                        clock.instant().plus(budget),
-                        rows,
-                        listOf(
-                            DryRunAction(
-                                request.key,
-                                "perform",
-                                actionName,
-                                sink,
-                                JsonObject(args),
-                                rows.map { it.seq },
-                                dryRun = false,
-                            ),
-                        ),
-                        source,
-                        bundle.entities,
-                        recipe.recipe.roles
-                            ?.routes
-                            .orEmpty()
-                            .map { it.name },
-                        units = listOf(rows.map { it.seq }),
-                        // review-293 F8: no `settled` — a typed perform's run is keyed (`port: {key}`), never a
-                        // watermark run, so nothing settles it (settlement is a windowed re-read's, D-202 (F2)).
-                    ),
-                    journal,
-                )
+                val recorded =
+                    if (claim is Claim.Running) {
+                        withContext(Dispatchers.IO) { journal.recorded(caller.sub) }
+                    } else {
+                        emptyMap()
+                    }
+                val reconciled =
+                    if (recorded.isNotEmpty()) {
+                        apply.reconcile(input.copy(recorded = recorded), journal)
+                    } else {
+                        emptyMap()
+                    }
+                apply.apply(input.copy(recorded = recorded + reconciled), journal)
             } catch (e: Exception) {
-                withContext(Dispatchers.IO + NonCancellable) {
-                    runCatching {
-                        val code = (e as? AutomationException)?.code?.code ?: ErrorCode.INTERNAL.code
-                        ledger.finishAdHocRun(
-                            run,
-                            listOf(ProtocolSection.WRITES to buildJsonObject { put("error", code) }),
-                            JsonObject(mapOf("code" to JsonPrimitive(code))),
-                        )
+                if (expiry == null) {
+                    withContext(Dispatchers.IO + NonCancellable) {
+                        runCatching {
+                            val code = (e as? AutomationException)?.code?.code ?: ErrorCode.INTERNAL.code
+                            ledger.finishAdHocRun(
+                                run,
+                                listOf(ProtocolSection.WRITES to buildJsonObject { put("error", code) }),
+                                JsonObject(mapOf("code" to JsonPrimitive(code))),
+                            )
+                        }
                     }
                 }
                 throw e
             }
         val answer =
-            rows.map { row ->
+            input.rows.map { row ->
                 val o = outcomes[row.seq]
                 TypedPerformRow(
                     row.seq,
@@ -276,11 +349,18 @@ class TypedPerform(
                 answer.any { it.error == RowOutcome.UNKNOWN || it.error == RowOutcome.IN_FLIGHT } -> "unknown"
                 else -> "failed"
             }
+        if (expiry != null && outcome == "unknown") {
+            throw AutomationException(
+                ErrorCode.EXPIRY_HOLD_PENDING,
+                "the verified expiry's hold has an unresolved Door write",
+                buildJsonObject { put("runId", run.toString()) },
+            )
+        }
         val summary =
             buildJsonObject {
                 put("event", "performed")
-                put("action", actionName)
-                put("key", request.key)
+                put("action", action)
+                put("key", key)
                 put("outcome", outcome)
                 putJsonArray("rows") {
                     answer.forEach { r ->
@@ -300,7 +380,7 @@ class TypedPerform(
         withContext(Dispatchers.IO + NonCancellable) {
             ledger.finishAdHocRun(run, listOf(ProtocolSection.WRITES to summary))
         }
-        return TypedPerformResponse(run.toString(), actionName, request.key, outcome, answer, ref)
+        return TypedPerformResponse(run.toString(), action, key, outcome, answer, ref, expiry = expiry)
     }
 
     private suspend fun replay(
@@ -309,6 +389,7 @@ class TypedPerform(
         action: String,
         key: JsonObject,
         ref: String,
+        expiry: JsonObject?,
     ): TypedPerformResponse {
         val writes =
             withContext(Dispatchers.IO) { ledger.readProtocol(run, caller.sub) }
@@ -337,6 +418,7 @@ class TypedPerform(
             rows,
             ref,
             replayed = true,
+            expiry = expiry,
         )
     }
 
@@ -356,12 +438,13 @@ class TypedPerform(
 
 /**
  * The perform run's journal is its protocol: every in-flight mark, release and outcome is a `writes` entry, durable
- * before the next door request leaves. The run is not retried (a retry is a new perform run); the entries are the
- * evidence of what left the Server.
+ * before the next Door request leaves. D-267 uses those same entries to resume the one linked hold run.
+ * Legacy performs still use their existing claim/replay rules.
  */
 private class ProtocolJournal(
     private val ledger: Ledger,
     private val run: UUID,
+    private val recoverable: Boolean,
 ) : ApplyJournal {
     override fun begin(
         seqs: List<Int>,
@@ -398,6 +481,7 @@ private class ProtocolJournal(
                                 put("error", o.error?.let(::JsonPrimitive) ?: JsonNull)
                                 o.history?.let { put("history", it) }
                                 o.prior?.let { put("prior", it) }
+                                if (recoverable) o.committedAt?.let { put("committedAt", it.toString()) }
                             },
                         )
                     }
@@ -405,6 +489,41 @@ private class ProtocolJournal(
             },
         )
     }
+
+    fun recorded(subject: String): Map<Int, RowOutcome> =
+        buildMap {
+            val writes = ledger.readProtocol(run, subject).sections["writes"].orEmpty()
+            for (entry in writes) {
+                val payload = entry.payload.jsonObject
+                when (payload["event"]?.jsonPrimitive?.content) {
+                    "begin" -> {
+                        val request = payload.getValue("request").jsonPrimitive.content
+                        for (seq in payload.getValue("seqs").jsonArray.map { it.jsonPrimitive.int }) {
+                            put(seq, RowOutcome(seq, "staged", RowOutcome.IN_FLIGHT, request = request))
+                        }
+                    }
+                    "release" -> payload.getValue("seqs").jsonArray.forEach { remove(it.jsonPrimitive.int) }
+                    "outcome" -> {
+                        for (value in payload.getValue("rows").jsonArray) {
+                            val row = value.jsonObject
+                            val seq = row.getValue("seq").jsonPrimitive.int
+                            put(
+                                seq,
+                                RowOutcome(
+                                    seq,
+                                    row.getValue("status").jsonPrimitive.content,
+                                    row["error"]?.jsonPrimitive?.contentOrNull,
+                                    row["prior"] as? JsonObject,
+                                    row["history"]?.jsonPrimitive?.contentOrNull,
+                                    row["committedAt"]?.jsonPrimitive?.contentOrNull?.let(java.time.Instant::parse),
+                                    get(seq)?.request,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
     private fun append(payload: JsonObject) {
         ledger.appendProtocol(run, ProtocolSection.WRITES, payload)
