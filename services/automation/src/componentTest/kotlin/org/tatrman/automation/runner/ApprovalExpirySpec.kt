@@ -255,7 +255,7 @@ class ApprovalExpirySpec :
             }
         }
 
-        "retry reconciles a lost Door response without sending the hold write twice" {
+        "retry stays pending when the hold committed but the Door response was lost" {
             expiryFixture { (f, runtime, engine, history, fake) ->
                 val original = waiting(f, runtime, engine)
                 history.original = original.toString()
@@ -267,19 +267,55 @@ class ApprovalExpirySpec :
                 val envelope = Json.parseToJsonElement(pending.bodyAsText()).jsonObject
                 val error = envelope.getValue("error").jsonObject
                 error["code"] shouldBe JsonPrimitive("expiry-hold-pending")
-                val hold = error.getValue("detail").jsonObject.getValue("runId")
+                val hold = error.getValue("detail").jsonObject.getValue("runId").jsonPrimitive.content
                 fake.writes.size shouldBe before + 1
                 salesState("4711") shouldBe listOf("held", "Sales")
 
                 fake.loseCommit = { false }
                 val retry = perform(engine.token, request)
-                retry.status shouldBe HttpStatusCode.OK
-                val result = Json.parseToJsonElement(retry.bodyAsText()).jsonObject
+                retry.status shouldBe HttpStatusCode.ServiceUnavailable
+                Json.parseToJsonElement(retry.bodyAsText()).jsonObject["error"] shouldBe error
+                read("/automation/runs/$hold", engine.token)["status"] shouldBe JsonPrimitive("open")
+                writes(hold, engine.token).none { it["event"] == JsonPrimitive("performed") } shouldBe true
+                fake.writes.size shouldBe before + 1
+            }
+        }
+
+        "retry cannot attribute a separate Sales hold to the expiry run" {
+            expiryFixture { (f, runtime, engine, history, fake) ->
+                val original = waiting(f, runtime, engine)
+                history.original = original.toString()
+                val request = expiryRequest(original)
+                val before = fake.writes.size
+                fake.dropBeforeDispatch = { true }
+                val pending = perform(engine.token, request)
+                pending.status shouldBe HttpStatusCode.ServiceUnavailable
+                val error = Json.parseToJsonElement(pending.bodyAsText()).jsonObject.getValue("error").jsonObject
+                error["code"] shouldBe JsonPrimitive("expiry-hold-pending")
+                val hold = error.getValue("detail").jsonObject.getValue("runId").jsonPrimitive.content
+                salesState("4711") shouldBe listOf("placed", "AR")
+                fake.writes.size shouldBe before + 1
+
+                fake.dropBeforeDispatch = { false }
+                val separate =
+                    perform(
+                        engine.token,
+                        """{"key":{"order":"4711"},"params":{"department":"Sales"},"idempotencyKey":"separate"}""",
+                    )
+                separate.status shouldBe HttpStatusCode.OK
+                val result = Json.parseToJsonElement(separate.bodyAsText()).jsonObject
                 result["outcome"] shouldBe JsonPrimitive("applied")
-                result["runId"] shouldBe hold
-                val rowResults = result.getValue("rows").jsonArray.map(JsonElement::jsonObject)
-                rowResults.all { it["error"] == JsonPrimitive("reconciled") } shouldBe true
-                fake.writes.size shouldBe before + 2 // The original write and the read-only reconciliation probe.
+                val separateRun = result.getValue("runId").jsonPrimitive.content
+                salesState("4711") shouldBe listOf("held", "Sales")
+                wetQuery("SELECT run::text FROM wet_runtime.state_history") shouldBe listOf(listOf(separateRun))
+                fake.writes.size shouldBe before + 3
+
+                val retry = perform(engine.token, request)
+                retry.status shouldBe HttpStatusCode.ServiceUnavailable
+                Json.parseToJsonElement(retry.bodyAsText()).jsonObject["error"] shouldBe error
+                read("/automation/runs/$hold", engine.token)["status"] shouldBe JsonPrimitive("open")
+                writes(hold, engine.token).none { it["event"] == JsonPrimitive("performed") } shouldBe true
+                fake.writes.size shouldBe before + 3
             }
         }
 

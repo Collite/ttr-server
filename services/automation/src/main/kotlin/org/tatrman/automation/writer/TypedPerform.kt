@@ -309,13 +309,9 @@ class TypedPerform(
                     } else {
                         emptyMap()
                     }
-                val reconciled =
-                    if (recorded.isNotEmpty()) {
-                        apply.reconcile(input.copy(recorded = recorded), journal)
-                    } else {
-                        emptyMap()
-                    }
-                apply.apply(input.copy(recorded = recorded + reconciled), journal)
+                // D-267 requires proof that this hold wrote the order. A readback can match another run's write.
+                // Apply resumes from acknowledged outcomes and leaves ambiguous writes staged without resending them.
+                apply.apply(input.copy(recorded = recorded), journal)
             } catch (e: Exception) {
                 if (expiry == null) {
                     withContext(Dispatchers.IO + NonCancellable) {

@@ -233,8 +233,9 @@ timer occurrence. Advance on `outcome: "applied"`. After acceptance, the origina
 its `writes/held-expire` entry name the hold run and timer. The linked run's `writes/performed` reports
 whether the hold applied. With proof still available in engine history, an exact replay returns the same hold run
 and terminal result, including after the instance ends. A retry after an interrupted attempt resumes the linked
-hold using its journal. An unresolved Door request yields `503 expiry-hold-pending` with `error.detail.runId`
-and the write is not resent.
+hold from the outcomes recorded in its journal. If the Door write's outcome is ambiguous, the hold
+stays open and retries return `503 expiry-hold-pending` with the same `error.detail.runId`, even if the order is
+already on Sales hold. An ambiguous write is never resent.
 
 A competing approval yields `409 close-not-ready` with `error.detail.reason: "approval-already-decided"` on
 the expiry request. A human answer received after the timer decision yields `409 close-not-ready` with
