@@ -226,17 +226,52 @@ Use the original Open's `ttrRunId`, the approval's exact action key (including i
 process instance and the task ID captured at task creation. The Server reads the canceled task and its
 local `ttr_action` and `ttr_about`, the process variable `ttrRunId`, and the unique completed boundary timer
 in the canceled task's enclosing activity instance. It checks the original run and action against that evidence.
-`by` is absent. `idempotencyKey` is optional and has no effect on expiry replay identity.
+The process instance must be active when first accepting the expiry. `by` is absent. `idempotencyKey` is optional and has no effect on expiry replay identity.
 
 The response retains `runId`, `key`, `outcome`, `rows` and `protocolRef` and adds `expiry` with the verified
 timer occurrence. Advance on `outcome: "applied"`. After acceptance, the original action's `decided` and
 its `writes/held-expire` entry name the hold run and timer. The linked run's `writes/performed` reports
-whether the hold applied. An exact replay returns the same hold run and terminal result.
-A changed or absent timer proof yields `403 identity` with `detail.reason: "unverified-expiry"`. A settled
-competing decision yields `409 close-not-ready` with `detail.reason: "approval-already-decided"`. Engine
-history failures yield `503 engine-unreachable`. A hold pending after an interrupted attempt can be retried
-with the same body. If a lost Door request cannot be reconciled, the Server returns `503` without resending
-the write. Typed performs without `expiry` continue to use the existing request, result and idempotency rules.
+whether the hold applied. With proof still available in engine history, an exact replay returns the same hold run
+and terminal result, including after the instance ends. A retry after an interrupted attempt resumes the linked
+hold using its journal. An unresolved Door request yields `503 expiry-hold-pending` with `error.detail.runId`
+and the write is not resent.
+
+A competing approval yields `409 close-not-ready` with `error.detail.reason: "approval-already-decided"` on
+the expiry request. A human answer received after the timer decision yields `409 close-not-ready` with
+`error.detail.reason: "approval-expired"`. Engine history failures yield `503 engine-unreachable`. Typed performs
+without `expiry` continue to use the existing request, result and idempotency rules.
+
+Accepted response excerpt (invented fixture identifiers):
+
+```json
+{
+  "runId": "00000000-0000-4000-8000-000000000002",
+  "outcome": "applied",
+  "expiry": {
+    "originalRunId": "00000000-0000-4000-8000-000000000001",
+    "action": "release_confirmed",
+    "key": {"order_number": 4711},
+    "instanceId": "process-instance-1",
+    "taskId": "approval-task-1",
+    "timerActivityId": "s41_release_confirmed_lapsed",
+    "timerOccurrenceId": "timer-occurrence-1",
+    "timerEndedAt": "2026-11-21T08:30:00Z",
+    "source": "engine:history"
+  }
+}
+```
+
+Refused response example for a first delivery after the engine instance has ended (HTTP 403):
+
+```json
+{
+  "error": {
+    "code": "identity",
+    "message": "the process instance is no longer active",
+    "detail": {"reason": "unverified-expiry"}
+  }
+}
+```
 
 `RunSessions` enforces the batch budget from the **committed** `runs.started_at` returned by a new claim,
 not from HTTP arrival, user `asOf`, delivery or evaluation start. Idle time, queue wait and all evaluation waves
