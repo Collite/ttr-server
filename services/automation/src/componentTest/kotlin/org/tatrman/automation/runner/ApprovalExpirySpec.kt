@@ -267,7 +267,8 @@ class ApprovalExpirySpec :
                 val envelope = Json.parseToJsonElement(pending.bodyAsText()).jsonObject
                 val error = envelope.getValue("error").jsonObject
                 error["code"] shouldBe JsonPrimitive("expiry-hold-pending")
-                val hold = error.getValue("detail").jsonObject.getValue("runId").jsonPrimitive.content
+                val detail = error.getValue("detail").jsonObject
+                val hold = detail.getValue("runId").jsonPrimitive.content
                 fake.writes.size shouldBe before + 1
                 salesState("4711") shouldBe listOf("held", "Sales")
 
@@ -290,9 +291,11 @@ class ApprovalExpirySpec :
                 fake.dropBeforeDispatch = { true }
                 val pending = perform(engine.token, request)
                 pending.status shouldBe HttpStatusCode.ServiceUnavailable
-                val error = Json.parseToJsonElement(pending.bodyAsText()).jsonObject.getValue("error").jsonObject
+                val envelope = Json.parseToJsonElement(pending.bodyAsText()).jsonObject
+                val error = envelope.getValue("error").jsonObject
                 error["code"] shouldBe JsonPrimitive("expiry-hold-pending")
-                val hold = error.getValue("detail").jsonObject.getValue("runId").jsonPrimitive.content
+                val detail = error.getValue("detail").jsonObject
+                val hold = detail.getValue("runId").jsonPrimitive.content
                 salesState("4711") shouldBe listOf("placed", "AR")
                 fake.writes.size shouldBe before + 1
 
