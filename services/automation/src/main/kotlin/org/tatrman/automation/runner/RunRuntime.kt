@@ -140,6 +140,9 @@ class RunRuntime(
             config.budgets.syncDefault,
             clock,
             { config.paused },
+            org.tatrman.automation.writer
+                .ApprovalExpiry(engineHistory, config.engine.clientId),
+            held,
         )
     val served: () -> Bundle? = served
     val approver =

@@ -186,7 +186,7 @@ class ErrorEnvelopeSpec :
                 ErrorCode.ENGINE,
                 ErrorCode.ENGINE_UNREACHABLE,
             )
-        val DELIVERED = setOf("S0.1", "S0.2", "S0.3", "S2.3", "S3.4", "S3.5")
+        val DELIVERED = setOf("S0.1", "S0.2", "S0.3", "S2.3", "S3.4", "S3.5", "S3.6")
         private val RAISE = Regex("""AutomationException\(\s*ErrorCode\.([A-Z_]+)""")
     }
 }

@@ -2,6 +2,7 @@
 package org.tatrman.automation.writer
 
 import com.google.protobuf.ByteString
+import io.grpc.Status
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import org.tatrman.automation.bundle.Bundle
@@ -60,6 +61,9 @@ class RowWritesQueryFake(
      */
     @Volatile var failRow: (RunRequest) -> Pair<Int, String>? = { null }
 
+    /** Lose the response before the request reaches the database. */
+    @Volatile var dropBeforeDispatch: (RunRequest) -> Boolean = { false }
+
     /** Commit, then answer as if the connection dropped during the commit (an unknown outcome). */
     @Volatile var loseCommit: (RunRequest) -> Boolean = { false }
 
@@ -75,6 +79,7 @@ class RowWritesQueryFake(
 
     private fun write(request: RunRequest): ResultBatch {
         writes += request
+        if (dropBeforeDispatch(request)) throw Status.UNAVAILABLE.asRuntimeException()
         refuse(request)?.let { return error(request, it, "refused before dispatch") }
         failRow(request)?.let { (seq, code) -> return error(request, code, "row_writes seq $seq: refused") }
         val schema = worlds[request.world] ?: return error(request, "unknown_world", "no writer world ${request.world}")

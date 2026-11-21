@@ -86,6 +86,7 @@ enum class ErrorCode(
     WINDOW_OPEN("window-open", HttpStatusCode.Conflict, "S3.2"),
     ENGINE("engine", HttpStatusCode.BadRequest, "S3.2"),
     ENGINE_UNREACHABLE("engine-unreachable", HttpStatusCode.ServiceUnavailable, "S3.2"),
+    EXPIRY_HOLD_PENDING("expiry-hold-pending", HttpStatusCode.ServiceUnavailable, "S3.6"),
 
     // S3.5 (D-230, ⚑AU-S35-1): an answer run whose engine instance has no waiting run, or whose run holds no such key.
     ANSWER_UNMATCHED("answer-unmatched", HttpStatusCode.Conflict, "S3.5"),
