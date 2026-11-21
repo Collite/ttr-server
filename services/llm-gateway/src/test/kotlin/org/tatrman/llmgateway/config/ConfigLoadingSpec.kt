@@ -73,6 +73,20 @@ class ConfigLoadingSpec :
             providersFrom(overridden).retry.maxAttempts shouldBe 3
         }
 
+        "packaged governance declares Hermes with its own accounting and the approved limits" {
+            val governance = ConfigLoader.loadFromResources().governance
+            governance.teams.filter { it.id == "hermes" } shouldBe
+                listOf(
+                    Team(
+                        id = "hermes",
+                        costCenterPrefix = "hermes/",
+                        budget = BudgetDef("hermes-monthly", 100.0, "soft"),
+                        rateLimit = RateLimitDef("hermes-rl", 120),
+                    ),
+                )
+            governance.keys.none { it.team == "hermes" } shouldBe true
+        }
+
         // ── rejection rules ─────────────────────────────────────────────────────────────────────────
         "rejects duplicate model ids" {
             errorsContain(validate(chat("dup", "a"), chat("dup", "b")), "duplicate model id: dup")
@@ -107,6 +121,16 @@ class ConfigLoadingSpec :
                     keys = listOf(SeededKey("golem", "leaky", "ttrk-actual-plaintext-key")),
                 )
             errorsContain(validate(chat("m1", "a"), governance = gov), "sha256 is not 64-hex")
+        }
+
+        "rejects a seeded key for a team absent from governance" {
+            val governance =
+                GovernanceConfig(
+                    teams = listOf(Team("kleio", "kleio/")),
+                    keys = listOf(SeededKey("hermes", "test", "0".repeat(64))),
+                )
+            validate(chat("m1", "a"), governance = governance) shouldBe
+                listOf("seeded key 'test' references unknown team: hermes")
         }
 
         // ── all-errors, not first-fail ──────────────────────────────────────────────────────────────

@@ -23,6 +23,10 @@ teams:
     costCenterPrefix: "kleio/"
     budget: { id: kleio-monthly, usdPerMonth: 100.0, mode: soft }   # interim
     rateLimit: { id: kleio-rl, requestsPerMinute: 120 }             # interim
+  - id: hermes
+    costCenterPrefix: "hermes/"
+    budget: { id: hermes-monthly, usdPerMonth: 100.0, mode: soft }  # DX-D55
+    rateLimit: { id: hermes-rl, requestsPerMinute: 120 }
   - id: docwh-store                                                 # P6 consumer: /v1/embeddings (was kallimachos)
     costCenterPrefix: "docwh-store/"
     budget: { id: docwh-store-monthly, usdPerMonth: 100.0, mode: soft }  # interim
