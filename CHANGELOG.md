@@ -16,6 +16,10 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **metadata 0.12.10 — YAML procedure and filter binding parity (MW S4.4p).** Core 0.22.14 preserves parsed
+  scalar procedures for lookup and export, resolves qualified table targets that share physical names, and
+  generates filtered queries in the entity's full package. Translator and plan-proto stay at 0.14.4.
+
 - **metadata 0.12.9 — GET /model/layout?tags= (MW S4.3b).** Tag sets now select a computed layout from the same
   `ResolveTags` closure as the service, with `schema=er|db` (default `er`); callers wanting both make two calls.
   Layouts cache by normalized tag set and schema until the next registry snapshot, with a stable ETag per response.
