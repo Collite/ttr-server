@@ -150,6 +150,14 @@ class BundleLoader(
                     programFps = programs.mapValues { Fingerprints.program(it.value) },
                     deploymentFps = deployments.mapValues { Fingerprints.deployment(it.value) },
                     warnings = warnings,
+                    deployedProcesses =
+                        if (kind ==
+                            BundleKind.SERVED
+                        ) {
+                            DeployedProcesses.read(checkout.root, worlds)
+                        } else {
+                            emptyMap()
+                        },
                     packages =
                         result.files.associate {
                             it.storageFile.path to
