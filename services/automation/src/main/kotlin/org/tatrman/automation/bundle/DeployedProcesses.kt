@@ -76,31 +76,21 @@ internal object DeployedProcesses {
                         val bytes = Files.readAllBytes(file)
                         val definition = parser.parse(bytes.inputStream()).documentElement
                         if (definition.namespaceURI != BPMN || definition.localName != "definitions") continue
-                        val process = definition.children(BPMN, "process").singleOrNull() ?: continue
-                        val contract =
-                            process
-                                .children(BPMN, "extensionElements")
-                                .singleOrNull()
-                                ?.children(TTR, "contract")
-                                ?.singleOrNull() ?: continue
-                        val body = Json.parseToJsonElement(contract.textContent) as? JsonObject ?: continue
-                        val deployment = body["deployment"].string()?.takeIf { it in deployments } ?: continue
-                        val key = process.getAttribute("id").takeIf { it.isNotBlank() } ?: continue
-                        if (body["target"].string() != "process_engine" ||
-                            process.getAttribute("isExecutable") != "true"
-                        ) {
-                            continue
+                        val fingerprint = Fingerprints.sha256(bytes)
+                        for (process in definition.children(BPMN, "process")) {
+                            val deployment = deploymentOf(process)?.takeIf { it in deployments } ?: continue
+                            val key = process.getAttribute("id").takeIf { it.isNotBlank() } ?: continue
+                            val engineUrl = engineUrl(worlds, deployment) ?: continue
+                            bindings += deployment to
+                                DeployedProcess(
+                                    engineUrl,
+                                    "hartland-processes-$set",
+                                    "hartland:processes/$set",
+                                    key,
+                                    file.name,
+                                    fingerprint,
+                                )
                         }
-                        val engineUrl = engineUrl(worlds, deployment) ?: continue
-                        bindings += deployment to
-                            DeployedProcess(
-                                engineUrl,
-                                "hartland-processes-$set",
-                                "hartland:processes/$set",
-                                key,
-                                file.name,
-                                Fingerprints.sha256(bytes),
-                            )
                     }
                 }
             }
@@ -110,6 +100,18 @@ internal object DeployedProcesses {
                     candidates.singleOrNull()?.let { d to it }
                 }.toMap()
         }.getOrDefault(emptyMap())
+    }
+
+    private fun deploymentOf(process: Element): String? {
+        if (process.getAttribute("isExecutable") != "true") return null
+        val contract =
+            process
+                .children(BPMN, "extensionElements")
+                .singleOrNull()
+                ?.children(TTR, "contract")
+                ?.singleOrNull() ?: return null
+        val body = Json.parseToJsonElement(contract.textContent) as? JsonObject ?: return null
+        return body["deployment"].string()?.takeIf { body["target"].string() == "process_engine" }
     }
 
     private fun engineUrl(

@@ -337,6 +337,22 @@ class DescriptorSpec :
             }
         }
 
+        "deployment detail returns null for a second binding in a multi-process BPMN" {
+            val token = realm.person("dan", listOf("studio"))
+            DefinitionEngine(token, "multi-process-artifact").use { engine ->
+                testApplication {
+                    service(served(engine.bundle(), engine.client()))
+                    val detail =
+                        client.get("/automation/deployments/release_bpmn") {
+                            header(HttpHeaders.Authorization, "Bearer $token")
+                        }
+                    detail.status shouldBe HttpStatusCode.OK
+                    Json.parseToJsonElement(detail.bodyAsText()).jsonObject["processDefinitionId"] shouldBe JsonNull
+                    engine.requests.shouldBeEmpty()
+                }
+            }
+        }
+
         "POST /automation/refresh answers the bundle; again, a no-op" {
             testApplication {
                 val bundles: Bundles = BundleFixture.bundles(BundleSource { BundleFixture.checkout(branch = it) })
@@ -440,6 +456,17 @@ private class DefinitionEngine(
         val dir = Files.createDirectories(root.resolve("processes/cz"))
         Files.writeString(dir.resolve("release_order.bpmn"), XML)
         if (case == "ambiguous-artifact") Files.writeString(dir.resolve("duplicate.bpmn"), XML)
+        if (case == "multi-process-artifact") {
+            val secondArtifact =
+                XML.replace(
+                    "<bpmn:process id=\"release_order\"",
+                    """
+                    <bpmn:process id="unrelated" isExecutable="true" />
+                      <bpmn:process id="alternate_release"
+                    """.trimIndent(),
+                )
+            Files.writeString(dir.resolve("multiple.bpmn"), secondArtifact)
+        }
         Files.writeString(
             dir.parent.resolve("sets.json"),
             """{"cz":{"deployments":{"release_event":"release_bpmn"}}}""",
