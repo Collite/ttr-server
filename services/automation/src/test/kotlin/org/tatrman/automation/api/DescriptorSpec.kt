@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.automation.api
 
+import com.sun.net.httpserver.HttpServer
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempdir
 import org.tatrman.automation.bundle.ApprovalFixture
@@ -29,6 +30,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -36,6 +38,8 @@ import org.tatrman.automation.bundle.ApprovalReader
 import org.tatrman.automation.bundle.BundleFixture
 import org.tatrman.automation.bundle.BundleSource
 import org.tatrman.automation.bundle.Bundles
+import org.tatrman.automation.engine.DeploymentDefinitions
+import org.tatrman.automation.bundle.BundleFixture.edit
 import org.tatrman.automation.identity.AUTOMATION_AUTH
 import org.tatrman.automation.identity.AutomationBearerProvider
 import org.tatrman.automation.identity.CallerVerifier
@@ -43,8 +47,12 @@ import org.tatrman.automation.identity.TestRealm
 import org.tatrman.automation.identity.caller
 import org.tatrman.mcp.identity.HttpJwksKeySource
 import org.tatrman.mcp.identity.JwksBearerVerifier
+import java.net.InetSocketAddress
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * AU-server S0.2 T5 — `GET /automation/` over the hartland fixture equals the golden (contracts §1.1; the shape
@@ -62,11 +70,12 @@ class DescriptorSpec :
 
         fun served(
             root: Path = BundleFixture.root,
+            deploymentDefinitions: DeploymentDefinitions? = null,
             approvals: ApprovalReader = ApprovalReader { _, _, _ -> false },
         ): DescriptorSources {
             val bundles = BundleFixture.bundles(BundleSource { BundleFixture.checkout(root, branch = it) })
             runBlocking { bundles.refresh() }
-            return BundleFixture.sources(bundles, approvals)
+            return BundleFixture.sources(bundles, approvals, deploymentDefinitions = deploymentDefinitions)
         }
 
         "the descriptor of the hartland fixture, for Maya (sales_manager), equals the golden" {
@@ -241,7 +250,7 @@ class DescriptorSpec :
                 )
             Files.writeString(path, JsonObject(original + ("recipe" to broken)).toString())
             testApplication {
-                service(served(root, ApprovalReader { _, _, _ -> true }))
+                service(served(root) { _, _, _ -> true })
                 val response = get("/automation/deployments/release_native_event")
                 response.status shouldBe HttpStatusCode.OK
                 val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
@@ -261,6 +270,7 @@ class DescriptorSpec :
                 val body = Json.parseToJsonElement(r.bodyAsText()).jsonObject
                 body["deployment"]!!.jsonObject["granted"] shouldBe JsonPrimitive(true)
                 body["registry"]!!.jsonObject["status"] shouldBe JsonPrimitive("notes")
+                body["processDefinitionId"] shouldBe JsonNull
                 body["unapproved"]!!.jsonArray.map { it.jsonPrimitive.content } shouldBe
                     listOf(
                         "recipe release_order",
@@ -271,6 +281,59 @@ class DescriptorSpec :
                 val missing = get("/automation/deployments/nope")
                 missing.status shouldBe HttpStatusCode.NotFound
                 missing.errorCode(missing.bodyAsText()) shouldBe "deployment"
+            }
+        }
+
+        "deployment detail finds the exact authored definition among versions of the same key" {
+            val token = realm.person("dan", listOf("studio"))
+            DefinitionEngine(token).use { engine ->
+                testApplication {
+                    service(served(engine.bundle(), engine.client()))
+                    val detail =
+                        client.get("/automation/deployments/release_bpmn") {
+                            header(HttpHeaders.Authorization, "Bearer $token")
+                        }
+                    detail.status shouldBe HttpStatusCode.OK
+                    val body = Json.parseToJsonElement(detail.bodyAsText()).jsonObject
+                    body["processDefinitionId"] shouldBe JsonPrimitive(DefinitionEngine.EXACT_ID)
+                    body.getValue("deployment").jsonObject["granted"] shouldBe JsonPrimitive(false)
+                    engine.requests.map(URI::getRawPath) shouldBe
+                        listOf(
+                            "/engine-rest/process-definition",
+                            "/engine-rest/deployment",
+                            "/engine-rest/process-definition/release_order%3A6%3Aother/xml",
+                            "/engine-rest/process-definition/release_order%3A5%3Aexact/xml",
+                        )
+                }
+            }
+        }
+
+        "deployment detail is readable without a unique verified definition" {
+            val token = realm.person("dan", listOf("studio"))
+            for (case in listOf("missing", "ambiguous", "forbidden", "ambiguous-artifact", "older")) {
+                DefinitionEngine(token, case).use { engine ->
+                    testApplication {
+                        val root = if (case == "older") BundleFixture.root else engine.bundle()
+                        service(served(root, engine.client()))
+                        val detail =
+                            client.get("/automation/deployments/release_bpmn") {
+                                header(HttpHeaders.Authorization, "Bearer $token")
+                            }
+                        detail.status shouldBe HttpStatusCode.OK
+                        Json.parseToJsonElement(detail.bodyAsText()).jsonObject["processDefinitionId"] shouldBe JsonNull
+                        if (case == "older" || case == "ambiguous-artifact") engine.requests.shouldBeEmpty()
+                    }
+                }
+            }
+        }
+
+        "an unauthenticated deployment detail never asks the engine" {
+            DefinitionEngine(realm.person()).use { engine ->
+                testApplication {
+                    service(served(engine.bundle(), engine.client()))
+                    client.get("/automation/deployments/release_bpmn").status shouldBe HttpStatusCode.Unauthorized
+                    engine.requests.shouldBeEmpty()
+                }
             }
         }
 
@@ -337,3 +400,110 @@ class DescriptorSpec :
             }
         }
     })
+
+private class DefinitionEngine(
+    private val bearer: String,
+    private val case: String = "positive",
+) : AutoCloseable {
+    val requests = CopyOnWriteArrayList<URI>()
+    private val server =
+        HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+            createContext("/engine-rest/") { exchange ->
+                val uri = exchange.requestURI
+                requests.add(uri)
+                val response =
+                    if (exchange.requestHeaders.getFirst("Authorization") == "Bearer $bearer" && case != "forbidden") {
+                        response(uri)
+                    } else {
+                        null
+                    }
+                if (response == null) {
+                    exchange.sendResponseHeaders(403, -1)
+                    exchange.close()
+                } else {
+                    val bytes = response.toByteArray()
+                    exchange.sendResponseHeaders(200, bytes.size.toLong())
+                    exchange.responseBody.use { it.write(bytes) }
+                }
+            }
+            start()
+        }
+    private val url = "http://127.0.0.1:${server.address.port}/engine-rest"
+
+    fun client() = DeploymentDefinitions(url, null, Duration.ofSeconds(3))
+
+    fun bundle(): Path {
+        val root = BundleFixture.copy()
+        root.edit("model/worlds/demo.ttrm") {
+            it.replace("extends: camunda_8", "extends: process_engine, url: \"$url\"")
+        }
+        val dir = Files.createDirectories(root.resolve("processes/cz"))
+        Files.writeString(dir.resolve("release_order.bpmn"), XML)
+        if (case == "ambiguous-artifact") Files.writeString(dir.resolve("duplicate.bpmn"), XML)
+        Files.writeString(
+            dir.parent.resolve("sets.json"),
+            """{"cz":{"deployments":{"release_event":"release_bpmn"}}}""",
+        )
+        return root
+    }
+
+    private fun response(uri: URI): String? =
+        when (uri.path) {
+            "/engine-rest/process-definition" ->
+                if (uri.rawQuery ==
+                    "key=release_order&resourceName=release_order.bpmn&withoutTenantId=true&maxResults=1001"
+                ) {
+                    "[${definition("release_order:7:foreign", "foreign")}," +
+                        "${definition(OTHER_ID, "other")},${definition(EXACT_ID, "exact")}]"
+                } else {
+                    null
+                }
+            "/engine-rest/deployment" ->
+                if (uri.rawQuery ==
+                    "name=hartland-processes-cz&source=hartland%3Aprocesses%2Fcz&withoutTenantId=true&maxResults=1001"
+                ) {
+                    "[${deployment("other")},${deployment("exact")}]"
+                } else {
+                    null
+                }
+            "/engine-rest/process-definition/$OTHER_ID/xml" -> xml(OTHER_ID, case == "ambiguous")
+            "/engine-rest/process-definition/$EXACT_ID/xml" -> xml(EXACT_ID, case != "missing")
+            else -> null
+        }
+
+    private fun definition(
+        id: String,
+        deploymentId: String,
+    ) =
+        """{"id":"$id","key":"release_order","resource":"release_order.bpmn","deploymentId":"$deploymentId","tenantId":null}"""
+
+    private fun deployment(id: String) =
+        """{"id":"$id","name":"hartland-processes-cz","source":"hartland:processes/cz","tenantId":null}"""
+
+    private fun xml(
+        id: String,
+        match: Boolean,
+    ): String =
+        JsonObject(
+            mapOf("id" to JsonPrimitive(id), "bpmn20Xml" to JsonPrimitive(if (match) XML else "$XML\n")),
+        ).toString()
+
+    override fun close() = server.stop(0)
+
+    companion object {
+        const val EXACT_ID = "release_order:5:exact"
+        private const val OTHER_ID = "release_order:6:other"
+        private val XML =
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                              xmlns:ttr="https://tatrman.org/schema/automation-export/1">
+              <bpmn:process id="release_order" isExecutable="true" name="Uvolnění objednávky">
+                <bpmn:extensionElements>
+                  <ttr:contract>{"target":"process_engine","deployment":"release_bpmn"}</ttr:contract>
+                </bpmn:extensionElements>
+              </bpmn:process>
+            </bpmn:definitions>
+            """.trimIndent()
+    }
+}

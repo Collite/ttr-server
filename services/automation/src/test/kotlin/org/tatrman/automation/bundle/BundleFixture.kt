@@ -5,6 +5,7 @@ import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.lib.PersonIdent
 import org.tatrman.automation.api.DescriptorSources
 import org.tatrman.automation.config.PreviewsConfig
+import org.tatrman.automation.engine.DeploymentDefinitions
 import org.tatrman.automation.identity.AuthorMap
 import org.tatrman.automation.identity.ServiceTokens
 import java.nio.file.Files
@@ -122,6 +123,7 @@ object BundleFixture {
         bundles: Bundles,
         approvals: ApprovalReader = ApprovalReader { _, _, _ -> false },
         metadata: MetadataHandshake? = null,
+        deploymentDefinitions: DeploymentDefinitions? = null,
     ) = DescriptorSources(
         bundles = bundles,
         registry = Registry(ExecutorType.builtin()),
@@ -130,5 +132,6 @@ object BundleFixture {
         metadata = metadata,
         paused = { false },
         refreshRoles = setOf("ops"),
+        deploymentDefinitions = deploymentDefinitions,
     )
 }

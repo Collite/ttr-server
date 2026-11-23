@@ -23,6 +23,7 @@ import org.tatrman.automation.bundle.Registry
 import org.tatrman.automation.bundle.RegistryCell
 import org.tatrman.automation.bundle.Staleness
 import org.tatrman.automation.bundle.MetadataHandshake
+import org.tatrman.automation.engine.DeploymentDefinitions
 import org.tatrman.automation.identity.Caller
 import org.tatrman.automation.identity.DeploymentIdentity
 import org.tatrman.automation.identity.GrantMap
@@ -131,6 +132,7 @@ data class DeploymentDetail(
     val lastRun: JsonObject?,
     val nextRun: String?,
     val coverage: Map<String, org.tatrman.automation.bundle.CoverageKind> = emptyMap(),
+    val processDefinitionId: String?,
 )
 
 /** `POST /automation/refresh` → 200. [changed] = false when the commit was already loaded (a no-op). */
@@ -155,6 +157,7 @@ class DescriptorSources(
     val metadata: MetadataHandshake?,
     val paused: () -> Boolean,
     val refreshRoles: Set<String>,
+    val deploymentDefinitions: DeploymentDefinitions? = null,
 )
 
 /** Authenticated: mounted under the bearer check — the caller is known to every route here. */
@@ -181,6 +184,7 @@ fun Route.descriptorRoutes(sources: DescriptorSources) {
         val deployment =
             bundle?.deployments?.get(d) ?: throw AutomationException(ErrorCode.DEPLOYMENT, "no deployment $d is served")
         val staleness = withContext(Dispatchers.IO) { Staleness.of(bundle, d, sources.approvals) }
+        val caller = call.caller()
         call.respond(
             DeploymentDetail(
                 deployment =
@@ -188,7 +192,7 @@ fun Route.descriptorRoutes(sources: DescriptorSources) {
                         bundle,
                         deployment,
                         runAsByWorld(bundle, sources),
-                        call.caller(),
+                        caller,
                         staleness.stale,
                     ),
                 registry = sources.registry.cell(bundle, deployment),
@@ -196,6 +200,13 @@ fun Route.descriptorRoutes(sources: DescriptorSources) {
                 coverage = staleness.coverage,
                 lastRun = null,
                 nextRun = null,
+                processDefinitionId =
+                    bundle.deployedProcesses[d]?.let {
+                        sources.deploymentDefinitions?.idOf(
+                            it,
+                            caller.token,
+                        )
+                    },
             ),
         )
     }
