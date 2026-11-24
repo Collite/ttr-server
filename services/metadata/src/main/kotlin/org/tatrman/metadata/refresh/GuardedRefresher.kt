@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import org.tatrman.metadata.grpc.PackageIndex
 import org.tatrman.metadata.scope.TagScope
+import org.tatrman.metadata.scope.bindingPackages
 import org.tatrman.metadata.health.SourceLoadBoard
 import org.tatrman.metadata.health.objectCount
 import org.tatrman.metadata.health.redactCredentials
@@ -562,7 +563,7 @@ class GuardedRefresher(
                 }
             }
             val scopeWarnings =
-                TagScope.loadWarnings(result.model)
+                TagScope.loadWarnings(result.model, bindingPackages(result.files))
             val graph = ModelGraph.build(result.model)
             val layouts = LayoutIndex.build(snapshots, result.model)
             if (cancelled()) throw CancellationException("refresh_cancelled")

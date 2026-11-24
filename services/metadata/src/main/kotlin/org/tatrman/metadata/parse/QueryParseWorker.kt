@@ -55,6 +55,7 @@ class QueryParseWorker(
     fun parseAll(
         model: Model,
         state: QueryParseState,
+        packageOf: (String) -> String? = { null },
     ): Job =
         scope.launch {
             if (model.queries.isEmpty()) return@launch
@@ -63,7 +64,7 @@ class QueryParseWorker(
             // it left Calcite on ISO-8859-1 and every body with a literal outside Latin-1 (`č ř š ž`) failed. 0.12.3
             // promotes it there too; the worker still does it first, whichever translator call comes first.
             CalciteCharset.ensureUtf8()
-            val handle = queryPathHandle(model)
+            val handle = queryPathHandle(model, packageOf = packageOf)
             val stacked = stackedEntities(handle, model.queries.keys.mapTo(HashSet()) { it.toProto() })
             val version = model.version.value
             // LQ §8 (L-21) — a query that reads other saved queries parses in a later wave than they do, against a
@@ -79,6 +80,7 @@ class QueryParseWorker(
                             model,
                             { q -> state.get(version, q.qname) ?: q.parseStatus },
                             savedQueriesAsObj = true,
+                            packageOf = packageOf,
                         )
                     }
                 val translator = Translator(waveHandle)
