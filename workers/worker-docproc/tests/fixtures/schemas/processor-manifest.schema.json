@@ -714,6 +714,9 @@
       },
       "then": {
         "properties": {
+          "kind": {
+            "const": "llm-extract"
+          },
           "role": {
             "enum": [
               "mentor",
@@ -722,6 +725,7 @@
           }
         },
         "required": [
+          "kind",
           "role"
         ]
       }
