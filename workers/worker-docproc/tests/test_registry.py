@@ -3,17 +3,86 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from jsonschema import ValidationError
 
 from docproc.kinds.noop import Noop
 from docproc.runtime.registry import KindRegistry, TypeRegistryClient, UnsupportedKind
+from docproc.sdk.models import Processor
 from tests.fakes import PackManager
+
+VALID_SAMPLE = {"rate": 0.05, "floor": ["novel", "low_confidence"]}
 
 
 def test_all_pack_manifests_validate() -> None:
     registry = KindRegistry()
     for processor in PackManager().processors.values():
         registry.manifest(processor, hosted=False)
+
+
+@pytest.fixture
+def llm_mentions() -> Processor:
+    return next(p for p in PackManager().processors.values() if p.family == "llm-mentions")
+
+
+@pytest.mark.parametrize("role", ["mentor", "auditor"])
+def test_sampling_is_optional_for_llm_extract_shadow_roles(llm_mentions: Processor, role: str) -> None:
+    registry = KindRegistry()
+    manifest = yaml.safe_load(llm_mentions.manifest_yaml)
+    manifest["role"] = role
+    legacy = llm_mentions.model_copy(update={"manifest_yaml": yaml.safe_dump(manifest)})
+    assert "sample" not in registry.manifest(legacy, hosted=False)["engine"]
+
+    manifest["engine"]["sample"] = VALID_SAMPLE
+    sampled = llm_mentions.model_copy(update={"manifest_yaml": yaml.safe_dump(manifest)})
+    assert registry.manifest(sampled, hosted=False)["engine"]["sample"] == VALID_SAMPLE
+
+
+@pytest.mark.parametrize(
+    ("sample", "field"),
+    [
+        ({"rate": 1.1, "floor": ["novel", "low_confidence"]}, "rate"),
+        ({"rate": 0.05, "floor": ["novel", "novel"]}, "floor"),
+    ],
+    ids=["rate-outside-range", "repeated-floor"],
+)
+def test_invalid_sampling_values_are_refused(llm_mentions: Processor, sample: dict[str, Any], field: str) -> None:
+    manifest = yaml.safe_load(llm_mentions.manifest_yaml)
+    manifest["engine"]["sample"] = sample
+    sampled = llm_mentions.model_copy(update={"manifest_yaml": yaml.safe_dump(manifest)})
+    with pytest.raises(ValidationError) as error:
+        KindRegistry().manifest(sampled, hosted=False)
+    assert list(error.value.absolute_path) == ["engine", "sample", field]
+
+
+@pytest.mark.parametrize("role", ["primary", "residual", "retired", None])
+def test_sampling_requires_explicit_shadow_role(llm_mentions: Processor, role: str | None) -> None:
+    manifest = yaml.safe_load(llm_mentions.manifest_yaml)
+    manifest["engine"]["sample"] = VALID_SAMPLE
+    if role is None:
+        del manifest["role"]
+    else:
+        manifest["role"] = role
+    sampled = llm_mentions.model_copy(update={"manifest_yaml": yaml.safe_dump(manifest)})
+    with pytest.raises(ValidationError) as error:
+        KindRegistry().manifest(sampled, hosted=False)
+    if role is None:
+        assert error.value.validator == "required"
+        assert "role" in error.value.message
+    else:
+        assert list(error.value.absolute_path) == ["role"]
+
+
+def test_sampling_is_refused_on_another_closed_engine() -> None:
+    processor = next(p for p in PackManager().processors.values() if p.family == "cz-mentions")
+    manifest = yaml.safe_load(processor.manifest_yaml)
+    manifest["role"] = "auditor"
+    manifest["engine"]["sample"] = VALID_SAMPLE
+    sampled = processor.model_copy(update={"manifest_yaml": yaml.safe_dump(manifest)})
+    with pytest.raises(ValidationError) as error:
+        KindRegistry().manifest(sampled, hosted=False)
+    assert list(error.value.absolute_path) == ["engine"]
+    assert "sample" in error.value.message
 
 
 def test_wrong_host_unknown_key_and_unknown_kind_refused() -> None:
@@ -47,8 +116,6 @@ def test_registry_parameterized_and_import_resolution() -> None:
 
 @pytest.mark.parametrize("strategy", ["semantic", "summary-prefix"])
 def test_costly_chunk_strategies_are_not_hosted_in_p3(strategy: str) -> None:
-    import yaml
-
     from docproc.kinds.noop import Noop
     from tests.fakes import PackManager
 
@@ -81,8 +148,6 @@ def test_registry_exact_version_and_manager_schema_drift() -> None:
 
 
 def test_hosted_budget_required() -> None:
-    import yaml
-
     registry = KindRegistry()
     registry.register("classify", Noop())
     p = next(p for p in PackManager().processors.values() if p.kind == "classify")
