@@ -16,12 +16,15 @@ import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.bundle.Bundle
 import org.tatrman.automation.identity.Caller
+import org.tatrman.automation.ledger.Claim
 import org.tatrman.automation.ledger.HeldDecision
 import org.tatrman.automation.ledger.HeldGroup
 import org.tatrman.automation.ledger.Ledger
 import org.tatrman.automation.ledger.NoHeldGroup
 import org.tatrman.automation.ledger.NoRunBatch
 import org.tatrman.automation.ledger.NoSuchRun
+import org.tatrman.automation.ledger.RUN_KIND_RECIPE
+import org.tatrman.automation.ledger.RunOpen
 import org.tatrman.automation.ledger.RunStatus
 import java.time.Clock
 import java.util.UUID
@@ -79,7 +82,15 @@ class Held(
         answer: UUID,
     ): HeldDecision {
         require(by.isNotBlank())
-        return decide(run, key, {}, raw = true) { held -> commit(held, key, decider, by, answer) }
+        val decision = decide(run, key, {}, raw = true) { held -> commit(held, key, decider, by, answer) }
+        if (decision.decision == "expire") {
+            throw AutomationException(
+                ErrorCode.CLOSE_NOT_READY,
+                "the approval already expired",
+                buildJsonObject { put("reason", "approval-expired") },
+            )
+        }
+        return decision
     }
 
     private suspend fun commit(
@@ -149,6 +160,86 @@ class Held(
                 )
             }
             io { ledger.decideHeld(run, group, "reject", by.principal) }
+        }
+
+    /** Keep the expiry claim and its resumed hold on the same decision gate as approvals and dev rejects. */
+    internal suspend fun <T> performExpiry(
+        expiry: VerifiedExpiry,
+        hold: RunOpen,
+        recipe: String,
+        block: suspend (Claim) -> T,
+    ): T =
+        lock.withLock {
+            val run = withContext(Dispatchers.IO) { ledger.findRun(expiry.original) }
+            val engine = run?.open?.engine
+            if (
+                run == null ||
+                run.open.kind != RUN_KIND_RECIPE ||
+                run.open.dryRun ||
+                run.open.recipe != recipe ||
+                run.open.deployment != hold.deployment ||
+                run.open.program != hold.program ||
+                run.open.callerSubject != hold.callerSubject ||
+                engine == null ||
+                engine.taskId != null ||
+                engine.instanceId != expiry.request.instanceId ||
+                engine.businessKey != expiry.businessKey
+            ) {
+                unverifiedExpiry("the original run does not belong to this engine instance and deployment")
+            }
+
+            val key = expiry.request.key
+            val group =
+                try {
+                    withContext(Dispatchers.IO) { ledger.heldGroup(expiry.original, key) }
+                } catch (_: NoHeldGroup) {
+                    unverifiedExpiry("the original run does not hold this key")
+                } catch (_: NoRunBatch) {
+                    unverifiedExpiry("the original run has no held approval")
+                }
+            val approval = group.actions.singleOrNull { it.key == key && it.action == expiry.request.action }
+            if (
+                approval == null ||
+                approval.dryRun ||
+                approval.arguments["order"] != expiry.order ||
+                !approval.batchRows.containsAll(group.rows.map { it.seq })
+            ) {
+                unverifiedExpiry("the original group does not match the expired approval")
+            }
+            if (group.statuses.all { it.decided == null }) {
+                superseded(group)?.let { throw it }
+                if (run.open.modelFp != hold.modelFp) {
+                    throw AutomationException(ErrorCode.SUPERSEDED, "the original run's model is no longer served")
+                }
+            }
+            val opening =
+                JsonObject(
+                    (hold.openingProtocol as JsonObject) +
+                        (
+                            "engine" to
+                                buildJsonObject {
+                                    put("instanceId", engine.instanceId)
+                                    put("businessKey", engine.businessKey)
+                                    put("deploymentId", engine.deploymentId)
+                                    put("taskId", expiry.request.taskId)
+                                }
+                        ),
+                )
+            val claim =
+                withContext(Dispatchers.IO) {
+                    ledger.claimExpiredHold(
+                        expiry.original,
+                        key,
+                        expiry.evidence(),
+                        expiry.active,
+                        expiry.taskStartedAt,
+                        hold.copy(
+                            openingProtocol = opening,
+                            engine = engine.copy(taskId = expiry.request.taskId),
+                        ),
+                    )
+                }
+            block(claim)
         }
 
     /** [raw]: a missing run/group is raised as the ledger's own exception (the answer path maps it, contract 1). */

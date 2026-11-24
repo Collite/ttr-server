@@ -106,6 +106,7 @@ data class Bundle(
     val packages: Map<String, String> = emptyMap(),
     /** Entity list pinned once alongside the loaded coverage results. */
     val entities: List<org.tatrman.ttr.metadata.model.Entity> = emptyList(),
+    val deployedProcesses: Map<String, DeployedProcess> = emptyMap(),
     private val preparation: BundlePreparation = BundlePreparation(model, packages, loadedAt),
 ) {
     // Data-class copies may replace the model/package map. Never carry their old cached outcomes forward.

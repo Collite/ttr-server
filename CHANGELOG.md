@@ -16,6 +16,14 @@ outside this repo could notice is in.
 
 ## Unreleased
 
+- **Package-qualified YAML bindings (MW S4.4b).** Snapshot translation resolves authored table and filter bindings
+  using their package. Tag scope includes each bound entity's generated filter query and reports mapped targets outside
+  the selected scope. Same-name declarations in another package cannot satisfy a qualified binding.
+
+- **metadata 0.12.10 — Core YAML loading update (MW S4.4p).** The grammar and metadata libraries move to Core 0.22.14.
+  The loader retains package-qualified YAML binding references and parses scalar procedure declarations.
+  The metadata service exposes procedure descriptors. Translator and plan-proto stay at 0.14.4.
+
 - **metadata 0.12.9 — GET /model/layout?tags= (MW S4.3b).** Tag sets now select a computed layout from the same
   `ResolveTags` closure as the service, with `schema=er|db` (default `er`); callers wanting both make two calls.
   Layouts cache by normalized tag set and schema until the next registry snapshot, with a stable ETag per response.

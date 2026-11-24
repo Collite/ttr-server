@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.translate.snapshot
 
+import org.tatrman.meta.v1.Er2DbEntityMappingDetail.TargetCase
 import org.tatrman.meta.v1.DbColumnSummary
 import org.tatrman.meta.v1.ModelSnapshot
 import org.tatrman.meta.v1.ObjectEntry
@@ -147,6 +148,49 @@ class SnapshotModelHandle(
             val savedQueriesMap = LinkedHashMap<QualifiedName, ModelSavedQuery>()
             val savedQueryBodies = mutableMapOf<QualifiedName, SavedQueryBody>()
             val attributeRenames = mutableMapOf<QualifiedName, MutableMap<String, String>>()
+            val entriesByKind = snapshot.objectsList.groupBy { it.contentCase }
+
+            fun names(kind: ObjectEntry.ContentCase) =
+                BindingNames(
+                    entriesByKind[kind].orEmpty().map {
+                        it.objectDescriptor.qualifiedName to it.objectDescriptor.packageName
+                    },
+                )
+
+            val entityNames = names(ObjectEntry.ContentCase.ENTITY)
+            val tableNames = names(ObjectEntry.ContentCase.TABLE)
+            val viewNames = names(ObjectEntry.ContentCase.VIEW)
+            val queryNames = names(ObjectEntry.ContentCase.QUERY)
+            val bindings =
+                entriesByKind[ObjectEntry.ContentCase.ER2DB_ENTITY_MAPPING]
+                    .orEmpty()
+                    .map { it.er2DbEntityMapping }
+                    .mapNotNull { binding -> entityNames.resolve(binding.entity)?.let { it to binding } }
+                    .groupBy({ it.first }, { it.second })
+
+            for ((entity, candidates) in bindings) {
+                val exact = candidates.filter { it.entity == entity }
+                for (binding in exact.ifEmpty { candidates }) {
+                    val filter = binding.whereFilter.takeIf { binding.hasWhereFilter() }
+                    val mapping =
+                        when (binding.targetCase) {
+                            TargetCase.TABLE ->
+                                tableNames
+                                    .resolve(binding.table, keepMissingBare = true)
+                                    ?.let { EntityMapping.ToTable(it, filter) }
+                            TargetCase.VIEW ->
+                                viewNames
+                                    .resolve(binding.view, keepMissingBare = true)
+                                    ?.let { EntityMapping.ToTable(it, filter) }
+                            TargetCase.SQL_QUERY ->
+                                queryNames
+                                    .resolve(binding.sqlQuery, keepMissingBare = true)
+                                    ?.let { EntityMapping.ToQuery(it) }
+                            else -> null
+                        }
+                    if (mapping != null) entityMappings[entity] = mapping
+                }
+            }
             for (entry in snapshot.objectsList) {
                 val qn = entry.objectDescriptor.qualifiedName
                 when (entry.contentCase) {
@@ -193,33 +237,6 @@ class SnapshotModelHandle(
                                 toEntity = entry.relation.toEntity,
                                 joinPairs = pairs,
                             )
-                    }
-                    ObjectEntry.ContentCase.ER2DB_ENTITY_MAPPING -> {
-                        val mapping =
-                            when (entry.er2DbEntityMapping.targetCase) {
-                                org.tatrman.meta.v1.Er2DbEntityMappingDetail.TargetCase.TABLE ->
-                                    EntityMapping.ToTable(
-                                        entry.er2DbEntityMapping.table,
-                                        if (entry.er2DbEntityMapping.hasWhereFilter()) {
-                                            entry.er2DbEntityMapping.whereFilter
-                                        } else {
-                                            null
-                                        },
-                                    )
-                                org.tatrman.meta.v1.Er2DbEntityMappingDetail.TargetCase.VIEW ->
-                                    EntityMapping.ToTable(
-                                        entry.er2DbEntityMapping.view,
-                                        if (entry.er2DbEntityMapping.hasWhereFilter()) {
-                                            entry.er2DbEntityMapping.whereFilter
-                                        } else {
-                                            null
-                                        },
-                                    )
-                                org.tatrman.meta.v1.Er2DbEntityMappingDetail.TargetCase.SQL_QUERY ->
-                                    EntityMapping.ToQuery(entry.er2DbEntityMapping.sqlQuery)
-                                else -> null
-                            }
-                        if (mapping != null) entityMappings[entry.er2DbEntityMapping.entity] = mapping
                     }
                     ObjectEntry.ContentCase.QUERY -> {
                         savedQueriesMap[qn] = ModelSavedQuery(qn)
@@ -291,10 +308,6 @@ class SnapshotModelHandle(
                                 .map { it.second },
                     )
                 }
-            val boundEntities =
-                snapshot.objectsList
-                    .filter { it.contentCase == ObjectEntry.ContentCase.ER2DB_ENTITY_MAPPING }
-                    .mapTo(mutableSetOf()) { it.er2DbEntityMapping.entity }
             val placedTables = LinkedHashMap<String, ModelTable>()
             val placedCandidates =
                 snapshot.objectsList.filter { entry ->
@@ -302,7 +315,7 @@ class SnapshotModelHandle(
                     val qn = descriptor.qualifiedName
                     entry.contentCase == ObjectEntry.ContentCase.ENTITY &&
                         qn.schemaCode == SchemaCode.ER &&
-                        qn !in boundEntities &&
+                        qn !in bindings &&
                         (descriptor.packageName in placedPackages || qn.name in placedEntities)
                 }
             // Placement fixes the table name to the entity name: never guess between two owners.

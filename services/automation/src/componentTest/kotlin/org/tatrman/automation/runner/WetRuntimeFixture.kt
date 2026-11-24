@@ -46,6 +46,7 @@ internal fun wetRuntimeFixture(
     /** S3.5 review-354 (o): the candidates each evaluation reads (the fake Query ignores the port); default [keys]. */
     candidates: () -> List<String> = { keys },
     ledgerFor: (org.tatrman.automation.ledger.Ledger) -> org.tatrman.automation.ledger.Ledger = { it },
+    afterPrepare: (Bundle) -> Bundle = { it },
 ): Triple<DurableRuntimeFixture, org.tatrman.automation.writer.RowWritesQueryFake, Unit> {
     val root = ApprovalFixture.copyTo(temp.resolve("branch"))
     val catalog =
@@ -147,6 +148,7 @@ internal fun wetRuntimeFixture(
                         ),
                 )
             },
+            afterPrepare = afterPrepare,
             queryTable = { request ->
                 Table(
                     listOf(ManifestColumn("order_number", "text"), ManifestColumn("verdict_reason", "text")),

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { NodeHelpers } = require('n8n-workflow');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const { createHmac, randomUUID } = require('node:crypto');
+const { randomUUID } = require('node:crypto');
 const { mkdtemp, mkdir, writeFile, rm } = require('node:fs/promises');
 const http = require('node:http');
 const { tmpdir } = require('node:os');
@@ -23,14 +23,13 @@ async function main() {
     await writeFile(join(installation, 'package.json'), JSON.stringify({ private: true }));
     await promisify(execFile)('npm', ['install', '--prefix', installation, '--offline', '--ignore-scripts', '--legacy-peer-deps', '--no-audit', '--no-fund', process.env.N8N_TEST_PACKAGE_ARCHIVE]);
   }
-  const hooks = new Map();
   const calls = [];
   const failures = [];
   const runs = new Map([['source-run', { status: 'closed', keys: [4711, 4712] }]]);
   let freshRuns = 0;
   let pollPhase = 0;
   const keys = Array.from({ length: 450 }, (_, i) => i + 1);
-  const createdAt = '2026-10-23T01:00:00.000Z';
+  const startedAt = '2026-10-23T01:00:00.000Z';
   let runtime;
   let runtimeLog = '';
   let env;
@@ -47,22 +46,22 @@ async function main() {
       const run = runs.get(runId);
       let result;
       if (url.pathname === '/automation/') result = { deployments: [], recipes: [], programs: [] };
-      else if (url.pathname === '/automation/runs') result = { runs: [{ runId: 'poll-closed', status: 'closed', createdAt }, ...(pollPhase ? [] : [{ runId: 'poll-pending', status: 'open', createdAt }])] };
-      else if (url.pathname === '/automation/runs/poll-pending') result = { runId: 'poll-pending', status: pollPhase ? 'closed' : 'open', createdAt };
-      else if (url.pathname.startsWith('/automation/tasks/polled-')) result = { id: url.pathname.split('/').pop() };
-      else if (url.pathname === '/automation/webhooks' && req.method === 'GET') result = { webhooks: [...hooks.keys()].map(id => ({ id })) };
-      else if (url.pathname === '/automation/webhooks' && req.method === 'POST') {
-        assert.equal(body.deployment, 'release_native_event');
-        assert.deepEqual(body.kinds, ['run_closed']);
-        assert.match(body.secret, /^[a-f0-9]{64}$/);
-        const id = `hook-${hooks.size + 1}`;
-        hooks.set(id, body);
-        result = { id };
-        res.statusCode = 201;
-      } else if (url.pathname.startsWith('/automation/webhooks/') && req.method === 'DELETE') {
-        assert.ok(hooks.delete(url.pathname.split('/').pop()));
-        result = {};
-      } else if (url.pathname === '/automation/recipes/release_order/runs') {
+      else if (url.pathname === '/automation/runs') {
+        assert.equal(req.method, 'GET');
+        assert.equal(url.searchParams.get('status'), 'closed');
+        assert.ok(url.searchParams.get('since'));
+        const deployment = url.searchParams.get('deployment');
+        let ids;
+        if (deployment === 'release_native_event') ids = ['source-run'];
+        else {
+          assert.equal(deployment, 'poll_fixture');
+          ids = pollPhase ? ['poll-late', 'poll-closed'] : ['poll-closed'];
+        }
+        result = { runs: ids.map(runId => ({
+          runId, deployment, status: 'closed', startedAt, protocolRef: `/automation/runs/${runId}/protocol`,
+        })), next: null };
+      } else if (url.pathname.startsWith('/automation/tasks/polled-')) result = { id: url.pathname.split('/').pop() };
+      else if (url.pathname === '/automation/recipes/release_order/runs') {
         assert.equal(req.method, 'POST');
         assert.equal(body.deployment, 'release_native_event');
         assert.equal(body.dryRun, true);
@@ -156,14 +155,17 @@ async function main() {
   const credentials = { tatrmanAutomationApi: { id: 'local-automation', name: 'Local Automation' } };
   function node(name, parameters, trigger = false) {
     return { id: randomUUID(), name, type: `@collite/n8n-nodes-tatrman.${trigger ? 'tatrmanTrigger' : 'tatrmanRun'}`, typeVersion: 1,
-      position: [0, 0], parameters, credentials, ...(trigger ? { webhookId: randomUUID() } : {}) };
+      position: [0, 0], parameters, credentials };
+  }
+  function pollParameters(deployment) {
+    return { deployment, since: '2026-10-23T00:00:00Z', pollTimes: { item: [{ mode: 'custom', cronExpression: '* * * * *' }] } };
   }
   const workflow = {
     id: 'tatrman-runtime-proof', name: 'Tatrman runtime proof', active: false, versionId: randomUUID(),
     settings: { executionOrder: 'v1' },
     nodes: [
-      node('Trigger', { mode: 'webhook', deployment: 'release_native_event', kinds: ['run_closed'] }, true),
-      node('Open', { operation: 'open', recipe: 'release_order', deployment: 'release_native_event', port: '={{ { keys: $json.payload.keys } }}', dryRun: true, idempotencyKey: "={{ $workflow.id + ':' + $json.runId }}" }),
+      node('Trigger', pollParameters('release_native_event'), true),
+      node('Open', { operation: 'open', recipe: 'release_order', deployment: 'release_native_event', port: JSON.stringify({ keys }), dryRun: true, idempotencyKey: "={{ $workflow.id + ':' + $json._tatrman.run }}" }),
       node('Evaluate', { operation: 'evaluate', runId: '={{ $json.runId }}' }),
       node('Routes', { operation: 'routes', runId: "={{ $('Open').item.json.runId }}", recipe: 'release_order', route: 'release' }),
       node('Perform', { operation: 'perform', runId: "={{ $('Open').item.json.runId }}", recipe: 'release_order', action: 'notify', keys: '={{ [$json.key] }}' }),
@@ -179,7 +181,7 @@ async function main() {
   const pollWorkflow = {
     id: 'tatrman-poll-proof', name: 'Tatrman polling proof', active: false, versionId: randomUUID(),
     settings: { executionOrder: 'v1' },
-    nodes: [node('Trigger', { mode: 'poll', deployment: 'release_native_event', kinds: ['run_closed'], since: '2026-10-23T00:00:00Z', pollTimes: { item: [{ mode: 'custom', cronExpression: '* * * * *' }] } }, true),
+    nodes: [node('Trigger', pollParameters('poll_fixture'), true),
       node('Task', { operation: 'task', taskId: '={{ "polled-" + $json.runId }}' })],
     connections: { Trigger: { main: [[{ node: 'Task', type: 'main', index: 0 }]] } },
   };
@@ -194,7 +196,7 @@ async function main() {
     runtime.stdout.on('data', chunk => { runtimeLog += chunk; });
     runtime.stderr.on('data', chunk => { runtimeLog += chunk; });
     await until(async () => {
-      try { return hooks.size === 1 && (await fetch(`${n8nUrl}/healthz/readiness`)).ok; } catch { return false; }
+      try { return (await fetch(`${n8nUrl}/healthz/readiness`)).ok; } catch { return false; }
     }, 'workflow activation');
     const setup = await fetch(`${n8nUrl}/rest/owner/setup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'runtime@example.test', firstName: 'Runtime', lastName: 'Proof', password: 'LocalRuntimeProof123!' }) });
     assert.equal(setup.status, 200, await setup.text());
@@ -225,18 +227,7 @@ async function main() {
       assert.equal(tested.status, status);
     }
     await until(() => calls.some(call => call.path === '/automation/tasks/polled-poll-closed'), 'first real poll execution', 70_000);
-    const hook = [...hooks.values()].find(hook => hook.url.includes(workflow.nodes[0].webhookId));
-    assert.ok(hook, `Missing first workflow hook; got ${JSON.stringify([...hooks.values()].map(hook => hook.url))}`);
-    const raw = JSON.stringify({ kind: 'run_closed', deployment: 'release_native_event', runId: 'source-run', payload: { keys } });
-    const deliver = signature => fetch(hook.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tatrman-signature': signature }, body: raw });
-    const before = calls.length;
-    assert.equal((await deliver('0'.repeat(64))).status, 401);
-    await delay(200);
-    assert.equal(calls.length, before, 'Invalid signatures must not execute the workflow');
-    const signature = createHmac('sha256', hook.secret).update(raw).digest('hex');
-    const accepted = await deliver(`sha256=${signature}`);
-    assert.equal(accepted.status, 200, await accepted.text());
-    await until(() => calls.filter(call => call.path.endsWith('/close')).length === keys.length, '450 route items completing');
+    await until(() => calls.filter(call => call.path.endsWith('/close')).length === keys.length, '450 route items completing', 70_000);
     assert.deepEqual(calls.filter(call => call.path.endsWith('/perform')).map(call => call.body.keys), keys.map(key => [key]));
     assert.deepEqual(calls.filter(call => call.path.endsWith('/outcome')).map(call => call.body.outcomes[0].key), keys);
     assert.deepEqual(calls.filter(call => call.path.endsWith('/routes/release')).map(call => call.query.offset), ['0', '200', '400']);
@@ -245,22 +236,17 @@ async function main() {
     assert.equal(closed.status, 503);
     assert.equal((await closed.json()).error.code, 'run-abandoned');
     await delay(1500);
-    const executionsBefore = (await api('executions')).results.length;
-    const ignored = JSON.stringify({ kind: 'run_closed', deployment: 'other', runId: 'source-run', payload: {} });
-    assert.equal((await fetch(hook.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tatrman-signature': createHmac('sha256', hook.secret).update(ignored).digest('hex') }, body: ignored })).status, 200);
-    await delay(1500);
-    assert.equal((await api('executions')).results.length, executionsBefore, 'Filtered event must not create an execution');
     const saved = await api(`workflows/${pollWorkflow.id}`);
-    assert.ok(saved.staticData?.['node:Trigger']?.pollPending?.['poll-pending'], 'Pending poll run must be persisted before edit');
+    assert.ok(saved.staticData?.['node:Trigger']?.pollSeen?.['poll-closed'], 'Seen poll run must be persisted before edit');
     saved.nodes[0].notes = 'Edited while active for review-160';
     const edited = await api(`workflows/${pollWorkflow.id}`, 'PATCH', { name: 'Edited active poll', nodes: saved.nodes, connections: saved.connections, settings: saved.settings, versionId: saved.versionId });
     assert.notEqual(edited.versionId, saved.activeVersionId, 'The edit must create a new version to republish');
     await api(`workflows/${pollWorkflow.id}/activate`, 'POST', { versionId: edited.versionId });
     pollPhase = 1;
-    await until(() => calls.some(call => call.path === '/automation/tasks/polled-poll-pending'), 'pending run completion after active edit/save/republish', 70_000);
+    await until(() => calls.some(call => call.path === '/automation/tasks/polled-poll-late'), 'late visible run after active edit/save/republish', 70_000);
     await delay(1500);
     assert.equal(calls.filter(call => call.path === '/automation/tasks/polled-poll-closed').length, 1, 'Republish must preserve deduplication');
-    assert.equal(calls.filter(call => call.path === '/automation/tasks/polled-poll-pending').length, 1, 'Pending run is emitted once');
+    assert.equal(calls.filter(call => call.path === '/automation/tasks/polled-poll-late').length, 1, 'Late run is emitted once');
     // Exercise real runtime deactivation through the local owner's authenticated editor API.
     await until(async () => {
       const response = await fetch(`${n8nUrl}/rest/executions`, { headers: { cookie } });
@@ -275,9 +261,7 @@ async function main() {
       const deactivate = await fetch(`${n8nUrl}/rest/workflows/${id}/deactivate`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: '{}' });
       assert.equal(deactivate.status, 200, await deactivate.text());
     }
-    await until(() => hooks.size === 0, 'remote webhook removal');
-    assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
-    console.log('PASS: scoped package IDs, missing-expression mutation refusal, credential auth, 450-row server-default paging, closed-route refusal, filtered-event suppression, real poll state across active edit/save/republish, paired workflows and deactivation');
+    console.log('PASS: scoped package IDs, missing-expression mutation refusal, credential auth, 450-row server-default paging, closed-route refusal, real poll state across active edit/save/republish, paired workflows and deactivation');
   } catch (error) {
     console.error(runtimeLog);
     throw error;

@@ -29,6 +29,7 @@ import org.tatrman.automation.bundle.GrpcMetadataStatus
 import org.tatrman.automation.bundle.Registry
 import org.tatrman.automation.bundle.MetadataHandshake
 import org.tatrman.automation.config.AutomationConfig
+import org.tatrman.automation.engine.DeploymentDefinitions
 import org.tatrman.automation.identity.AUTOMATION_AUTH
 import org.tatrman.automation.identity.AuthorMap
 import org.tatrman.automation.identity.AutomationBearerProvider
@@ -199,6 +200,14 @@ fun Application.module(config: Config) {
                     metadata = MetadataHandshake(metadataStatus, automation.bundleGit.metadataSource),
                     paused = { automation.paused },
                     refreshRoles = automation.auth.refreshRoles,
+                    deploymentDefinitions =
+                        automation.engine.url?.let {
+                            DeploymentDefinitions(
+                                it,
+                                automation.engine.ca,
+                                automation.engine.timeout,
+                            )
+                        },
                 ),
             )
         }

@@ -27,6 +27,7 @@ import org.tatrman.meta.v1.RefreshResponse
 import org.tatrman.meta.v1.ResolveTagsRequest
 import org.tatrman.meta.v1.ResolveTagsResponse
 import org.tatrman.metadata.scope.TagScope
+import org.tatrman.metadata.scope.bindingPackages
 import org.tatrman.meta.v1.ResolveAreaRequest
 import org.tatrman.meta.v1.ResolveAreaResponse
 import org.tatrman.meta.v1.SourceRefreshResult
@@ -524,12 +525,19 @@ class MetadataServiceImpl(
      */
     private fun buildModelSnapshot(
         snap: org.tatrman.ttr.metadata.registry.RegistrySnapshot,
-    ): org.tatrman.meta.v1.ModelSnapshot =
-        org.tatrman.meta.v1.ModelSnapshot
+    ): org.tatrman.meta.v1.ModelSnapshot {
+        val packageOf =
+            if (snap.definitions.entries.isEmpty()) {
+                packageIndex::packageOf
+            } else {
+                snap.bindingPackages()
+            }
+        return org.tatrman.meta.v1.ModelSnapshot
             .newBuilder()
             .setModel(snap.toProtoDescriptor())
-            .addAllObjects(snapshotObjects(snap.model, packageIndex::packageOf) { liveParseStatus(it, snap) })
+            .addAllObjects(snapshotObjects(snap.model, packageOf) { liveParseStatus(it, snap) })
             .build()
+    }
 
     // ----- MV-T1 — ListMemberVocabularies (member-vocabulary contracts §3) -----
 
@@ -1162,7 +1170,7 @@ class MetadataServiceImpl(
                     .build()
         val scope =
             TagScope
-                .resolve(snap.model, tags, { liveParseStatus(it, snap) })
+                .resolve(snap, tags, { liveParseStatus(it, snap) })
         val response =
             ResolveTagsResponse
                 .newBuilder()

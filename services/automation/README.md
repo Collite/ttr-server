@@ -200,6 +200,80 @@ with its entry. `GET /automation/runs?kind=answer` lists answer runs. `GET /auto
 decided key carries `decided`, and `batch.held` counts the held rows still undecided. A row an obligation shares
 between two keys belongs to the first key's group (a known v1 limit, as on the dev route).
 
+### Verified approval expiry (D-267)
+
+The process engine can expire a waiting `release_confirmed` approval and perform the Sales hold through
+`POST /automation/deployments/release_event_cz/actions/hold/perform`. Send this body from the fallback
+after the interrupting timer's transaction commits (the fallback has `asyncBefore`).
+
+```json
+{
+  "key": {"order": 4711},
+  "params": {"department": "Sales"},
+  "origin": "engine",
+  "expiry": {
+    "originalRunId": "00000000-0000-4000-8000-000000000001",
+    "action": "release_confirmed",
+    "key": {"order_number": 4711},
+    "instanceId": "process-instance-1",
+    "taskId": "approval-task-1",
+    "timerActivityId": "s41_release_confirmed_lapsed"
+  }
+}
+```
+
+Use the original Open's `ttrRunId`, the approval's exact action key (including its JSON types), the engine's
+process instance and the task ID captured at task creation. The Server reads the canceled task and its
+local `ttr_action` and `ttr_about`, the process variable `ttrRunId`, and the unique completed boundary timer
+in the canceled task's enclosing activity instance. It checks the original run and action against that evidence.
+The process instance must be active when first accepting the expiry. `by` is absent. `idempotencyKey` is optional and has no effect on expiry replay identity.
+
+The response retains `runId`, `key`, `outcome`, `rows` and `protocolRef` and adds `expiry` with the verified
+timer occurrence. Advance on `outcome: "applied"`. After acceptance, the original action's `decided` and
+its `writes/held-expire` entry name the hold run and timer. The linked run's `writes/performed` reports
+whether the hold applied. With proof still available in engine history, an exact replay returns the same hold run
+and terminal result, including after the instance ends. A retry after an interrupted attempt resumes the linked
+hold from the outcomes recorded in its journal. If the Door write's outcome is ambiguous, the hold
+stays open and retries return `503 expiry-hold-pending` with the same `error.detail.runId`, even if the order is
+already on Sales hold. An ambiguous write is never resent.
+
+A competing approval yields `409 close-not-ready` with `error.detail.reason: "approval-already-decided"` on
+the expiry request. A human answer received after the timer decision yields `409 close-not-ready` with
+`error.detail.reason: "approval-expired"`. Engine history failures yield `503 engine-unreachable`. Typed performs
+without `expiry` continue to use the existing request, result and idempotency rules.
+
+Accepted response excerpt (invented fixture identifiers):
+
+```json
+{
+  "runId": "00000000-0000-4000-8000-000000000002",
+  "outcome": "applied",
+  "expiry": {
+    "originalRunId": "00000000-0000-4000-8000-000000000001",
+    "action": "release_confirmed",
+    "key": {"order_number": 4711},
+    "instanceId": "process-instance-1",
+    "taskId": "approval-task-1",
+    "timerActivityId": "s41_release_confirmed_lapsed",
+    "timerOccurrenceId": "timer-occurrence-1",
+    "timerEndedAt": "2026-11-21T08:30:00Z",
+    "source": "engine:history"
+  }
+}
+```
+
+Refused response example for a first delivery after the engine instance has ended (HTTP 403):
+
+```json
+{
+  "error": {
+    "code": "identity",
+    "message": "the process instance is no longer active",
+    "detail": {"reason": "unverified-expiry"}
+  }
+}
+```
+
 `RunSessions` enforces the batch budget from the **committed** `runs.started_at` returned by a new claim,
 not from HTTP arrival, user `asOf`, delivery or evaluation start. Idle time, queue wait and all evaluation waves
 share that deadline. The monitor rechecks the injected clock at most every 250ms, and API reads/polls check it

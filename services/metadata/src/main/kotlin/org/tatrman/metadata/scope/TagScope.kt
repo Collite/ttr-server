@@ -2,6 +2,8 @@
 package org.tatrman.metadata.scope
 
 import org.tatrman.metadata.grpc.toDomain
+import org.tatrman.metadata.grpc.toProto
+import org.tatrman.ttr.metadata.registry.RegistrySnapshot
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.translator.joiner.JoinerPlanWalker
 import org.tatrman.ttr.metadata.model.Model
@@ -38,24 +40,54 @@ object TagScope {
     }
 
     fun resolve(
+        snapshot: RegistrySnapshot,
+        tags: Set<String>,
+        parseStatus: (Query) -> ParseStatus = { it.parseStatus },
+        checkQueries: Boolean = true,
+    ): Result = resolve(snapshot.model, tags, parseStatus, checkQueries, snapshot.bindingPackages())
+
+    fun resolve(
         model: Model,
         tags: Set<String>,
         parseStatus: (Query) -> ParseStatus = { it.parseStatus },
         checkQueries: Boolean = true,
-    ): Result =
-        resolve(
-            model.objectByQname(),
-            model.mappings.filterIsInstance<Er2DbEntityMapping>().groupBy {
-                it.entity
-            },
-            tags,
-            parseStatus,
-            checkQueries,
-        )
+        packageOf: (String) -> String = { "" },
+    ): Result {
+        val objects = model.objectByQname()
+        return resolve(objects, Bindings(objects.values, model, packageOf), tags, parseStatus, checkQueries)
+    }
+
+    private class Bindings(
+        objects: Collection<ModelObject>,
+        model: Model,
+        packageOf: (String) -> String,
+    ) {
+        private val entities = objects.filterIsInstance<Entity>().bindingNames(packageOf)
+        private val tables = objects.filterIsInstance<DbTable>().bindingNames(packageOf)
+        private val views = objects.filterIsInstance<DbView>().bindingNames(packageOf)
+        private val queries = objects.filterIsInstance<Query>().bindingNames(packageOf)
+        private val byEntity =
+            model.mappings
+                .filterIsInstance<Er2DbEntityMapping>()
+                .mapNotNull { mapping -> entities.resolve(mapping.entity.toProto())?.toDomain()?.let { it to mapping } }
+                .groupBy({ it.first }, { it.second })
+
+        fun forEntity(entity: QualifiedName): List<Er2DbEntityMapping> =
+            byEntity[entity].orEmpty().let { candidates ->
+                candidates.filter { it.entity == entity }.ifEmpty { candidates }
+            }
+
+        fun target(target: MappingTarget): QualifiedName? =
+            when (target) {
+                is MappingTarget.Table -> tables.resolve(target.qname.toProto())
+                is MappingTarget.View -> views.resolve(target.qname.toProto())
+                is MappingTarget.SqlQuery -> queries.resolve(target.qname.toProto())
+            }?.toDomain()
+    }
 
     private fun resolve(
         objects: Map<QualifiedName, ModelObject>,
-        mappings: Map<QualifiedName, List<Er2DbEntityMapping>>,
+        mappings: Bindings,
         tags: Set<String>,
         parseStatus: (Query) -> ParseStatus,
         checkQueries: Boolean,
@@ -89,8 +121,8 @@ object TagScope {
             when (val obj = objects[q]) {
                 is Entity -> {
                     obj.attributes.forEach { add(it.qname) }
-                    mappings[q].orEmpty().forEach { mapping ->
-                        val target = (mapping.target as? MappingTarget.SqlQuery)?.qname
+                    mappings.forEntity(q).forEach { mapping ->
+                        val target = (mapping.target as? MappingTarget.SqlQuery)?.let(mappings::target)
                         if (target?.name == "${q.name}__filter") add(target)
                     }
                 }
@@ -103,12 +135,13 @@ object TagScope {
         fun requireRef(
             owner: ModelObject,
             target: QualifiedName,
+            resolved: QualifiedName? = target,
         ) {
-            if (target !in selected) {
+            if (resolved !in selected) {
                 warnings +=
                     Warning(
                         "meta/scope-violation",
-                        "${owner.qname.dotted()} requires ${target.dotted()} outside the tag scope",
+                        "${owner.qname.dotted()} requires ${target.scopedName()} outside the tag scope",
                         owner.sourceFile,
                     )
             }
@@ -117,12 +150,14 @@ object TagScope {
             val obj = objects.getValue(q)
             when (obj) {
                 is Entity ->
-                    mappings[q].orEmpty().forEach { mapping ->
-                        when (val target = mapping.target) {
-                            is MappingTarget.Table -> requireRef(obj, target.qname)
-                            is MappingTarget.View -> requireRef(obj, target.qname)
-                            is MappingTarget.SqlQuery -> requireRef(obj, target.qname)
-                        }
+                    mappings.forEntity(q).forEach { mapping ->
+                        val target =
+                            when (val binding = mapping.target) {
+                                is MappingTarget.Table -> binding.qname
+                                is MappingTarget.View -> binding.qname
+                                is MappingTarget.SqlQuery -> binding.qname
+                            }
+                        requireRef(obj, target, mappings.target(mapping.target))
                     }
                 is Query ->
                     if (checkQueries && !obj.skipSecurity) {
@@ -177,10 +212,15 @@ object TagScope {
         )
     }
 
+    private fun QualifiedName.scopedName(): String = if (`package`.isEmpty()) dotted() else "${`package`}.${dotted()}"
+
     /** Structural diagnostics for each authored tag; unions are checked separately on each request. */
-    fun loadWarnings(model: Model): List<LoadWarning> {
+    fun loadWarnings(
+        model: Model,
+        packageOf: (String) -> String = { "" },
+    ): List<LoadWarning> {
         val objects = model.objectByQname()
-        val mappings = model.mappings.filterIsInstance<Er2DbEntityMapping>().groupBy { it.entity }
+        val mappings = Bindings(objects.values, model, packageOf)
         return objects.values.flatMap { it.tags }.toSortedSet().flatMap { tag ->
             resolve(objects, mappings, setOf(tag), { it.parseStatus }, false).warnings.map { warning ->
                 LoadWarning("tag-scope", warning.sourceFile, 0, 0, "${warning.code}: tag '$tag': ${warning.message}")
