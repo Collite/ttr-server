@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 import yaml
 from jsonschema import ValidationError
+from jsonschema.exceptions import best_match
 
 from docproc.kinds.noop import Noop
 from docproc.runtime.registry import KindRegistry, TypeRegistryClient, UnsupportedKind
@@ -12,6 +13,7 @@ from docproc.sdk.models import Processor
 from tests.fakes import PackManager
 
 VALID_SAMPLE = {"rate": 0.05, "floor": ["novel", "low_confidence"]}
+OPEN_KINDS = ["llm-classify", "decide", "rerank", "compile", "diff", "import", "lemmatize", "link-pick"]
 
 
 def test_all_pack_manifests_validate() -> None:
@@ -39,20 +41,66 @@ def test_sampling_is_optional_for_llm_extract_shadow_roles(llm_mentions: Process
 
 
 @pytest.mark.parametrize(
-    ("sample", "field"),
+    ("sample", "path", "validator"),
     [
-        ({"rate": 1.1, "floor": ["novel", "low_confidence"]}, "rate"),
-        ({"rate": 0.05, "floor": ["novel", "novel"]}, "floor"),
+        pytest.param({**VALID_SAMPLE, "rate": 1.1}, ["engine", "sample", "rate"], "maximum", id="rate-outside-range"),
+        pytest.param(
+            {**VALID_SAMPLE, "floor": ["novel", "novel"]},
+            ["engine", "sample", "floor"],
+            "uniqueItems",
+            id="repeated-floor",
+        ),
+        pytest.param(
+            {**VALID_SAMPLE, "floor": ["novel"]},
+            ["engine", "sample", "floor"],
+            "minItems",
+            id="floor-too-short",
+        ),
+        pytest.param(
+            {**VALID_SAMPLE, "floor": ["novel", "other"]},
+            ["engine", "sample", "floor", 1],
+            "enum",
+            id="floor-unknown",
+        ),
+        pytest.param({**VALID_SAMPLE, "rate": -0.1}, ["engine", "sample", "rate"], "minimum", id="rate-negative"),
+        pytest.param({**VALID_SAMPLE, "rate": "0.05"}, ["engine", "sample", "rate"], "type", id="rate-string"),
+        pytest.param({"floor": VALID_SAMPLE["floor"]}, ["engine", "sample"], "required", id="missing-rate"),
+        pytest.param({"rate": VALID_SAMPLE["rate"]}, ["engine", "sample"], "required", id="missing-floor"),
+        pytest.param({**VALID_SAMPLE, "extra": True}, ["engine", "sample"], "additionalProperties", id="extra-key"),
     ],
-    ids=["rate-outside-range", "repeated-floor"],
 )
-def test_invalid_sampling_values_are_refused(llm_mentions: Processor, sample: dict[str, Any], field: str) -> None:
+def test_invalid_sampling_values_are_refused(
+    llm_mentions: Processor,
+    sample: dict[str, Any],
+    path: list[str | int],
+    validator: str,
+) -> None:
     manifest = yaml.safe_load(llm_mentions.manifest_yaml)
     manifest["engine"]["sample"] = sample
     sampled = llm_mentions.model_copy(update={"manifest_yaml": yaml.safe_dump(manifest)})
     with pytest.raises(ValidationError) as error:
         KindRegistry().manifest(sampled, hosted=False)
-    assert list(error.value.absolute_path) == ["engine", "sample", field]
+    assert list(error.value.absolute_path) == path
+    assert error.value.validator == validator
+
+
+@pytest.mark.parametrize(("rate", "accepted"), [("5e-2", False), ("5.0e-2", True)])
+def test_sampling_rate_yaml_number_forms(llm_mentions: Processor, rate: str, accepted: bool) -> None:
+    engine_line = "\nengine:\n"
+    assert llm_mentions.manifest_yaml.count(engine_line) == 1
+    yaml_text = llm_mentions.manifest_yaml.replace(
+        engine_line,
+        f"{engine_line}  sample: {{rate: {rate}, floor: [novel, low_confidence]}}\n",
+    )
+    sampled = llm_mentions.model_copy(update={"manifest_yaml": yaml_text})
+    registry = KindRegistry()
+    if accepted:
+        assert registry.manifest(sampled, hosted=False)["engine"]["sample"]["rate"] == 0.05
+    else:
+        with pytest.raises(ValidationError) as error:
+            registry.manifest(sampled, hosted=False)
+        assert list(error.value.absolute_path) == ["engine", "sample", "rate"]
+        assert error.value.validator == "type"
 
 
 @pytest.mark.parametrize("role", ["primary", "residual", "retired", None])
@@ -73,16 +121,42 @@ def test_sampling_requires_explicit_shadow_role(llm_mentions: Processor, role: s
         assert list(error.value.absolute_path) == ["role"]
 
 
+@pytest.mark.parametrize("role", ["mentor", "auditor"])
+@pytest.mark.parametrize("kind", OPEN_KINDS)
+def test_sampling_is_refused_on_open_engine_kinds(llm_mentions: Processor, kind: str, role: str) -> None:
+    registry = KindRegistry()
+    manifest = yaml.safe_load(llm_mentions.manifest_yaml)
+    manifest.update(kind=kind, role=role, engine={})
+    legacy = llm_mentions.model_copy(update={"kind": kind, "manifest_yaml": yaml.safe_dump(manifest)})
+    assert registry.manifest(legacy, hosted=False)["engine"] == {}
+
+    manifest["engine"]["sample"] = VALID_SAMPLE
+    sampled = legacy.model_copy(update={"manifest_yaml": yaml.safe_dump(manifest)})
+    with pytest.raises(ValidationError) as error:
+        registry.manifest(sampled, hosted=False)
+    assert list(error.value.absolute_path) == ["kind"]
+    assert error.value.validator == "const"
+
+
 def test_sampling_is_refused_on_another_closed_engine() -> None:
     processor = next(p for p in PackManager().processors.values() if p.family == "cz-mentions")
     manifest = yaml.safe_load(processor.manifest_yaml)
     manifest["role"] = "auditor"
     manifest["engine"]["sample"] = VALID_SAMPLE
     sampled = processor.model_copy(update={"manifest_yaml": yaml.safe_dump(manifest)})
-    with pytest.raises(ValidationError) as error:
-        KindRegistry().manifest(sampled, hosted=False)
-    assert list(error.value.absolute_path) == ["engine"]
-    assert "sample" in error.value.message
+    registry = KindRegistry()
+    with pytest.raises(ValidationError):
+        registry.manifest(sampled, hosted=False)
+
+    violations = list(registry._manifest.iter_errors(manifest))
+    # The registry raises the first violation. Pin the best match from the full set.
+    preferred = best_match(violations)
+    assert preferred is not None
+    assert list(preferred.absolute_path) == ["kind"]
+    assert sorted((tuple(violation.absolute_path), violation.validator) for violation in violations) == [
+        (("engine",), "additionalProperties"),
+        (("kind",), "const"),
+    ]
 
 
 def test_wrong_host_unknown_key_and_unknown_kind_refused() -> None:
