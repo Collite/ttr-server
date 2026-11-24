@@ -24,9 +24,9 @@ import org.tatrman.ttr.metadata.source.SourceSnapshot
  * reconciler, the parse worker and `/status` treat it like an authored one. This is the legacy loader's synthesis
  * (`ParseGate` S-6) and ttr-gen's output, with the same name and SQL.
  *
- * Never silent: any other `whereFilter` form, or one on a query target, is a warning at the authored `whereFilter`; a
- * synthesized name that is already a query in the snapshot is a load error there, and the authored query and the
- * table target stay as they are.
+ * Never silent: unsupported filters, query targets, and targets shadowed by a declaration from another package
+ * produce a warning at the authored `whereFilter`. A synthesized name that collides with an existing query is a
+ * load error there, and the authored query and table target stay as they are.
  */
 internal class FilteredBindingSource(
     private val source: ModelSource,
@@ -68,12 +68,20 @@ internal fun synthesizeFilteredBindings(snapshot: SourceSnapshot): SourceSnapsho
                 warnings +=
                     at("$label: whereFilter is not applied — its target is a query, not a table or a view")
             else -> {
-                val names = if (mapping.target is MappingTarget.Table) tableNames else viewNames
-                val reference = physical.toProto()
+                val tableTarget = mapping.target is MappingTarget.Table
+                val names = if (tableTarget) tableNames else viewNames
+                val bare = physical.copy(`package` = "")
+                val declaration = if (tableTarget) snapshot.tables[bare] else snapshot.views[bare]
                 // Keep the authored target visible to scope checks when an unqualified SQL scan
                 // would read the same-name declaration from a different package.
-                val bare = reference.toBuilder().clearPackage().build()
-                if (reference != bare && names.resolve(bare) != null && names.resolve(reference) != bare) continue
+                if (physical != bare && declaration != null && names.resolve(physical.toProto()) != bare.toProto()) {
+                    warnings +=
+                        at(
+                            "$label: whereFilter is not applied — target ${physical.`package`}.${physical.dotted()} " +
+                                "is shadowed by ${bare.dotted()} in package '${packageOf(declaration.sourceFile)}'",
+                        )
+                    continue
+                }
 
                 val sql = (filter as WhereFilter.Sql).sql
                 val name =

@@ -47,6 +47,16 @@ class PackagedYamlBindingSpec :
             warning.message.contains("demo.other.db.dbo.sale") shouldBe true
         }
 
+        "a filtered binding collision warns at load even without tags" {
+            val fixture = loadBinding(filtered = true, tagTable = false, extraTable = true, tagEntity = false)
+            fixture.loadWarnings().shouldBeEmpty()
+            val warning = fixture.sourceWarnings().single { "whereFilter is not applied" in it.message }
+            warning.file.endsWith("/demo/reporting/binding.yaml") shouldBe true
+            warning.line shouldBe 10
+            warning.message.contains("package 'demo.reporting'") shouldBe true
+            warning.message.contains("demo.other.db.dbo.sale") shouldBe true
+        }
+
         "an exact table key wins when multiple declarations share the bare key" {
             val snapshot = loadBinding().snapshot()
             val table = snapshot.objectsList.single { it.contentCase == ObjectEntry.ContentCase.TABLE }
@@ -134,6 +144,8 @@ private class BindingFixture(
     private val packages: PackageIndex,
     private val files: List<LoadedFile>,
 ) {
+    fun sourceWarnings() = registry.read()!!.warnings
+
     fun loadWarnings() = TagScope.loadWarnings(registry.read()!!.model, bindingPackages(files))
 
     private val service = MetadataServiceImpl(registry, packageIndex = packages)
@@ -157,6 +169,7 @@ private fun loadBinding(
     filtered: Boolean = false,
     tagTable: Boolean = true,
     extraTable: Boolean = false,
+    tagEntity: Boolean = true,
 ): BindingFixture =
     loadYaml {
         write(
@@ -185,7 +198,7 @@ private fun loadBinding(
             ttr: "0.22"
             package: demo.reporting
             model: er
-            defs: [{kind: entity, id: ActiveSale, properties: {tags: [scope]}}]
+            defs: [{kind: entity, id: ActiveSale, properties: {tags: [${if (tagEntity) "scope" else ""}]}}]
             """,
         )
         val targetPackage = if (extraTable) "demo.other" else "demo.reporting"
@@ -248,7 +261,7 @@ private fun loadYaml(fixture: FixtureFiles.() -> Unit): BindingFixture {
             }
         val registry =
             MetadataRegistry().apply {
-                swap(loaded.model, ModelGraph.build(loaded.model), files = loaded.files)
+                swap(loaded.model, ModelGraph.build(loaded.model), loaded.warnings, files = loaded.files)
             }
         return BindingFixture(registry, packages, loaded.files)
     } finally {
