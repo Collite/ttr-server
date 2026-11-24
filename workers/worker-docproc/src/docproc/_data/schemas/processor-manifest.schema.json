@@ -331,6 +331,33 @@
             "on-prem-only"
           ]
         },
+        "sample": {
+          "additionalProperties": false,
+          "properties": {
+            "floor": {
+              "items": {
+                "enum": [
+                  "novel",
+                  "low_confidence"
+                ]
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "rate": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          "required": [
+            "rate",
+            "floor"
+          ],
+          "type": "object"
+        },
         "schema": {
           "pattern": "^types/generated/[A-Za-z.]+\\.schema\\.json$",
           "type": "string"
@@ -669,6 +696,33 @@
         },
         "required": [
           "host"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "engine": {
+            "required": [
+              "sample"
+            ]
+          }
+        },
+        "required": [
+          "engine"
+        ]
+      },
+      "then": {
+        "properties": {
+          "role": {
+            "enum": [
+              "mentor",
+              "auditor"
+            ]
+          }
+        },
+        "required": [
+          "role"
         ]
       }
     },
