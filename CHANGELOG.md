@@ -16,9 +16,13 @@ outside this repo could notice is in.
 
 ## Unreleased
 
-- **metadata 0.12.10 — YAML procedure and filter binding parity (MW S4.4p).** Core 0.22.14 preserves parsed
-  scalar procedures for lookup and export, resolves qualified table targets that share physical names, and
-  generates filtered queries in the entity's full package. Translator and plan-proto stay at 0.14.4.
+- **Package-qualified YAML bindings (MW S4.4b).** Snapshot translation resolves authored table and filter bindings
+  using their package. Tag scope includes each bound entity's generated filter query and reports mapped targets outside
+  the selected scope. Same-name declarations in another package cannot satisfy a qualified binding.
+
+- **metadata 0.12.10 — Core YAML loading update (MW S4.4p).** The grammar and metadata libraries move to Core 0.22.14.
+  The loader retains package-qualified YAML binding references and parses scalar procedure declarations.
+  The metadata service exposes procedure descriptors. Translator and plan-proto stay at 0.14.4.
 
 - **metadata 0.12.9 — GET /model/layout?tags= (MW S4.3b).** Tag sets now select a computed layout from the same
   `ResolveTags` closure as the service, with `schema=er|db` (default `er`); callers wanting both make two calls.
