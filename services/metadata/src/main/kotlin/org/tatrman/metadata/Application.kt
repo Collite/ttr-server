@@ -8,6 +8,7 @@ import org.tatrman.metadata.read.GitTemplateSource
 import org.tatrman.metadata.grpc.MetadataServiceImpl
 import org.tatrman.metadata.grpc.PackageIndex
 import org.tatrman.ttr.metadata.model.ModelDescriptor
+import org.tatrman.metadata.scope.bindingPackages
 import org.tatrman.metadata.parse.QueryParseState
 import org.tatrman.metadata.parse.QueryParseWorker
 import org.tatrman.ttr.metadata.reconcile.ModelReconciler
@@ -209,7 +210,7 @@ fun Application.module(config: Config) {
     val parseWorker = QueryParseWorker()
     registry.addListener { snapshot ->
         parseState.reset(snapshot.model.version.value, snapshot.model.queries.keys)
-        parseWorker.parseAll(snapshot.model, parseState)
+        parseWorker.parseAll(snapshot.model, parseState, snapshot.bindingPackages())
     }
 
     // CN-P5 S5.3 T4 — a pending promotion is merged once a load of the promotion source carries its def; that load's

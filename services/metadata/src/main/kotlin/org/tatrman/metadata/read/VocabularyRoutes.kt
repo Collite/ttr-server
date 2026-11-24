@@ -40,7 +40,7 @@ fun Route.vocabularyRoutes(
         }
         val snap = registry.read() ?: return@get call.respondModelNotLoaded()
         val scope =
-            TagScope.resolve(snap.model, tags, {
+            TagScope.resolve(snap, tags, {
                 parseState?.get(snap.model.version.value, it.qname)
                     ?: it.parseStatus
             })

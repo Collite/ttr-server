@@ -24,12 +24,13 @@ fun queryPathHandle(
     model: Model,
     parseStatusOf: (Query) -> ParseStatus = { it.parseStatus },
     savedQueriesAsObj: Boolean = false,
+    packageOf: (String) -> String? = { null },
 ): ModelHandle =
     SnapshotModelHandle.from(
         ModelSnapshot
             .newBuilder()
             .setModel(ModelDescriptor.newBuilder().setVersion(model.version.value))
-            .addAllObjects(snapshotObjects(model, packageOf = { null }, parseStatusOf))
+            .addAllObjects(snapshotObjects(model, packageOf, parseStatusOf))
             .build(),
         savedQueriesAsObj,
     )

@@ -105,7 +105,7 @@ private class TagLayoutCache(
         schema: String,
     ): Representation {
         fun render(): Representation {
-            val scope = TagScope.resolve(captured.model, tags)
+            val scope = TagScope.resolve(captured, tags)
             val layout = closureLayout(captured, scope.objects, schema)
             val body = LAYOUT_JSON.encodeToString(LayoutBody.serializer(), layout.body(captured.model.version.value))
             val digest = MessageDigest.getInstance("SHA-256").digest(body.toByteArray(Charsets.UTF_8))

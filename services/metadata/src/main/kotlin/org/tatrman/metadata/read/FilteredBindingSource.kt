@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package org.tatrman.metadata.read
 
+import org.tatrman.metadata.grpc.toProto
+import org.tatrman.metadata.scope.bindingPackages
+import org.tatrman.metadata.scope.bindingNames
 import org.tatrman.ttr.metadata.model.Binding
 import org.tatrman.ttr.metadata.model.Er2DbEntityMapping
 import org.tatrman.ttr.metadata.model.MappingTarget
@@ -34,6 +37,10 @@ internal class FilteredBindingSource(
 internal fun synthesizeFilteredBindings(snapshot: SourceSnapshot): SourceSnapshot {
     val filtered = snapshot.mappings.filterIsInstance<Er2DbEntityMapping>().filter { it.whereFilter != null }
     if (filtered.isEmpty()) return snapshot
+    val packageOf = bindingPackages(snapshot.loadedFiles)
+
+    val tableNames = snapshot.tables.values.bindingNames(packageOf)
+    val viewNames = snapshot.views.values.bindingNames(packageOf)
     val queries = LinkedHashMap(snapshot.queries)
     val retargeted = HashMap<Er2DbEntityMapping, Er2DbEntityMapping>()
     val warnings = mutableListOf<LoadWarning>()
@@ -61,6 +68,13 @@ internal fun synthesizeFilteredBindings(snapshot: SourceSnapshot): SourceSnapsho
                 warnings +=
                     at("$label: whereFilter is not applied — its target is a query, not a table or a view")
             else -> {
+                val names = if (mapping.target is MappingTarget.Table) tableNames else viewNames
+                val reference = physical.toProto()
+                // Keep the authored target visible to scope checks when an unqualified SQL scan
+                // would read the same-name declaration from a different package.
+                val bare = reference.toBuilder().clearPackage().build()
+                if (reference != bare && names.resolve(bare) != null && names.resolve(reference) != bare) continue
+
                 val sql = (filter as WhereFilter.Sql).sql
                 val name =
                     QualifiedName(
