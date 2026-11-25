@@ -210,15 +210,13 @@ class RunRuntime(
                 parent,
                 config.runner.workers,
                 maintenance = {
-                    withContext(Dispatchers.IO) {
-                        ledger.abandonExpiredRuns()
-                        ledger.purgeExpiredRefusalLocations()
-                    }
+                    withContext(Dispatchers.IO) { ledger.abandonExpiredRuns() }
                     try {
                         sessions.reapAbandoned()
                     } finally {
                         sweeper.sweep()
                     }
+                    withContext(Dispatchers.IO) { ledger.purgeExpiredRefusalLocations() }
                 },
             )
     }

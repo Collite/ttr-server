@@ -533,6 +533,7 @@ private class RuntimeFixture(
                     },
             )
         }
+        every { ledger.purgeExpiredRefusalLocations() } returns Unit
         every { ledger.abandonExpiredRuns(any()) } answers {
             beforeSweep()
             emptyList()
