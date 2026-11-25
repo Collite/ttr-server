@@ -288,6 +288,28 @@ class GuardsSpec :
                 }
             }
         }
+        "competing refusals replay the same first failure from the guard latch" {
+            val checks = Guards(guardContext().copy(readCeiling = 1))
+            val start = CompletableDeferred<Unit>()
+            val failures =
+                coroutineScope {
+                    listOf(
+                        async(Dispatchers.Default) {
+                            start.await()
+                            shouldThrow<AutomationException> { checks.ceiling("candidates", table()) }
+                        },
+                        async(Dispatchers.Default) {
+                            start.await()
+                            shouldThrow<AutomationException> {
+                                checks.read("context", ReadResult(table(), setOf("security_predicate_applied")))
+                            }
+                        },
+                    ).also { start.complete(Unit) }.awaitAll()
+                }
+            failures[0] shouldBe failures[1]
+            shouldThrow<AutomationException> { checks.ensureAllowed() } shouldBe failures[0]
+        }
+
         "a concurrent successful read cannot stage after another read has refused" {
             val entered = CompletableDeferred<Unit>()
             val finish = CompletableDeferred<Unit>()

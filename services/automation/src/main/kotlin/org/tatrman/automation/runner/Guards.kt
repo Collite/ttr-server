@@ -7,6 +7,7 @@ import kotlinx.serialization.json.put
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import java.math.BigDecimal
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
@@ -17,6 +18,13 @@ data class GuardResult(
     val island: String,
     val status: String,
 )
+
+/** Only the pinned executor can attach a manifest island to the public refusal. */
+internal class LocatedGuardRefusal(
+    val runId: UUID,
+    val island: String,
+    refusal: AutomationException,
+) : AutomationException(refusal.code, refusal.message ?: refusal.code.code, refusal.detail)
 
 /**
  * Run-local decision safety (D-92/D-94, REC-004). Guard each governed read BEFORE loading or staging it, then
@@ -162,7 +170,15 @@ class Guards(
         island: String,
     ): Nothing {
         record(exception.code.code, island, "refused")
-        failure.compareAndSet(null, exception)
+        val refusal =
+            if (context.recipe.manifest.islands
+                    .any { it.name == island }
+            ) {
+                LocatedGuardRefusal(context.id, island, exception)
+            } else {
+                exception
+            }
+        failure.compareAndSet(null, refusal)
         throw failure.get()!!
     }
 }

@@ -90,6 +90,7 @@ object Runs : Table("automation.runs") {
     /** `recipe · query · perform` (V10, S3.1). */
     val kind = text("kind")
     val error = json("error").nullable()
+    val refusedIsland = text("refused_island").nullable()
 
     /** D-150/D-159 (V11, S3.2): what an engine-run open carries; null on every other run. */
     val engineInstanceId = text("engine_instance_id").nullable()

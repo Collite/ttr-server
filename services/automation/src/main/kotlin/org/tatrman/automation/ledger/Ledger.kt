@@ -34,6 +34,8 @@ import org.jetbrains.exposed.v1.jdbc.update
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.runner.EvaluationResult
+import org.tatrman.automation.runner.GuardResult
+import org.tatrman.automation.runner.LocatedGuardRefusal
 import org.tatrman.automation.runner.RunProgress
 import org.tatrman.automation.runner.RunFingerprints
 import org.tatrman.automation.runner.RunBatch
@@ -272,6 +274,7 @@ data class HeldDecision(
 class Ledger(
     private val defaultBudget: Duration,
     private val clock: Clock = Clock.systemUTC(),
+    private val protocolHistory: Duration = Duration.ofDays(400),
     private val abandoned: (recipe: String) -> Unit = {},
 ) {
     /**
@@ -390,11 +393,18 @@ class Ledger(
         runId: UUID,
         error: JsonElement? = null,
         protocol: Boolean = false,
+    ): Boolean = recordFailure(runId, error ?: JsonObject(mapOf("code" to JsonPrimitive("internal"))), protocol)
+
+    private fun recordFailure(
+        runId: UUID,
+        error: JsonElement,
+        protocol: Boolean,
+        refusedIsland: String? = null,
     ): Boolean {
         outermost("failActiveRun")
-        // READ COMMITTED (see [appendProtocol]): the UPDATE holds the run row, so the entry's seq cannot clash.
+        // The conditional UPDATE locks the run and selects the first terminal outcome. Suppression and the
+        // location update share its transaction, so an observer sees either all of that failure or none of it.
         return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
-            val stored = error ?: JsonObject(mapOf("code" to JsonPrimitive("internal")))
             val now = clock.instant().utc()
             val failed =
                 Runs.update({
@@ -406,15 +416,18 @@ class Ledger(
                 }) {
                     it[status] = RunStatus.FAILED.wire
                     it[endedAt] = now
-                    it[Runs.error] = stored
+                    it[Runs.error] = error
                 } == 1
+            if (failed && refusedIsland != null && !onRouteSilent(runId)) {
+                Runs.update({ Runs.id eq runId }) { it[Runs.refusedIsland] = refusedIsland }
+            }
             if (failed && protocol && !isSealed(runId)) {
                 val entry =
                     JsonObject(
                         mapOf(
                             "event" to JsonPrimitive("failed"),
                             "status" to JsonPrimitive(RunStatus.FAILED.wire),
-                            "error" to stored,
+                            "error" to error,
                         ),
                     )
                 insertProtocol(runId, ProtocolSection.AUTOMATION, entry, now)
@@ -432,11 +445,11 @@ class Ledger(
         runId: UUID,
         cause: Exception,
     ) {
-        val refusal = cause as? org.tatrman.automation.api.AutomationException
+        val refusal = cause as? AutomationException
         val code = refusal?.code?.code ?: "internal"
         val detail =
             refusal
-                ?.takeIf { it.code == org.tatrman.automation.api.ErrorCode.PREVIEW_UNSUPPORTED }
+                ?.takeIf { it.code == ErrorCode.PREVIEW_UNSUPPORTED }
                 ?.detail as? JsonObject
         val error =
             JsonObject(
@@ -445,7 +458,26 @@ class Ledger(
                     detail?.let { put("detail", it) }
                 },
             )
-        failActiveRun(runId, error, protocol = detail != null)
+        val island = (refusal as? LocatedGuardRefusal)?.takeIf { it.runId == runId }?.island
+        recordFailure(runId, error, protocol = detail != null, refusedIsland = island)
+    }
+
+    /** Remove only expired refusal locations. The run and public error code remain available. */
+    fun purgeExpiredRefusalLocations() {
+        outermost("purgeExpiredRefusalLocations")
+        transaction {
+            exec(
+                """
+                WITH expired AS (
+                    SELECT id FROM automation.runs
+                    WHERE refused_island IS NOT NULL AND ended_at <= ?::timestamptz
+                    ORDER BY ended_at, id LIMIT 100 FOR UPDATE SKIP LOCKED
+                )
+                UPDATE automation.runs SET refused_island = NULL FROM expired WHERE runs.id = expired.id
+                """.trimIndent(),
+                listOf(TextColumnType() to clock.instant().minus(protocolHistory).toString()),
+            )
+        }
     }
 
     /**
@@ -2084,6 +2116,18 @@ class Ledger(
                 decisions.singleOrNull()?.let {
                     DECISION_JSON.decodeFromJsonElement<EvaluationResult>(it[RunProtocol.payload])
                 }
+            val guards = result?.guards.orEmpty()
+            val error = row[Runs.error]
+            val refused =
+                row[Runs.refusedIsland]?.let { island ->
+                    val code = ((error as? JsonObject)?.get("code") as? JsonPrimitive)?.content
+                    val endedAt = row[Runs.endedAt]?.toInstant()
+                    if (code != null && endedAt != null && endedAt.plus(protocolHistory).isAfter(clock.instant())) {
+                        GuardResult(code, island, "refused")
+                    } else {
+                        null
+                    }
+                }
             // S3.5 (contract 4): per held row, its group and decision; the batch's undecided held rows. review-354 F7:
             // only the held rows are read (the partial index `batch_rows_held`); an unheld batch reads none.
             val heldRows = row[Runs.batchId]?.let(::heldRows).orEmpty()
@@ -2106,7 +2150,12 @@ class Ledger(
                         DECISION_JSON.decodeFromJsonElement<org.tatrman.automation.runner.AnswerOutcome>(it)
                     },
                 verdict = result?.verdict,
-                guards = result?.guards.orEmpty(),
+                guards =
+                    if (refused == null) {
+                        guards
+                    } else {
+                        guards.filterNot { it.code == refused.code && it.island == refused.island } + refused
+                    },
                 warnings = result?.warnings.orEmpty(),
                 mode = result?.mode,
                 protocolRef = row[Runs.protocolRef] ?: "/automation/runs/$runId/protocol",
@@ -2129,7 +2178,7 @@ class Ledger(
                 replayOf = row[Runs.replayOf]?.toString(),
                 startedAt = row[Runs.startedAt].toInstant().toString(),
                 endedAt = row[Runs.endedAt]?.toInstant()?.toString(),
-                error = row[Runs.error],
+                error = error,
                 batch = batch,
                 actions =
                     previewActions(runId).map { action ->

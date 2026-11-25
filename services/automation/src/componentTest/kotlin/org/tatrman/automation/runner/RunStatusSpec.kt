@@ -6,12 +6,15 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.MutableClock
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
 import org.tatrman.automation.ledger.*
 import java.time.Duration
 import java.time.Instant
@@ -60,6 +63,12 @@ class RunStatusSpec :
                     replayOf = replayOf,
                 ),
             ).runId
+
+        fun located(
+            id: UUID,
+            island: String = "orders",
+            code: ErrorCode = ErrorCode.RESTRICTED_VIEW,
+        ) = LocatedGuardRefusal(id, island, AutomationException(code, "private failure detail"))
 
         "status reconstructs the pinned metadata and exact decision after restart and expiry" {
             val original = ledger.claimRun(RunOpen("original")).runId
@@ -169,6 +178,95 @@ class RunStatusSpec :
                 view.endedAt shouldBe if (state.terminal) clock.instant().toString() else null
                 clock.now = now
             }
+        }
+
+        "unlocated and legacy refusals retain only their run-level error code" {
+            val current = open()
+            ledger.failExecution(
+                current,
+                AutomationException(
+                    ErrorCode.RESTRICTED_VIEW,
+                    "unscoped failure",
+                    buildJsonObject { put("island", "orders") },
+                ),
+            )
+            val legacy = open()
+            val error = buildJsonObject { put("code", "restricted-view") }
+            ledger.markStatus(legacy, RunStatus.FAILED, error)
+
+            val reader = Ledger(Duration.ofMinutes(30), clock)
+            for (id in listOf(current, legacy)) {
+                val run = reader.readRunProgress(id, "subject-1")
+                run.status shouldBe "failed"
+                run.error shouldBe error
+                run.guards shouldBe emptyList()
+            }
+        }
+
+        "the first committed failure fixes both its public code and its refusing island" {
+            val id = open()
+            val first = located(id)
+            val retry = located(id, "balances", ErrorCode.CANDIDATES_TRUNCATED)
+            ledger.failExecution(id, first)
+            val reader = Ledger(Duration.ofMinutes(30), clock)
+            val failed = reader.readRunProgress(id, "subject-1")
+            failed.error shouldBe buildJsonObject { put("code", "restricted-view") }
+            failed.guards shouldBe listOf(GuardResult("restricted-view", "orders", "refused"))
+            clock.now = now.plusSeconds(10)
+            ledger.failExecution(id, retry)
+            reader.readRunProgress(id, "subject-1") shouldBe failed
+
+            val unrelated = open()
+            ledger.failExecution(unrelated, first)
+            reader.readRunProgress(unrelated, "subject-1").guards shouldBe emptyList()
+        }
+
+        "refusal location expires at the configured horizon from terminal time and is removed by maintenance" {
+            val duration = Duration.ofDays(7)
+            val history = Ledger(Duration.ofMinutes(30), clock, protocolHistory = duration)
+            val id = open()
+            clock.now = now.plusSeconds(30)
+            val terminal = clock.now
+            history.failExecution(id, located(id))
+            clock.now = terminal.plus(duration).minusSeconds(1)
+            history.purgeExpiredRefusalLocations()
+            history.readRunProgress(id, "subject-1").guards shouldBe
+                listOf(GuardResult("restricted-view", "orders", "refused"))
+            clock.now = terminal.plus(duration)
+            val expired = history.readRunProgress(id, "subject-1")
+            expired.guards shouldBe emptyList()
+            expired.error shouldBe buildJsonObject { put("code", "restricted-view") }
+            transaction { Runs.selectAll().single()[Runs.refusedIsland] shouldBe "orders" }
+            history.purgeExpiredRefusalLocations()
+            transaction { Runs.selectAll().single()[Runs.refusedIsland] shouldBe null }
+            history.readRunProgress(id, "subject-1") shouldBe expired
+        }
+
+        "on_route suppresses the refusal location only with a recorded silent verdict" {
+            val silentRoutes = mapOf("none" to RouteSummary(1, "arrow:none"), "hold" to RouteSummary(0, "arrow:held"))
+            for (routes in listOf(null, silentRoutes, result.verdict.routes)) {
+                val id = open()
+                ledger.appendProtocol(id, ProtocolSection.AUTOMATION, buildJsonObject { put("protocol", "on_route") })
+                if (routes != null) ledger.completeEvaluation(id, result.copy(verdict = VerdictSummary(routes, 0)))
+                ledger.failExecution(id, located(id))
+                val refused = ledger.readRunProgress(id, "subject-1").guards.filter { it.status == "refused" }
+                val silent = routes != null && routes.getValue("hold").rowCount == 0L
+                refused shouldBe
+                    if (silent) emptyList() else listOf(GuardResult("restricted-view", "orders", "refused"))
+                transaction {
+                    Runs.selectAll().where { Runs.id eq id }.single()[Runs.refusedIsland] shouldBe
+                        if (silent) null else "orders"
+                }
+            }
+        }
+
+        "deleting the parent run removes its refusal location" {
+            val id = open()
+            ledger.failExecution(id, located(id))
+            ledger.readRunProgress(id, "subject-1").guards shouldBe
+                listOf(GuardResult("restricted-view", "orders", "refused"))
+            transaction { Runs.deleteWhere { Runs.id eq id } shouldBe 1 }
+            shouldThrow<NoSuchRun> { ledger.readRunProgress(id, "subject-1") }
         }
 
         "unknown handles, other subjects, reused principals and legacy rows refuse the same way" {
