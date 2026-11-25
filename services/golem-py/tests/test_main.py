@@ -2,8 +2,7 @@
 """OL W1c·S3·T3 — the CLI takes the lane's settings, checks them before the turn, and
 `--json` prints the envelope.
 
-No network: the live clients are constructed (which opens no channel) but never called, and
-the one end-to-end turn here runs over the recorded fakes of the lane spec.
+The live resolver client can use a loopback stub. The lane runs over the recorded fakes.
 """
 
 from __future__ import annotations
@@ -14,16 +13,21 @@ import io
 import json
 import os
 import tarfile
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
+from unittest.mock import Mock
 
 import pytest
 import zstandard
+from org.tatrman.resolver.v1 import resolver_pb2, resolver_pb2_grpc
 
 import main
+from golem_py import deps as deps_module
 from golem_py.door_client import LiveSqlDoor
 from golem_py.errors import ConfigInvalid
+from golem_py.gate_client import lattice_to_proto
 from golem_py.graph import run_turn
 from golem_py.ladder import load_default
 from golem_py.lane import lane_on
@@ -33,11 +37,14 @@ from golem_py.outputs import Answer, RefusalWithGaps
 from golem_py.query_client import QueryResult, sql_sha256
 from golem_py.settings import GolemSettings
 from golem_py.skills import LayeredSkillLibrary
+from tests.grpc_fakes import serve
 from tests.helpers import RecordedCore, deps, h1_lattice
 from tests.lattice_fixtures import lattice_golden
 from tests.test_llm_lane import (
+    COVERED_SQL,
     PERIOD,
     PERIOD_SQL,
+    ROWS,
     SUBJECT,
     FakeDoor,
     FakeGateway,
@@ -358,6 +365,53 @@ def _archive(path: Path, library: object, member: str = "docs/operator-library.j
         tar.addfile(info, io.BytesIO(raw))
     path.write_bytes(zstandard.ZstdCompressor().compress(buf.getvalue()))
     return path
+
+
+async def test_cli_shares_one_utc_reference_between_resolver_and_lane(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    instant = datetime(2026, 11, 30, 23, 59, 59, tzinfo=UTC)
+    clock = Mock()
+    clock.now.return_value = instant
+    monkeypatch.setattr(main, "datetime", clock, raising=False)
+    monkeypatch.setattr(deps_module, "datetime", clock)
+
+    lattice = period_lattice()
+    requests: list[Any] = []
+
+    class Resolver(resolver_pb2_grpc.ResolverServiceServicer):  # type: ignore[misc]
+        async def Resolve(self, request: Any, context: Any) -> Any:  # noqa: N802
+            requests.append(request)
+            clock.now.return_value = instant + timedelta(seconds=2)
+            return resolver_pb2.ResolveResponse(resolution_state=lattice_to_proto(lattice))
+
+    library = _archive(
+        tmp_path / "lexicon.tar.zst", json.loads(LIBRARY.read_text(encoding="utf-8"))
+    )
+    _settings(monkeypatch, **LANE_ENV, GOLEM_LEXICON_ARCHIVE_PATHS=str(library))
+    gateway = FakeGateway(reply(COVERED_SQL))
+    monkeypatch.setattr(main, "LiveLlmGateway", lambda *args, **kwargs: gateway)
+    monkeypatch.setattr(main, "LiveSqlDoor", lambda *args, **kwargs: FakeDoor(ROWS))
+    monkeypatch.setattr(main, "LiveModelSlice", lambda *args, **kwargs: FakeSlice())
+
+    resolver = Resolver()
+
+    def register(server: Any) -> None:
+        resolver_pb2_grpc.add_ResolverServiceServicer_to_server(resolver, server)
+
+    async with serve(register) as target:
+        args = main._parse_args(
+            ["--core", target, "--question", lattice.question, "--subject", SUBJECT, "--json"]
+        )
+        assert await main._run(args) == 0
+
+    (request,) = requests
+    assert request.context.reference_datetime == "2026-11-30T23:59:59+00:00"
+    assert request.caller_subject == SUBJECT
+    assert json.loads(capsys.readouterr().out)["type"] == "Answer"
+    (call,) = gateway.calls
+    assert "reference date (today, for relative periods): 2026-11-30" in str(call["prompt"])
+    clock.now.assert_called_once_with(UTC)
 
 
 def _cli_skills(monkeypatch: pytest.MonkeyPatch, **env: str) -> LayeredSkillLibrary:

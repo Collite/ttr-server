@@ -126,5 +126,8 @@ scoring input, never a source.
   - This directory's own code and tests, and the installed `httpx` package's behaviour.
 
   The live probes of bp-dsk's gateway used a throwaway script and then this directory's own client.
+- **2026-11-25 · OL W1c·S3b caller-time prerequisite.** Clean-room observed. Consulted the
+  OL contract and planner ruling, this directory's code and tests, the resolver wire schema,
+  the open grounding corpus, and read-only resolver output.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.
