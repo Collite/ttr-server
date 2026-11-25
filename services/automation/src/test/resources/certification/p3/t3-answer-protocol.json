@@ -1,0 +1,78 @@
+{
+  "run": "58518f84-8952-4dea-9e45-a9faa91262d2",
+  "sections": {
+    "automation": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T16:30:40.595155Z",
+        "payload": {
+          "kind": "answer",
+          "port": {
+            "at": "2026-11-20T16:30:40.525Z",
+            "key": {
+              "order_number": 200117739
+            }
+          },
+          "event": "opened",
+          "caller": "process-engine",
+          "engine": {
+            "taskId": "1b20fe8d-e4fa-11f1-942b-7e60a2870a34",
+            "answeredBy": "approver",
+            "instanceId": "16ce6cf7-e4fa-11f1-942b-7e60a2870a34",
+            "businessKey": "200117739",
+            "deploymentId": "99ca2f8d-e435-11f1-942b-7e60a2870a34",
+            "personVerified": true
+          },
+          "origin": "engine",
+          "recipe": "release_order",
+          "original": "fd993033-b7eb-45db-9ed5-927ee38db53b",
+          "deployment": "release_event_cz"
+        }
+      }
+    ],
+    "islands": [],
+    "decision": [],
+    "actions": [],
+    "writes": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T16:30:40.699070Z",
+        "payload": {
+          "by": "approver",
+          "key": {
+            "order_number": 200117739
+          },
+          "batch": "f4fa3454-16f8-3176-972f-91fdccb324da",
+          "answer": true,
+          "applied": 1,
+          "skipped": 0,
+          "unknown": 0,
+          "decision": "commit",
+          "original": "fd993033-b7eb-45db-9ed5-927ee38db53b"
+        }
+      }
+    ],
+    "people": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T16:30:40.595155Z",
+        "payload": {
+          "event": "identity",
+          "source": "engine:history/task",
+          "taskId": "1b20fe8d-e4fa-11f1-942b-7e60a2870a34",
+          "history": {
+            "endTime": null,
+            "assignee": "approver"
+          },
+          "asserted": "approver",
+          "verified": true,
+          "instanceId": "16ce6cf7-e4fa-11f1-942b-7e60a2870a34"
+        }
+      }
+    ],
+    "turns": [],
+    "signals": [],
+    "receipts": []
+  },
+  "schema": "protocol/v1"
+}

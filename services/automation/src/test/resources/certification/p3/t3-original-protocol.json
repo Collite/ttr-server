@@ -1,0 +1,625 @@
+{
+  "run": "fd993033-b7eb-45db-9ed5-927ee38db53b",
+  "sections": {
+    "automation": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T15:50:20.145651Z",
+        "payload": {
+          "fps": {
+            "text": "sha256:c64489baf6cefe99e3ba1f8ce952049ead8ecbd3c7015fdf3656333ec1c26121",
+            "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
+            "program": "sha256:32c22a386226df67be62fd15443fdfdddcc4c9285aa3c2eb4d631939e759a822",
+            "deployment": "sha256:d5516d0545f139614b1dd47182ae3d6f968229b6e6b21e69b7844d1d13ef23c8"
+          },
+          "asOf": "2026-11-02T07:50:00Z",
+          "port": {
+            "at": "2026-11-02T08:50:00+01:00",
+            "key": {
+              "order_number": 200117739
+            }
+          },
+          "event": "opened",
+          "runAs": "svc-hartland-automation",
+          "author": "operator",
+          "bundle": "served:master@4f56e5277c50",
+          "caller": "process-engine",
+          "dryRun": false,
+          "engine": {
+            "instanceId": "16ce6cf7-e4fa-11f1-942b-7e60a2870a34",
+            "businessKey": "200117739",
+            "deploymentId": "99ca2f8d-e435-11f1-942b-7e60a2870a34"
+          },
+          "origin": "engine",
+          "recipe": "release_order",
+          "modelFp": "sha256:db5dca69bcb739a2063f003fa6a67c3d302c6e9a064386f18aa6c7d26e9a3f4a",
+          "program": "release_on_placement_cz",
+          "approvals": "required",
+          "deployment": "release_event_cz",
+          "detailLimit": 200,
+          "readCeiling": 100000,
+          "budgetSyncMs": 60000,
+          "detailLimits": {
+            "hold_ar": 200,
+            "hold_sales": 200
+          },
+          "budgetBatchMs": 1800000,
+          "allowRestrictedView": false
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-20T15:50:27.051846Z",
+        "payload": {
+          "batch": "f4fa3454-16f8-3176-972f-91fdccb324da",
+          "event": "closed",
+          "dryRun": false,
+          "status": "closed"
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-20T15:50:27.051846Z",
+        "payload": {
+          "sealed": true
+        }
+      }
+    ],
+    "islands": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T15:50:20.217158Z",
+        "payload": {
+          "kind": "output",
+          "name": "placed_orders",
+          "port": "orders",
+          "rows": 1,
+          "bytes": 1160,
+          "engine": "query",
+          "params": {
+            "_au_port_0_0": {
+              "type": "int",
+              "value": 200117739
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/placed_orders.orders.sql",
+          "durationMs": 43
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-20T15:50:21.567524Z",
+        "payload": {
+          "kind": "output",
+          "name": "shortfall",
+          "port": "rows",
+          "rows": 0,
+          "bytes": 944,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T07:50:00Z"
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/shortfall.rows.sql",
+          "durationMs": 1323
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-20T15:50:21.699318Z",
+        "payload": {
+          "kind": "output",
+          "name": "price_differences",
+          "port": "rows",
+          "rows": 0,
+          "bytes": 744,
+          "engine": "query",
+          "params": {
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/price_differences.rows.sql",
+          "durationMs": 109
+        }
+      },
+      {
+        "seq": 4,
+        "at": "2026-11-20T15:50:21.818825Z",
+        "payload": {
+          "kind": "output",
+          "name": "overdue",
+          "port": "rows",
+          "rows": 0,
+          "bytes": 632,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T07:50:00Z"
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/overdue.rows.sql",
+          "durationMs": 95
+        }
+      },
+      {
+        "seq": 5,
+        "at": "2026-11-20T15:50:22.365550Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_ar.overdue",
+          "rows": 0,
+          "bytes": 968,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T07:50:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_ar.overdue.sql",
+          "durationMs": 503
+        }
+      },
+      {
+        "seq": 6,
+        "at": "2026-11-20T15:50:23.870657Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_ar",
+          "rows": 0,
+          "bytes": 1552,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T07:50:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_ar.sql",
+          "durationMs": 2012
+        }
+      },
+      {
+        "seq": 7,
+        "at": "2026-11-20T15:50:23.885831Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales",
+          "rows": 0,
+          "bytes": 1552,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T07:50:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.sql",
+          "durationMs": 2024
+        }
+      },
+      {
+        "seq": 8,
+        "at": "2026-11-20T15:50:23.980664Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "release_confirmed",
+          "rows": 1,
+          "bytes": 1888,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T07:50:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            },
+            "confirmation_threshold": {
+              "type": "decimal",
+              "value": 1250000
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.release_confirmed.sql",
+          "durationMs": 2121
+        }
+      },
+      {
+        "seq": 9,
+        "at": "2026-11-20T15:50:24.624612Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales.price_differences",
+          "rows": 0,
+          "bytes": 1080,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T07:50:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.price_differences.sql",
+          "durationMs": 2765
+        }
+      },
+      {
+        "seq": 10,
+        "at": "2026-11-20T15:50:25.449648Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "release",
+          "rows": 0,
+          "bytes": 1552,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T07:50:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            },
+            "confirmation_threshold": {
+              "type": "decimal",
+              "value": 1250000
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.release.sql",
+          "durationMs": 3591
+        }
+      },
+      {
+        "seq": 11,
+        "at": "2026-11-20T15:50:26.563476Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales.shortfall",
+          "rows": 0,
+          "bytes": 1280,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T07:50:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.shortfall.sql",
+          "durationMs": 4704
+        }
+      }
+    ],
+    "decision": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T15:50:26.866980Z",
+        "payload": {
+          "mode": "overlapping",
+          "guards": [
+            {
+              "code": "candidates-truncated",
+              "island": "overdue",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "overdue",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "overdue",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "duplicate-key",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "placed_orders",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "price_differences",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "price_differences",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "price_differences",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "shortfall",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "shortfall",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "shortfall",
+              "status": "passed"
+            },
+            {
+              "code": "candidates-truncated",
+              "island": "verdict",
+              "status": "passed"
+            },
+            {
+              "code": "out-of-scope-read",
+              "island": "verdict",
+              "status": "passed"
+            },
+            {
+              "code": "restricted-view",
+              "island": "verdict",
+              "status": "passed"
+            }
+          ],
+          "verdict": {
+            "none": 0,
+            "routes": {
+              "hold_ar": {
+                "ref": "/automation/runs/fd993033-b7eb-45db-9ed5-927ee38db53b/outputs/verdict.hold_ar",
+                "detail": {
+                  "overdue": "/automation/runs/fd993033-b7eb-45db-9ed5-927ee38db53b/routes/hold_ar/details/overdue"
+                },
+                "rowCount": 0
+              },
+              "release": {
+                "ref": "/automation/runs/fd993033-b7eb-45db-9ed5-927ee38db53b/outputs/verdict.release",
+                "rowCount": 0
+              },
+              "hold_sales": {
+                "ref": "/automation/runs/fd993033-b7eb-45db-9ed5-927ee38db53b/outputs/verdict.hold_sales",
+                "detail": {
+                  "shortfall": "/automation/runs/fd993033-b7eb-45db-9ed5-927ee38db53b/routes/hold_sales/details/shortfall",
+                  "price_differences": "/automation/runs/fd993033-b7eb-45db-9ed5-927ee38db53b/routes/hold_sales/details/price_differences"
+                },
+                "rowCount": 0
+              },
+              "release_confirmed": {
+                "ref": "/automation/runs/fd993033-b7eb-45db-9ed5-927ee38db53b/outputs/verdict.release_confirmed",
+                "rowCount": 1
+              }
+            }
+          }
+        }
+      }
+    ],
+    "actions": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T15:50:26.864137Z",
+        "payload": {
+          "key": {
+            "order_number": 200117739
+          },
+          "sink": "transition",
+          "event": "preview",
+          "route": "release_confirmed",
+          "would": "would ask the sales manager to confirm the release of 200117739 (1500970.48)",
+          "action": "release_confirmed",
+          "dryRun": false,
+          "arguments": {
+            "due": {
+              "unit": "working_days",
+              "amount": 2
+            },
+            "order": 200117739,
+            "value": 1500970.48
+          },
+          "batchRows": [
+            2
+          ]
+        }
+      }
+    ],
+    "writes": [
+      {
+        "seq": 1,
+        "at": "2026-11-20T15:50:26.864137Z",
+        "payload": {
+          "rows": 4,
+          "batch": "f4fa3454-16f8-3176-972f-91fdccb324da",
+          "state": "preview",
+          "entities": {
+            "er.entity.order": 1,
+            "er.entity.release_order_verdict": 1,
+            "er.entity.release_order_verdict_current": 2
+          }
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-20T15:50:27.051846Z",
+        "payload": {
+          "held": 1,
+          "rows": 4,
+          "batch": "f4fa3454-16f8-3176-972f-91fdccb324da",
+          "event": "closed",
+          "state": "held",
+          "failed": 0,
+          "groups": 1,
+          "applied": 3,
+          "history": {
+            "failed": 0,
+            "applied": 0,
+            "unknown": 0
+          },
+          "settled": 0,
+          "skipped": 0,
+          "unknown": 0,
+          "entities": {
+            "er.entity.release_order_verdict": {
+              "failed": 0,
+              "applied": 1,
+              "history": {
+                "failed": 0,
+                "applied": 0,
+                "unknown": 0
+              },
+              "skipped": 0,
+              "unknown": 0
+            },
+            "er.entity.release_order_verdict_current": {
+              "failed": 0,
+              "applied": 2,
+              "history": {
+                "failed": 0,
+                "applied": 0,
+                "unknown": 0
+              },
+              "skipped": 0,
+              "unknown": 0
+            }
+          },
+          "reconciled": 0,
+          "staleState": 0
+        }
+      }
+    ],
+    "people": [],
+    "turns": [],
+    "signals": [],
+    "receipts": []
+  },
+  "schema": "protocol/v1"
+}

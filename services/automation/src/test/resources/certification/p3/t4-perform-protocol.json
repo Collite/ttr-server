@@ -1,0 +1,151 @@
+{
+  "run": "bdcb08a2-2413-4989-a356-f50473f02910",
+  "sections": {
+    "automation": [
+      {
+        "seq": 1,
+        "at": "2026-11-24T17:51:10.595071Z",
+        "payload": {
+          "key": {
+            "order": 219990303
+          },
+          "kind": "perform",
+          "runAs": "svc-hartland-automation",
+          "action": "hold",
+          "bundle": "served:master@4fab126e5285",
+          "caller": "process-engine",
+          "engine": {
+            "taskId": "51923853-e82f-11f1-86d7-c23630ba32e0",
+            "instanceId": "4904951f-e82f-11f1-86d7-c23630ba32e0",
+            "businessKey": "219990303",
+            "deploymentId": "42d92ac1-e759-11f1-86d7-c23630ba32e0"
+          },
+          "expiry": {
+            "key": {
+              "order_number": 219990303
+            },
+            "action": "release_confirmed",
+            "source": "engine:history",
+            "taskId": "51923853-e82f-11f1-86d7-c23630ba32e0",
+            "instanceId": "4904951f-e82f-11f1-86d7-c23630ba32e0",
+            "timerEndedAt": "2026-11-24T17:51:10.515Z",
+            "originalRunId": "60d2b3d5-7f8f-470a-872e-6f9dcfa94b90",
+            "timerActivityId": "s41_release_confirmed_lapsed",
+            "timerOccurrenceId": "a20e50cd-e82f-11f1-86d7-c23630ba32e0"
+          },
+          "params": {
+            "department": "Sales"
+          },
+          "recipe": "release_order",
+          "modelFp": "sha256:db5dca69bcb739a2063f003fa6a67c3d302c6e9a064386f18aa6c7d26e9a3f4a",
+          "deployment": "release_event_cz"
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-24T17:51:10.680224Z",
+        "payload": {
+          "sealed": true
+        }
+      }
+    ],
+    "islands": [],
+    "decision": [],
+    "actions": [],
+    "writes": [
+      {
+        "seq": 1,
+        "at": "2026-11-24T17:51:10.601412Z",
+        "payload": {
+          "seqs": [
+            1,
+            2
+          ],
+          "event": "begin",
+          "request": "4dbac2df-653d-4770-bf67-e378e3d9bb3a"
+        }
+      },
+      {
+        "seq": 2,
+        "at": "2026-11-24T17:51:10.636319Z",
+        "payload": {
+          "rows": [
+            {
+              "seq": 1,
+              "error": null,
+              "prior": {
+                "state": "placed",
+                "held_for": null
+              },
+              "status": "applied"
+            },
+            {
+              "seq": 2,
+              "error": null,
+              "prior": {
+                "state": "placed",
+                "held_for": null
+              },
+              "status": "applied",
+              "history": "pending",
+              "committedAt": "2026-11-24T17:51:10.635209798Z"
+            }
+          ],
+          "event": "outcome"
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-24T17:51:10.677550Z",
+        "payload": {
+          "rows": [
+            {
+              "seq": 2,
+              "error": null,
+              "prior": {
+                "state": "placed",
+                "held_for": null
+              },
+              "status": "applied",
+              "history": "applied",
+              "committedAt": "2026-11-24T17:51:10.635209798Z"
+            }
+          ],
+          "event": "outcome"
+        }
+      },
+      {
+        "seq": 4,
+        "at": "2026-11-24T17:51:10.680224Z",
+        "payload": {
+          "key": {
+            "order": 219990303
+          },
+          "rows": [
+            {
+              "op": "update",
+              "seq": 1,
+              "entity": "er.entity.order",
+              "status": "applied"
+            },
+            {
+              "op": "transition",
+              "seq": 2,
+              "entity": "er.entity.order",
+              "status": "applied",
+              "history": "applied"
+            }
+          ],
+          "event": "performed",
+          "action": "hold",
+          "outcome": "applied"
+        }
+      }
+    ],
+    "people": [],
+    "turns": [],
+    "signals": [],
+    "receipts": []
+  },
+  "schema": "protocol/v1"
+}

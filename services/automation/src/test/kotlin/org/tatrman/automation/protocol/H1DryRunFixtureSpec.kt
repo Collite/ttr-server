@@ -6,7 +6,6 @@ import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
-import java.time.Instant
 
 /**
  * P1X: the complete sealed protocol from bp-dsk run c75844a1 (automation 0.11.35).
@@ -21,19 +20,7 @@ class H1DryRunFixtureSpec :
         val document = Json.decodeFromString<ProtocolDocument>(text)
 
         "the live H-1 protocol reads as protocol/v1 with nine ordered sections and complete sequences" {
-            document.schema shouldBe "protocol/v1"
-            document.sections.keys.toList() shouldBe
-                listOf(
-                    "automation",
-                    "islands",
-                    "decision",
-                    "actions",
-                    "writes",
-                    "people",
-                    "turns",
-                    "signals",
-                    "receipts",
-                )
+            document.assertSealedFixture()
             document.sections.mapValues { (_, entries) -> entries.size } shouldBe
                 linkedMapOf(
                     "automation" to 3,
@@ -46,13 +33,9 @@ class H1DryRunFixtureSpec :
                     "signals" to 0,
                     "receipts" to 0,
                 )
-            document.sections.values.forEach { entries ->
-                entries.map { it.seq } shouldBe (1..entries.size).toList()
-                entries.forEach { Instant.parse(it.at) }
-            }
         }
 
-        "the caller dry run closes with one preview batch and sealed true as the final automation entry" {
+        "the caller dry run closes with one preview batch" {
             val automation = document.sections.getValue("automation")
             val opened = automation.first().payload.jsonObject
             opened["recipe"] shouldBe JsonPrimitive("release_order")
@@ -62,11 +45,6 @@ class H1DryRunFixtureSpec :
             val closed = automation[1].payload.jsonObject
             closed["event"] shouldBe JsonPrimitive("closed")
             closed["status"] shouldBe JsonPrimitive("closed")
-            val seal = automation.last()
-            seal.payload shouldBe Json.parseToJsonElement("""{"sealed":true}""")
-            val entries = document.sections.values.flatten()
-            entries.count { it.payload.jsonObject["sealed"] == JsonPrimitive(true) } shouldBe 1
-            entries.all { Instant.parse(it.at) <= Instant.parse(seal.at) } shouldBe true
             val writes = document.sections.getValue("writes").map { it.payload.jsonObject }
             writes.map { it.getValue("batch") }.distinct() shouldBe listOf(closed.getValue("batch"))
             writes.forEach {

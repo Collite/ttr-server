@@ -1,0 +1,21 @@
+{
+  "run": "e12fd6d0-d471-469d-8c41-277e5974853e",
+  "action": "notify",
+  "language": "cs",
+  "groups": [
+    {
+      "who": "role.ar",
+      "entries": 1,
+      "rows": 1,
+      "text": "notify — role.ar\nBěh e12fd6d0-d471-469d-8c41-277e5974853e\n- order_number 219990305 · hold_ar: would notify role.ar with 1 rows (1 řádků)",
+      "html": "<section class=\"digest\"><h2>notify — role.ar</h2><p>Běh e12fd6d0-d471-469d-8c41-277e5974853e</p><ul><li><strong>order_number 219990305</strong> · hold_ar: would notify role.ar with 1 rows (1 řádků) <a href=\"/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/routes/hold_ar/details/overdue?row=0\">detail</a></li></ul></section>"
+    },
+    {
+      "who": "role.sales",
+      "entries": 1,
+      "rows": 1,
+      "text": "notify — role.sales\nBěh e12fd6d0-d471-469d-8c41-277e5974853e\n- order_number 219990304 · hold_sales: would notify role.sales with 1 rows (1 řádků)",
+      "html": "<section class=\"digest\"><h2>notify — role.sales</h2><p>Běh e12fd6d0-d471-469d-8c41-277e5974853e</p><ul><li><strong>order_number 219990304</strong> · hold_sales: would notify role.sales with 1 rows (1 řádků) <a href=\"/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/routes/hold_sales/details/shortfall?row=0\">detail</a> <a href=\"/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/routes/hold_sales/details/price_differences?row=0\">detail</a></li></ul></section>"
+    }
+  ]
+}
