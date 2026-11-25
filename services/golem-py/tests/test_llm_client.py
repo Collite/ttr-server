@@ -42,7 +42,7 @@ CONTENT = '{"sql": "SELECT 1", "handled_spans": [], "note": ""}'
 
 
 def completion(
-    content: Any = CONTENT, *, model: str = "gpt-6.1-sol-2026-09-29", finish: str = "stop"
+    content: Any = CONTENT, *, model: str = "gpt-6.1-sol-2026-09-29", finish: Any = "stop"
 ) -> bytes:
     return json.dumps(
         {
@@ -165,6 +165,20 @@ async def test_a_completion_returns_its_text_and_the_served_model(fake: FakeGate
     assert reply.text == CONTENT
     assert reply.model == "gpt-6.1-sol-2026-09-29"  # the SERVED model, not the class asked
     assert reply.response_id == "chatcmpl-1" and reply.status == "stop"
+
+
+@pytest.mark.parametrize(
+    "finish",
+    [["length"], {"x": 1}, 7, "invalid status", "length\n"],
+    ids=["list", "object", "number", "non-token", "newline"],
+)
+async def test_a_completion_ignores_invalid_finish_reason(fake: FakeGateway, finish: Any) -> None:
+    fake.answers.append((200, completion(finish=finish)))
+
+    reply = await ask(client(fake.base))
+
+    assert reply.text == CONTENT
+    assert reply.status == ""
 
 
 # 3 ------------------------------------------------------------------------------------------

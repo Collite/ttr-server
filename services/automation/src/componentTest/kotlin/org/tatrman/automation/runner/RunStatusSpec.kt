@@ -4,6 +4,7 @@ package org.tatrman.automation.runner
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldStartWith
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -12,6 +13,16 @@ import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.MutableClock
+import org.tatrman.automation.api.AutomationException
+import org.tatrman.automation.api.ErrorCode
+import org.tatrman.automation.bundle.LoadedRecipe
+import org.tatrman.automation.bundle.ManifestIsland
+import org.tatrman.automation.bundle.ManifestRecipe
+import org.tatrman.automation.bundle.RecipeManifest
+import org.tatrman.automation.identity.Caller
+import org.tatrman.automation.identity.RunAsRef
+import org.tatrman.automation.identity.RunIdentity
+import org.tatrman.automation.identity.TokenKind
 import org.tatrman.automation.ledger.*
 import java.time.Duration
 import java.time.Instant
@@ -60,6 +71,31 @@ class RunStatusSpec :
                     replayOf = replayOf,
                 ),
             ).runId
+
+        fun located(
+            id: UUID,
+            island: String = "orders",
+            truncated: Boolean = false,
+        ): AutomationException {
+            val recipe =
+                LoadedRecipe(
+                    "release_order",
+                    RecipeManifest(3, islands = listOf(ManifestIsland(island))),
+                    ManifestRecipe("release_order"),
+                    emptyMap(),
+                )
+            val caller = Caller("subject-1", "display-name", emptySet(), TokenKind.PERSON, "fixture")
+            val identity = RunIdentity(caller, RunAsRef.Caller, caller.principal, null)
+            val guards = Guards(RunContext(id, recipe, "demo", "model", identity, emptyMap()))
+            val table = Table(emptyList(), emptyList())
+            return shouldThrow<AutomationException> {
+                if (truncated) {
+                    guards.ceiling(island, table, validatorCap = true)
+                } else {
+                    guards.read(island, ReadResult(table, setOf("security_predicate_applied")), requireComplete = true)
+                }
+            }
+        }
 
         "status reconstructs the pinned metadata and exact decision after restart and expiry" {
             val original = ledger.claimRun(RunOpen("original")).runId
@@ -171,6 +207,122 @@ class RunStatusSpec :
             }
         }
 
+        "unlocated and legacy refusals retain only their run-level error code" {
+            val current = open()
+            ledger.failExecution(
+                current,
+                AutomationException(
+                    ErrorCode.RESTRICTED_VIEW,
+                    "unscoped failure",
+                    buildJsonObject { put("island", "orders") },
+                ),
+            )
+            val legacy = open()
+            val error = buildJsonObject { put("code", "restricted-view") }
+            ledger.markStatus(legacy, RunStatus.FAILED, error)
+
+            val reader = Ledger(Duration.ofMinutes(30), clock)
+            for (id in listOf(current, legacy)) {
+                val run = reader.readRunProgress(id, "subject-1")
+                run.status shouldBe "failed"
+                run.error shouldBe error
+                run.guards shouldBe emptyList()
+            }
+        }
+
+        "the first committed failure fixes both its public code and its refusing island" {
+            val id = open()
+            val first = located(id)
+            val retry = located(id, "balances", truncated = true)
+            ledger.failExecution(id, first)
+            val reader = Ledger(Duration.ofMinutes(30), clock)
+            val failed = reader.readRunProgress(id, "subject-1")
+            failed.error shouldBe buildJsonObject { put("code", "restricted-view") }
+            failed.guards shouldBe listOf(GuardResult("restricted-view", "orders", "refused"))
+            clock.now = now.plusSeconds(10)
+            ledger.failExecution(id, retry)
+            reader.readRunProgress(id, "subject-1") shouldBe failed
+
+            val unrelated = open()
+            ledger.failExecution(unrelated, first)
+            reader.readRunProgress(unrelated, "subject-1").guards shouldBe emptyList()
+        }
+
+        "a refusal location is hidden at the configured horizon from terminal time" {
+            val duration = Duration.ofDays(7)
+            val history = Ledger(Duration.ofMinutes(30), clock, protocolHistory = duration)
+            val id = open()
+            clock.now = now.plusSeconds(30)
+            val terminal = clock.now
+            history.failExecution(id, located(id))
+            clock.now = terminal.plus(duration).minusSeconds(1)
+            history.readRunProgress(id, "subject-1").guards shouldBe
+                listOf(GuardResult("restricted-view", "orders", "refused"))
+            clock.now = terminal.plus(duration)
+            val expired = history.readRunProgress(id, "subject-1")
+            expired.guards shouldBe emptyList()
+            expired.error shouldBe buildJsonObject { put("code", "restricted-view") }
+            transaction { Runs.selectAll().single()[Runs.refusedIsland] shouldBe "orders" }
+        }
+
+        "a terminal refusal replaces its matching decision guard in island and code order" {
+            val id = open()
+            val before = GuardResult("out-of-scope-read", "balances", "passed")
+            val sameIsland = GuardResult("candidates-truncated", "orders", "passed")
+            val matching = GuardResult("restricted-view", "orders", "passed")
+            val after = GuardResult("out-of-scope-read", "suppliers", "passed")
+            ledger.completeEvaluation(id, result.copy(guards = listOf(before, sameIsland, matching, after)))
+            ledger.failExecution(id, located(id))
+
+            ledger.readRunProgress(id, "subject-1").guards shouldBe
+                listOf(before, sameIsland, matching.copy(status = "refused"), after)
+        }
+
+        "on_route suppresses the refusal location only with a recorded silent verdict" {
+            val silentRoutes = mapOf("none" to RouteSummary(1, "arrow:none"), "hold" to RouteSummary(0, "arrow:held"))
+            for (routes in listOf(null, silentRoutes, result.verdict.routes)) {
+                val id = open()
+                ledger.appendProtocol(id, ProtocolSection.AUTOMATION, buildJsonObject { put("protocol", "on_route") })
+                if (routes != null) ledger.completeEvaluation(id, result.copy(verdict = VerdictSummary(routes, 0)))
+                ledger.failExecution(id, located(id))
+                val refused = ledger.readRunProgress(id, "subject-1").guards.filter { it.status == "refused" }
+                val silent = routes != null && routes.getValue("hold").rowCount == 0L
+                refused shouldBe
+                    if (silent) emptyList() else listOf(GuardResult("restricted-view", "orders", "refused"))
+                transaction {
+                    Runs.selectAll().where { Runs.id eq id }.single()[Runs.refusedIsland] shouldBe
+                        if (silent) null else "orders"
+                }
+            }
+        }
+
+        "cleanup clears only the expired location and preserves the failed run and its public error" {
+            val duration = Duration.ofDays(7)
+            val history = Ledger(Duration.ofMinutes(30), clock, protocolHistory = duration)
+            val expired = open()
+            history.failExecution(expired, located(expired))
+            val before = history.readRunProgress(expired, "subject-1")
+            before.status shouldBe "failed"
+            before.error shouldBe buildJsonObject { put("code", "restricted-view") }
+            before.guards shouldBe listOf(GuardResult("restricted-view", "orders", "refused"))
+
+            clock.now = now.plusSeconds(1)
+            val retained = open()
+            history.failExecution(retained, located(retained, "balances", truncated = true))
+            val withinHorizon = history.readRunProgress(retained, "subject-1")
+            withinHorizon.guards shouldBe listOf(GuardResult("candidates-truncated", "balances", "refused"))
+
+            clock.now = now.plus(duration)
+            history.purgeExpiredRefusalLocations()
+
+            history.readRunProgress(expired, "subject-1") shouldBe before.copy(guards = emptyList())
+            history.readRunProgress(retained, "subject-1") shouldBe withinHorizon
+            transaction {
+                val locations = Runs.selectAll().associate { it[Runs.id] to it[Runs.refusedIsland] }
+                locations shouldBe mapOf(expired to null, retained to "balances")
+            }
+        }
+
         "unknown handles, other subjects, reused principals and legacy rows refuse the same way" {
             val id = open()
             for (subject in listOf("subject-2", "display-name")) {
@@ -181,6 +333,10 @@ class RunStatusSpec :
             shouldThrow<IllegalArgumentException> { ledger.readRunProgress(id, " ") }
             transaction {
                 shouldThrow<IllegalStateException> { ledger.readRunProgress(id, "subject-1") }
+                shouldThrow<IllegalStateException> { ledger.failActiveRun(id) }
+                    .message shouldStartWith "Ledger.failActiveRun runs in a transaction of its own"
+                shouldThrow<IllegalStateException> { ledger.failExecution(id, IllegalArgumentException("fixture")) }
+                    .message shouldStartWith "Ledger.failExecution runs in a transaction of its own"
             }
         }
 

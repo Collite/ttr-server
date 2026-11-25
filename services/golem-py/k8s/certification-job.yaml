@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: golem-py-w1c-
+  labels:
+    app.kubernetes.io/name: golem-py-w1c-certification
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 120
+  ttlSecondsAfterFinished: 1800
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: image-pull-secret
+      containers:
+        - name: golem-py
+          image: ghcr.io/collite/golem-py@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          args: [--locale, cs, --subject, CALLER_SUBJECT, --json, --question, QUESTION]
+          env:
+            - name: GOLEM_CORE_TARGET
+              value: RESOLVER_HOST_PORT
+            - name: GOLEM_LLM_LANE_ENABLED
+              value: "true"
+            - name: GOLEM_LLM_TARGET
+              value: GATEWAY_BASE_URL
+            - name: GOLEM_LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: team-key-secret
+                  key: api-key
+            - name: GOLEM_QUERY_TARGET
+              value: QUERY_HOST_PORT
+            - name: GOLEM_QUERY_WORLD
+              value: QUERY_WORLD
+            - name: GOLEM_META_TARGET
+              value: META_HOST_PORT
+            - name: GOLEM_META_PACKAGES
+              value: META_PACKAGES
+            - name: GOLEM_LEXICON_ARCHIVE_PATHS
+              value: /lexicon/lexicon.tar.zst
+          volumeMounts:
+            - name: lexicon
+              mountPath: /lexicon
+              readOnly: true
+      volumes:
+        - name: lexicon
+          configMap:
+            name: lexicon-config-map
+            items:
+              - key: archive-key
+                path: lexicon.tar.zst

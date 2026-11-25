@@ -31,6 +31,7 @@ import org.tatrman.automation.ledger.*
 import org.tatrman.automation.runner.*
 import org.tatrman.plan.v1.PlanNode
 import org.tatrman.plan.v1.ValuesNode
+import org.tatrman.plan.v1.Warning
 import org.tatrman.query.v1.*
 import org.tatrman.worker.v1.ResultBatch
 import java.net.URI
@@ -275,6 +276,52 @@ class ApplicationRuntimeSpec :
             }
         }
 
+        "a failed evaluation retains its refusing manifest island after server restart" {
+            val f = fixture()
+            try {
+                f.restrictReads = true
+                lateinit var id: String
+                f.api { _ ->
+                    id = f.open(this)
+                    withTimeout(10_000) {
+                        while (true) {
+                            val evaluated = client.post("/automation/runs/$id/evaluate") { bearerAuth(f.token) }
+                            if (evaluated.status == HttpStatusCode.Conflict) {
+                                errorCode(evaluated.bodyAsText()) shouldBe "restricted-view"
+                                break
+                            }
+                            evaluated.status shouldBe HttpStatusCode.Accepted
+                            delay(20)
+                        }
+                    }
+                }
+                f.api { _ ->
+                    val base = "/automation/runs/$id"
+                    val reads = f.requests.size
+                    val response = client.get(base) { bearerAuth(f.token) }
+                    response.status shouldBe HttpStatusCode.OK
+                    val run = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+                    run["status"] shouldBe JsonPrimitive("failed")
+                    run["bundle"] shouldBe JsonPrimitive(f.bundle.id)
+                    run["error"] shouldBe buildJsonObject { put("code", "restricted-view") }
+                    val recipe =
+                        f.bundle.recipes
+                            .getValue("release_order")
+                            .recipe
+                    val island = requireNotNull(recipe.roles?.candidates)
+                    run["guards"] shouldBe
+                        JsonArray(listOf(Json.encodeToJsonElement(GuardResult("restricted-view", island, "refused"))))
+                    val denied = client.get(base) { bearerAuth(realm.person(subject = "another-subject")) }
+                    denied.status shouldBe HttpStatusCode.Forbidden
+                    errorCode(denied.bodyAsText()) shouldBe "identity"
+                    denied.bodyAsText().contains(island) shouldBe false
+                    f.requests.size shouldBe reads
+                }
+            } finally {
+                f.close()
+            }
+        }
+
         "mounted idle deadline fails durably without an execution request" {
             val f = fixture()
             try {
@@ -506,6 +553,8 @@ private class ApplicationRuntimeFixture(
     private val beforeRead: suspend () -> Unit,
 ) : AutoCloseable {
     val token = realm.person()
+
+    @Volatile var restrictReads = false
     val requests = CopyOnWriteArrayList<RunRequest>()
     private val source = ApprovalFixture.copyTo(root.resolve("source")).also(::completeWriterCatalogs)
     private val author = PersonIdent("Fixture Owner", "owner@example.org")
@@ -543,8 +592,13 @@ private class ApplicationRuntimeFixture(
                             emit(
                                 ResultBatch
                                     .newBuilder()
-                                    .setContext(request.context)
-                                    .setBatchRowCount(table.rows.size.toLong())
+                                    .setContext(
+                                        request.context.toBuilder().apply {
+                                            if (restrictReads) {
+                                                addWarnings(Warning.newBuilder().setCode("security_predicate_applied"))
+                                            }
+                                        },
+                                    ).setBatchRowCount(table.rows.size.toLong())
                                     .setArrowIpc(ByteString.copyFrom(ArrowTables.encode(table)))
                                     .build(),
                             )

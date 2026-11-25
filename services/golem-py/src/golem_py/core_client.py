@@ -19,6 +19,7 @@ the core signs one — the lattice carries no token and must not appear to.
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -289,9 +290,16 @@ def options_from_response(resp: Any) -> list[dict[str, str]]:
 class LiveCore:
     """The real door over gRPC. `.resolve(...)` is all the graph needs (CorePort)."""
 
-    def __init__(self, target: str = DEFAULT_TARGET, timeout_s: float = 60.0):
+    def __init__(
+        self,
+        target: str = DEFAULT_TARGET,
+        timeout_s: float = 60.0,
+        *,
+        reference_datetime: datetime | None = None,
+    ) -> None:
         self.target = target
         self.timeout_s = timeout_s
+        self.reference_datetime = reference_datetime
         self.last_response: Any | None = None
 
     async def resolve(
@@ -307,6 +315,8 @@ class LiveCore:
             fresh=resolver_pb2.FreshQuestion(text=question, locale=locale),
             caller_subject=caller_subject,
         )
+        if self.reference_datetime is not None:
+            req.context.reference_datetime = self.reference_datetime.isoformat()
         async with grpc.aio.insecure_channel(self.target) as channel:
             stub = resolver_pb2_grpc.ResolverServiceStub(channel)
             resp = await stub.Resolve(req, timeout=self.timeout_s)

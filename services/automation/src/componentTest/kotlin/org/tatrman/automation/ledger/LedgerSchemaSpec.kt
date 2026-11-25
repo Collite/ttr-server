@@ -17,7 +17,7 @@ import org.tatrman.automation.migrateLedger
 import java.time.Duration
 
 /**
- * AU contracts §2 against a real Postgres: Flyway migrates a clean database (V1–V14; V12 is D-142's removals, V14 S3.5's answer runs), every
+ * AU contracts §2 against a real Postgres: Flyway migrates a clean database (V1–V15; V12 is D-142's removals, V14 S3.5's answer runs), every
  * table carries its columns, the Exposed objects map them, the D-46 index and the dispatch claim's index exist, the
  * removed tables and the queue schema are gone, and `run_protocol` refuses every change but an INSERT (D-110).
  */
@@ -33,13 +33,13 @@ class LedgerSchemaSpec :
                 exec(sql) { rs -> buildList { while (rs.next()) add(read(rs)) } } ?: emptyList()
             }
 
-        "Flyway applies V1–V14 on a clean database; a second migrate applies nothing" {
-            LedgerTestDb.firstMigration shouldBe 14
+        "Flyway applies V1–V15 on a clean database; a second migrate applies nothing" {
+            LedgerTestDb.firstMigration shouldBe 15
             rows(
                 "SELECT version, success FROM automation.flyway_schema_history WHERE version IS NOT NULL ORDER BY installed_rank",
             ) {
                 it.getString(1) to it.getBoolean(2)
-            } shouldContainExactly (1..14).map { it.toString() to true }
+            } shouldContainExactly (1..15).map { it.toString() to true }
             migrateLedger(db) shouldBe 0
         }
 
