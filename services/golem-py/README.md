@@ -147,6 +147,49 @@ archive, and a question naming an operator (`Zobraz …` → `op:show`) refuses
 `NO_CAPABLE_PLUGIN`. A question that names no operator refuses that way with or without one
 (OL-C18).
 
+### OL W1c certification
+
+Run one disposable Job per question. Use a namespace that contains the existing team Secret
+and lexicon ConfigMap. Record the archive's SHA-256 and the UTC interval of each turn with the
+estate's verification evidence.
+
+| Question | Expected result |
+| --- | --- |
+| `Zobraz tržby za rok 2025` | One all-channel revenue total for `[2025-01-01, 2026-01-01)`. |
+| `Zobraz tržby za minulý měsíc` | One all-channel revenue total for the previous calendar month, from its first day up to the first day of the current month. Use the run's UTC reference date. The resolver leaves the period unbound and the lane carries that gap alongside the matching `llm_handled` span. |
+| `Zobraz tržby podle prodejen` | The existing resolver grouping fixture (`ms-grouping-cs`). One revenue sum per selling store, with complete store keys and no date restriction. |
+
+Before running the image, collect the expected totals and store groups from independent
+read-only `query.v1 Run` calls using the certification caller and world. Save the expected
+amounts and row counts before the first Job. The relative fixture also needs the live resolver's
+gap and absence of a bound period. Stop for a fixture ruling if that check or a live question fails.
+
+Copy [`k8s/certification-job.yaml`](k8s/certification-job.yaml) to a temporary file. Replace its
+example digest with the verified release digest, set the question and caller, and fill the
+service endpoints, world, package, and Secret and ConfigMap references for the certification
+estate. Set `context`, `namespace`, and `job_file` to those run settings. In Bash:
+
+```bash
+(
+  set -euo pipefail
+  k=(kubectl --context "$context" -n "$namespace")
+  "${k[@]}" create --dry-run=server -f "$job_file" -o name
+  date -u +%FT%TZ >&2
+  job=$("${k[@]}" create -f "$job_file" -o name)
+  trap '"${k[@]}" delete "$job" --cascade=foreground --wait=true' EXIT
+  "${k[@]}" wait --for=condition=complete --timeout=130s "$job"
+  "${k[@]}" get pods -l "job-name=${job#*/}" \
+    -o jsonpath='{.items[*].status.containerStatuses[*].imageID}{"\n"}' >&2
+  "${k[@]}" logs "$job"
+  date -u +%FT%TZ >&2
+)
+```
+
+Check the image ID, answer shape, served model, SQL over `er.*`, `row_count`, `llm_handled`,
+absence of truncation, and agreement with the expected rows and dates. Correlate each Job's
+turn window with query-side validation for the certification caller. Verify that the Job and
+its Pod are gone before the next question. Record the sanitized verdicts in the certification PR.
+
 ## Two traps worth knowing before you edit the graph
 
 1. **`.to(a, b)` is a fan-out, not a branch — and it fails silently.** Every target

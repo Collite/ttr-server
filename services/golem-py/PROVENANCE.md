@@ -126,5 +126,9 @@ scoring input, never a source.
   - This directory's own code and tests, and the installed `httpx` package's behaviour.
 
   The live probes of bp-dsk's gateway used a throwaway script and then this directory's own client.
+- **2026-11-25 · OL W1c·S3b: finish-reason regression and certification recipe.**
+  Clean-room observed. Consulted OL contract §C, the S3b list, review-357 and the S3a
+  adapter evidence, the resolving specification and conformance fixtures, and this
+  repository's implementation and release tooling.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.

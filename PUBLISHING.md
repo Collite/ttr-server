@@ -70,6 +70,16 @@ release is called; the tag carries no `-RELEASE` marker.
 |---|---|---|---|
 | 0.1.1 (tag `n8n-nodes-tatrman/v0.1.1` on `0af5fba8`, 2026-11-18, run [44356569760](https://github.com/Collite/ttr-server/actions/runs/44356569760)) | `@collite/n8n-nodes-tatrman@0.1.1` | `ghcr.io/collite/n8n-tatrman:2.44.6-0.1.1` | `sha256:632b5f44ce45d9948b2ad4f6cf25dc71d9f43d932937cb3823a08935f71824e7` |
 
+## `golem-py/v*` — the golem-py CLI image
+
+The first internal cut is `golem-py/v0.11.0` (OL W1c·S3b). After independent source review
+and merge, tag the reviewed merge SHA and push that tag to run `release-image.yml`. Verify
+the workflow's tag and checkout SHA, and compare the push digest with the GHCR digest for
+`ghcr.io/collite/golem-py:0.11.0`. Use the verified digest for the
+[certification Job](services/golem-py/README.md#ol-w1c-certification).
+The stage PR records the source SHA, tag, release CI run and digest together with the live
+verification.
+
 ## The `-RELEASE` marker
 
 A public registry has no internal staging equivalent and, for Maven Central, a
