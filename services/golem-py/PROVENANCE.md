@@ -130,5 +130,10 @@ scoring input, never a source.
   Clean-room observed. Consulted OL contract §C, the S3b list, review-357 and the S3a
   adapter evidence, the resolving specification and conformance fixtures, and this
   repository's implementation and release tooling.
+- **2026-11-25 · OL W1c·S3b caller-time prerequisite.** Clean-room observed. Consulted the
+  OL contract and planner ruling, this directory's code and tests, the resolver wire schema,
+  the open grounding corpus, and read-only resolver output.
+- **2026-11-25 · OL W1c·S3b certification fixture update.** Clean-room observed. Consulted
+  the approved fixture ruling, source reviews, and this repository's release and CLI documentation.
 - Sessions that touch this directory later **append a dated line here**. A session that
   cannot attest to the above must say so explicitly rather than leave the record silent.

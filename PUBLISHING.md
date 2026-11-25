@@ -77,8 +77,8 @@ and merge, tag the reviewed merge SHA and push that tag to run `release-image.ym
 the workflow's tag and checkout SHA, and compare the push digest with the GHCR digest for
 `ghcr.io/collite/golem-py:0.11.0`. Use the verified digest for the
 [certification Job](services/golem-py/README.md#ol-w1c-certification).
-The stage PR records the source SHA, tag, release CI run and digest together with the live
-verification.
+The [certification PR](https://github.com/Collite/ttr-server/pull/463) records the source SHA,
+tag, release CI run and digest together with the live verification.
 
 ## The `-RELEASE` marker
 

@@ -145,7 +145,11 @@ data class RetentionConfig(
     val stagingHours: Long,
     val graceHours: Long,
     val protocolDays: Long,
-)
+) {
+    init {
+        require(protocolDays in 1L..36_500L) { "automation.retention.protocolDays must be in 1..36500" }
+    }
+}
 
 data class RunnerConfig(
     val workers: Int = 4,

@@ -156,7 +156,7 @@ estate's verification evidence.
 | Question | Expected result |
 | --- | --- |
 | `Zobraz tržby za rok 2025` | One all-channel revenue total for `[2025-01-01, 2026-01-01)`. |
-| `Zobraz tržby za minulý měsíc` | One all-channel revenue total for the previous calendar month, from its first day up to the first day of the current month. Use the run's UTC reference date. The resolver leaves the period unbound and the lane carries that gap alongside the matching `llm_handled` span. |
+| `Zobraz tržby za poslední dokončené kalendářní pololetí` | One all-channel revenue total for the preceding completed calendar half-year. Use the turn's UTC reference date. A November 25, 2026 turn covers `[2026-01-01, 2026-07-01)`. The resolver binds the show operator and revenue measure, leaves the entire period unbound, and the lane carries that gap alongside the matching `llm_handled` span. |
 | `Zobraz tržby podle prodejen` | The existing resolver grouping fixture (`ms-grouping-cs`). One revenue sum per selling store, with complete store keys and no date restriction. |
 
 Before running the image, collect the expected totals and store groups from independent

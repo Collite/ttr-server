@@ -130,7 +130,7 @@ data class ErrorBody(
 )
 
 /** A refusal the API answers as [ErrorCode.status] + [ErrorEnvelope]. */
-class AutomationException(
+open class AutomationException(
     val code: ErrorCode,
     message: String,
     val detail: JsonElement? = null,

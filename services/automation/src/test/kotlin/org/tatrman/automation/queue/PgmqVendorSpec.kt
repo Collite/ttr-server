@@ -48,7 +48,7 @@ class PgmqVendorSpec :
             File("src/main/resources/db/LICENSE-pgmq").readText() shouldContain "The PostgreSQL License"
         }
 
-        "the ordered migrations: the ledger … V10, windows V11, D-142 V12, batches_run V13, answer runs V14" {
+        "the migrations are ordered through V15, the retained refusal location" {
             migrations.list()!!.sortedBy { it.substringAfter("V").substringBefore("__").toInt() } shouldContainExactly
                 listOf(
                     "V1__ledger.sql",
@@ -65,6 +65,7 @@ class PgmqVendorSpec :
                     "V12__d142_removals.sql",
                     "V13__batches_run.sql",
                     "V14__answer_runs.sql",
+                    "V15__run_refusal_island.sql",
                 )
         }
     })

@@ -54,6 +54,17 @@ class AutomationConfigSpec :
             c.connections shouldBe emptyMap()
         }
 
+        "protocol history accepts its default and bounds and rejects unsafe cutoffs at config load" {
+            for (days in listOf(1L, 400L, 36_500L)) {
+                load(required + "\nautomation.retention.protocolDays = $days").retention.protocolDays shouldBe days
+            }
+            for (days in listOf(-1L, 0L, 36_501L, Long.MAX_VALUE)) {
+                shouldThrow<IllegalArgumentException> {
+                    load(required + "\nautomation.retention.protocolDays = $days")
+                }.message shouldContain "automation.retention.protocolDays"
+            }
+        }
+
         "S3.2: automation.engine.* from env — an empty value is unset, the client id defaults to process-engine" {
             load(required, mapOf("AUTOMATION_ENGINE_URL" to "")).engine.url shouldBe null
             val e =

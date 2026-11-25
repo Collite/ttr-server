@@ -42,6 +42,7 @@ import logging
 import sys
 import tarfile
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -135,8 +136,10 @@ def build_deps(
     """The live ports. A lane leg whose target is empty stays None, and with no gateway or
     no door the lane is off (OL-C11). The model slice is a leg of its own: a lane that is on
     with no slice refuses as `LANE_UNAVAILABLE`, rather than answer without the model."""
+    # The CLI builds these ports once per turn. Keep grounding and the prompt on the same day.
+    reference_datetime = datetime.now(UTC)
     return Deps(
-        core=LiveCore(core_target),
+        core=LiveCore(core_target, reference_datetime=reference_datetime),
         gate=LiveGate(core_target),
         ladder=ladder,
         settings=settings,
@@ -164,6 +167,7 @@ def build_deps(
             if settings.meta_target and settings.meta_packages
             else None
         ),
+        reference_date=reference_datetime.date,
     )
 
 
