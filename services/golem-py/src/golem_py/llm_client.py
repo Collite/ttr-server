@@ -152,11 +152,12 @@ def reply_from_json(doc: Any) -> LlmReply:
             "no_completion", "the gateway's reply has no choices[0].message.content"
         ) from exc
     reason = choice.get("finish_reason") if isinstance(choice, dict) else None
-    if reason in _STOPPED_EARLY:
+    status = reason if isinstance(reason, str) and _TOKEN.fullmatch(reason) else ""
+    if status in _STOPPED_EARLY:
         # Whatever text there is, it is not the whole answer: refuse as cut off rather than
         # let the lane blame the model's format (still QUERY_NOT_WRITTEN, OL-C13/C16).
         raise LaneReplyRefused(
-            "no_completion", f"the completion stopped early (finish_reason {reason})"
+            "no_completion", f"the completion stopped early (finish_reason {status})"
         )
     if not isinstance(content, str) or not content.strip():
         raise LaneReplyRefused("no_completion", "the gateway's completion text is empty")
@@ -164,7 +165,7 @@ def reply_from_json(doc: Any) -> LlmReply:
         text=content,
         model=str(doc.get("model") or ""),
         response_id=str(doc.get("id") or ""),
-        status=str(reason or ""),
+        status=status,
     )
 
 
