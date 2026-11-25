@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.tatrman.automation.runner.RunProgress
 
@@ -88,7 +89,7 @@ class H1EngineCertificationFixtureSpec :
             identity.getValue("history").jsonObject["assignee"] shouldBe JsonPrimitive(decision.by)
         }
 
-        "the timeout applies a separate Sales hold for the same order as the approval run" {
+        "the timeout expires the approval as a refusal and its correlated typed hold holds the order for Sales" {
             val original = certificationFixture<RunProgress>("t4-original-run")
             val originalProtocol = certificationFixture<ProtocolDocument>("t4-original-protocol")
             val perform = certificationFixture<RunProgress>("t4-perform-run")
@@ -98,19 +99,40 @@ class H1EngineCertificationFixtureSpec :
             originalProtocol.run shouldBe original.runId
             performProtocol.run shouldBe perform.runId
 
-            val approval = original.actions.single()
-            approval.action shouldBe "release_confirmed"
+            // The original run: the approval was never answered; the due timer decided it as a refusal (expire).
+            original.status shouldBe "closed"
+            val approval = original.actions.single { it.action == "release_confirmed" }
             val order = approval.key.getValue("order_number")
-            order shouldBe JsonPrimitive(219990264)
+            order shouldBe JsonPrimitive(219990303)
+            val decided = checkNotNull(approval.decided)
+            decided["decision"] shouldBe JsonPrimitive("expire")
+            decided["by"] shouldBe null
+            decided["holdRun"] shouldBe JsonPrimitive(perform.runId)
             val originalOpen =
                 originalProtocol.sections
                     .getValue("automation")
                     .first()
                     .payload.jsonObject
             val engine = originalOpen.getValue("engine").jsonObject
-            engine["instanceId"] shouldBe JsonPrimitive("6a7e1c88-e506-11f1-942b-7e60a2870a34")
-            engine["businessKey"] shouldBe JsonPrimitive("219990264")
+            engine["instanceId"] shouldBe JsonPrimitive("4904951f-e82f-11f1-86d7-c23630ba32e0")
+            engine["businessKey"] shouldBe JsonPrimitive("219990303")
+            val expired =
+                originalProtocol.sections
+                    .getValue("writes")
+                    .map { it.payload.jsonObject }
+                    .single { it["event"] == JsonPrimitive("held-expire") }
+            expired["holdRun"] shouldBe JsonPrimitive(perform.runId)
+            expired["after_seal"] shouldBe JsonPrimitive(true)
+            expired["group"] shouldBe approval.key
+            val evidence = expired.getValue("expiry").jsonObject
+            evidence["source"] shouldBe JsonPrimitive("engine:history")
+            evidence["originalRunId"] shouldBe JsonPrimitive(original.runId)
+            evidence["action"] shouldBe JsonPrimitive("release_confirmed")
+            evidence["key"] shouldBe approval.key
+            evidence["instanceId"] shouldBe engine["instanceId"]
+            evidence["timerActivityId"] shouldBe JsonPrimitive("s41_release_confirmed_lapsed")
 
+            // The typed hold: opened by the engine with the same verified evidence, applied for Sales.
             perform.kind shouldBe "perform"
             perform.status shouldBe "closed"
             val hold =
@@ -119,8 +141,11 @@ class H1EngineCertificationFixtureSpec :
                     .first()
                     .payload.jsonObject
             hold["action"] shouldBe JsonPrimitive("hold")
+            hold["caller"] shouldBe JsonPrimitive("process-engine")
             hold.getValue("key").jsonObject["order"] shouldBe order
             hold.getValue("params").jsonObject["department"] shouldBe JsonPrimitive("Sales")
+            hold["expiry"] shouldBe evidence
+            hold.getValue("engine").jsonObject["taskId"] shouldBe evidence["taskId"]
             val outcome =
                 performProtocol.sections
                     .getValue("writes")
@@ -128,6 +153,9 @@ class H1EngineCertificationFixtureSpec :
                     .payload.jsonObject
             outcome["event"] shouldBe JsonPrimitive("performed")
             outcome["outcome"] shouldBe JsonPrimitive("applied")
+            outcome.getValue("rows").jsonArray.forEach { row ->
+                row.jsonObject["status"] shouldBe JsonPrimitive("applied")
+            }
         }
     })
 

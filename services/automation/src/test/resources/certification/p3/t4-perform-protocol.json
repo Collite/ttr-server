@@ -1,19 +1,38 @@
 {
-  "run": "3ba92dc7-ad17-431b-a96e-25f6f7b3995c",
+  "run": "bdcb08a2-2413-4989-a356-f50473f02910",
   "sections": {
     "automation": [
       {
         "seq": 1,
-        "at": "2026-11-20T17:19:59.322222Z",
+        "at": "2026-11-24T17:51:10.595071Z",
         "payload": {
           "key": {
-            "order": 219990264
+            "order": 219990303
           },
           "kind": "perform",
           "runAs": "svc-hartland-automation",
           "action": "hold",
-          "bundle": "served:master@4f56e5277c50",
+          "bundle": "served:master@4fab126e5285",
           "caller": "process-engine",
+          "engine": {
+            "taskId": "51923853-e82f-11f1-86d7-c23630ba32e0",
+            "instanceId": "4904951f-e82f-11f1-86d7-c23630ba32e0",
+            "businessKey": "219990303",
+            "deploymentId": "42d92ac1-e759-11f1-86d7-c23630ba32e0"
+          },
+          "expiry": {
+            "key": {
+              "order_number": 219990303
+            },
+            "action": "release_confirmed",
+            "source": "engine:history",
+            "taskId": "51923853-e82f-11f1-86d7-c23630ba32e0",
+            "instanceId": "4904951f-e82f-11f1-86d7-c23630ba32e0",
+            "timerEndedAt": "2026-11-24T17:51:10.515Z",
+            "originalRunId": "60d2b3d5-7f8f-470a-872e-6f9dcfa94b90",
+            "timerActivityId": "s41_release_confirmed_lapsed",
+            "timerOccurrenceId": "a20e50cd-e82f-11f1-86d7-c23630ba32e0"
+          },
           "params": {
             "department": "Sales"
           },
@@ -24,7 +43,7 @@
       },
       {
         "seq": 2,
-        "at": "2026-11-20T17:19:59.394409Z",
+        "at": "2026-11-24T17:51:10.680224Z",
         "payload": {
           "sealed": true
         }
@@ -36,19 +55,19 @@
     "writes": [
       {
         "seq": 1,
-        "at": "2026-11-20T17:19:59.329621Z",
+        "at": "2026-11-24T17:51:10.601412Z",
         "payload": {
           "seqs": [
             1,
             2
           ],
           "event": "begin",
-          "request": "b0fe23bc-017f-40c9-b2ff-3eaae66c9d15"
+          "request": "4dbac2df-653d-4770-bf67-e378e3d9bb3a"
         }
       },
       {
         "seq": 2,
-        "at": "2026-11-20T17:19:59.364024Z",
+        "at": "2026-11-24T17:51:10.636319Z",
         "payload": {
           "rows": [
             {
@@ -68,7 +87,8 @@
                 "held_for": null
               },
               "status": "applied",
-              "history": "pending"
+              "history": "pending",
+              "committedAt": "2026-11-24T17:51:10.635209798Z"
             }
           ],
           "event": "outcome"
@@ -76,7 +96,7 @@
       },
       {
         "seq": 3,
-        "at": "2026-11-20T17:19:59.389856Z",
+        "at": "2026-11-24T17:51:10.677550Z",
         "payload": {
           "rows": [
             {
@@ -87,7 +107,8 @@
                 "held_for": null
               },
               "status": "applied",
-              "history": "applied"
+              "history": "applied",
+              "committedAt": "2026-11-24T17:51:10.635209798Z"
             }
           ],
           "event": "outcome"
@@ -95,10 +116,10 @@
       },
       {
         "seq": 4,
-        "at": "2026-11-20T17:19:59.394409Z",
+        "at": "2026-11-24T17:51:10.680224Z",
         "payload": {
           "key": {
-            "order": 219990264
+            "order": 219990303
           },
           "rows": [
             {

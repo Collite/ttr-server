@@ -1,31 +1,31 @@
 {
-  "runId": "b99750f8-50ea-4fd3-939d-4c4707c87a80",
-  "status": "waiting",
+  "runId": "60d2b3d5-7f8f-470a-872e-6f9dcfa94b90",
+  "status": "closed",
   "verdict": {
     "routes": {
       "hold_ar": {
         "rowCount": 0,
-        "ref": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/outputs/verdict.hold_ar",
+        "ref": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/outputs/verdict.hold_ar",
         "detail": {
-          "overdue": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/routes/hold_ar/details/overdue"
+          "overdue": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/routes/hold_ar/details/overdue"
         }
       },
       "release": {
         "rowCount": 0,
-        "ref": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/outputs/verdict.release",
+        "ref": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/outputs/verdict.release",
         "detail": {}
       },
       "hold_sales": {
         "rowCount": 0,
-        "ref": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/outputs/verdict.hold_sales",
+        "ref": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/outputs/verdict.hold_sales",
         "detail": {
-          "shortfall": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/routes/hold_sales/details/shortfall",
-          "price_differences": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/routes/hold_sales/details/price_differences"
+          "shortfall": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/routes/hold_sales/details/shortfall",
+          "price_differences": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/routes/hold_sales/details/price_differences"
         }
       },
       "release_confirmed": {
         "rowCount": 1,
-        "ref": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/outputs/verdict.release_confirmed",
+        "ref": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/outputs/verdict.release_confirmed",
         "detail": {}
       }
     },
@@ -119,14 +119,14 @@
     }
   ],
   "mode": "overlapping",
-  "protocolRef": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/protocol",
+  "protocolRef": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/protocol",
   "recipe": "release_order",
   "program": "release_on_placement_cz",
   "deployment": "release_event_cz",
   "runAs": "svc-hartland-automation",
   "author": "operator",
-  "asOf": "2026-11-02T07:50:00Z",
-  "bundle": "served:master@4f56e5277c50",
+  "asOf": "2026-11-02T11:00:00Z",
+  "bundle": "served:master@4fab126e5285",
   "fingerprints": {
     "text": "sha256:c64489baf6cefe99e3ba1f8ce952049ead8ecbd3c7015fdf3656333ec1c26121",
     "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
@@ -136,19 +136,19 @@
   },
   "dryRun": false,
   "replayOf": null,
-  "startedAt": "2026-11-20T17:18:34.634915Z",
-  "endedAt": null,
+  "startedAt": "2026-11-24T17:48:41.206266Z",
+  "endedAt": "2026-11-24T17:51:10.596498Z",
   "error": null,
   "batch": {
-    "id": "717b98a4-3864-3a34-957b-27650808f3e0",
-    "state": "held",
+    "id": "d431a6a4-f34f-35e4-a91c-eae6a59f1fa2",
+    "state": "committed",
     "rows": 4,
-    "held": 1
+    "held": 0
   },
   "actions": [
     {
       "key": {
-        "order_number": 219990264
+        "order_number": 219990303
       },
       "route": "release_confirmed",
       "action": "release_confirmed",
@@ -158,16 +158,33 @@
           "unit": "working_days",
           "amount": 2
         },
-        "order": 219990264,
-        "value": 1500970.48
+        "order": 219990303,
+        "value": 1303640.0
       },
       "batchRows": [
         2
       ],
-      "would": "would ask the sales manager to confirm the release of 219990264 (1500970.48)",
+      "would": "would ask the sales manager to confirm the release of 219990303 (1303640.00)",
       "event": "preview",
       "dryRun": false,
-      "decided": null
+      "decided": {
+        "at": "2026-11-24T17:51:10.596497675Z",
+        "expiry": {
+          "key": {
+            "order_number": 219990303
+          },
+          "action": "release_confirmed",
+          "source": "engine:history",
+          "taskId": "51923853-e82f-11f1-86d7-c23630ba32e0",
+          "instanceId": "4904951f-e82f-11f1-86d7-c23630ba32e0",
+          "timerEndedAt": "2026-11-24T17:51:10.515Z",
+          "originalRunId": "60d2b3d5-7f8f-470a-872e-6f9dcfa94b90",
+          "timerActivityId": "s41_release_confirmed_lapsed",
+          "timerOccurrenceId": "a20e50cd-e82f-11f1-86d7-c23630ba32e0"
+        },
+        "holdRun": "bdcb08a2-2413-4989-a356-f50473f02910",
+        "decision": "expire"
+      }
     }
   ],
   "warnings": [],

@@ -1,10 +1,10 @@
 {
-  "run": "b99750f8-50ea-4fd3-939d-4c4707c87a80",
+  "run": "60d2b3d5-7f8f-470a-872e-6f9dcfa94b90",
   "sections": {
     "automation": [
       {
         "seq": 1,
-        "at": "2026-11-20T17:18:34.634915Z",
+        "at": "2026-11-24T17:48:41.206266Z",
         "payload": {
           "fps": {
             "text": "sha256:c64489baf6cefe99e3ba1f8ce952049ead8ecbd3c7015fdf3656333ec1c26121",
@@ -12,23 +12,23 @@
             "program": "sha256:32c22a386226df67be62fd15443fdfdddcc4c9285aa3c2eb4d631939e759a822",
             "deployment": "sha256:d5516d0545f139614b1dd47182ae3d6f968229b6e6b21e69b7844d1d13ef23c8"
           },
-          "asOf": "2026-11-02T07:50:00Z",
+          "asOf": "2026-11-02T11:00:00Z",
           "port": {
-            "at": "2026-11-02T08:50:00+01:00",
+            "at": "2026-11-02T12:00:00+01:00",
             "key": {
-              "order_number": 219990264
+              "order_number": 219990303
             }
           },
           "event": "opened",
           "runAs": "svc-hartland-automation",
           "author": "operator",
-          "bundle": "served:master@4f56e5277c50",
+          "bundle": "served:master@4fab126e5285",
           "caller": "process-engine",
           "dryRun": false,
           "engine": {
-            "instanceId": "6a7e1c88-e506-11f1-942b-7e60a2870a34",
-            "businessKey": "219990264",
-            "deploymentId": "99ca2f8d-e435-11f1-942b-7e60a2870a34"
+            "instanceId": "4904951f-e82f-11f1-86d7-c23630ba32e0",
+            "businessKey": "219990303",
+            "deploymentId": "42d92ac1-e759-11f1-86d7-c23630ba32e0"
           },
           "origin": "engine",
           "recipe": "release_order",
@@ -49,9 +49,9 @@
       },
       {
         "seq": 2,
-        "at": "2026-11-20T17:18:44.176599Z",
+        "at": "2026-11-24T17:48:55.471318Z",
         "payload": {
-          "batch": "717b98a4-3864-3a34-957b-27650808f3e0",
+          "batch": "d431a6a4-f34f-35e4-a91c-eae6a59f1fa2",
           "event": "closed",
           "dryRun": false,
           "status": "closed"
@@ -59,7 +59,7 @@
       },
       {
         "seq": 3,
-        "at": "2026-11-20T17:18:44.176599Z",
+        "at": "2026-11-24T17:48:55.471318Z",
         "payload": {
           "sealed": true
         }
@@ -68,7 +68,7 @@
     "islands": [
       {
         "seq": 1,
-        "at": "2026-11-20T17:18:34.838034Z",
+        "at": "2026-11-24T17:48:41.321184Z",
         "payload": {
           "kind": "output",
           "name": "placed_orders",
@@ -79,7 +79,7 @@
           "params": {
             "_au_port_0_0": {
               "type": "int",
-              "value": 219990264
+              "value": 219990303
             }
           },
           "storage": "erp_db",
@@ -90,12 +90,12 @@
             "schema_mismatch"
           ],
           "statement": "islands/placed_orders.orders.sql",
-          "durationMs": 102
+          "durationMs": 83
         }
       },
       {
         "seq": 2,
-        "at": "2026-11-20T17:18:37.590416Z",
+        "at": "2026-11-24T17:48:44.394606Z",
         "payload": {
           "kind": "output",
           "name": "shortfall",
@@ -106,7 +106,7 @@
           "params": {
             "as_of": {
               "type": "datetime",
-              "value": "2026-11-02T07:50:00Z"
+              "value": "2026-11-02T11:00:00Z"
             }
           },
           "storage": "erp_db",
@@ -117,12 +117,12 @@
             "schema_mismatch"
           ],
           "statement": "islands/shortfall.rows.sql",
-          "durationMs": 2715
+          "durationMs": 3053
         }
       },
       {
         "seq": 3,
-        "at": "2026-11-20T17:18:37.764814Z",
+        "at": "2026-11-24T17:48:44.530945Z",
         "payload": {
           "kind": "output",
           "name": "price_differences",
@@ -144,12 +144,12 @@
             "schema_mismatch"
           ],
           "statement": "islands/price_differences.rows.sql",
-          "durationMs": 148
+          "durationMs": 114
         }
       },
       {
         "seq": 4,
-        "at": "2026-11-20T17:18:37.903462Z",
+        "at": "2026-11-24T17:48:44.632758Z",
         "payload": {
           "kind": "output",
           "name": "overdue",
@@ -160,7 +160,7 @@
           "params": {
             "as_of": {
               "type": "datetime",
-              "value": "2026-11-02T07:50:00Z"
+              "value": "2026-11-02T11:00:00Z"
             }
           },
           "storage": "erp_db",
@@ -171,12 +171,12 @@
             "schema_mismatch"
           ],
           "statement": "islands/overdue.rows.sql",
-          "durationMs": 114
+          "durationMs": 80
         }
       },
       {
         "seq": 5,
-        "at": "2026-11-20T17:18:38.978220Z",
+        "at": "2026-11-24T17:48:45.131904Z",
         "payload": {
           "kind": "output",
           "name": "verdict",
@@ -187,7 +187,7 @@
           "params": {
             "as_of": {
               "type": "datetime",
-              "value": "2026-11-02T07:50:00Z"
+              "value": "2026-11-02T11:00:00Z"
             },
             "tolerance": {
               "type": "decimal",
@@ -202,74 +202,12 @@
             "schema_mismatch"
           ],
           "statement": "islands/verdict.hold_ar.overdue.sql",
-          "durationMs": 1033
+          "durationMs": 467
         }
       },
       {
         "seq": 6,
-        "at": "2026-11-20T17:18:40.693247Z",
-        "payload": {
-          "kind": "output",
-          "name": "verdict",
-          "port": "hold_sales",
-          "rows": 0,
-          "bytes": 1552,
-          "engine": "query",
-          "params": {
-            "as_of": {
-              "type": "datetime",
-              "value": "2026-11-02T07:50:00Z"
-            },
-            "tolerance": {
-              "type": "decimal",
-              "value": 0.01
-            }
-          },
-          "storage": "erp_db",
-          "warnings": [
-            "cache_hit",
-            "compile_duration_ms",
-            "routing_decision",
-            "schema_mismatch"
-          ],
-          "statement": "islands/verdict.hold_sales.sql",
-          "durationMs": 2758
-        }
-      },
-      {
-        "seq": 7,
-        "at": "2026-11-20T17:18:40.703775Z",
-        "payload": {
-          "kind": "output",
-          "name": "verdict",
-          "port": "hold_ar",
-          "rows": 0,
-          "bytes": 1552,
-          "engine": "query",
-          "params": {
-            "as_of": {
-              "type": "datetime",
-              "value": "2026-11-02T07:50:00Z"
-            },
-            "tolerance": {
-              "type": "decimal",
-              "value": 0.01
-            }
-          },
-          "storage": "erp_db",
-          "warnings": [
-            "cache_hit",
-            "compile_duration_ms",
-            "routing_decision",
-            "schema_mismatch"
-          ],
-          "statement": "islands/verdict.hold_ar.sql",
-          "durationMs": 2768
-        }
-      },
-      {
-        "seq": 8,
-        "at": "2026-11-20T17:18:40.985155Z",
+        "at": "2026-11-24T17:48:48.695944Z",
         "payload": {
           "kind": "output",
           "name": "verdict",
@@ -280,7 +218,7 @@
           "params": {
             "as_of": {
               "type": "datetime",
-              "value": "2026-11-02T07:50:00Z"
+              "value": "2026-11-02T11:00:00Z"
             },
             "tolerance": {
               "type": "decimal",
@@ -299,23 +237,23 @@
             "schema_mismatch"
           ],
           "statement": "islands/verdict.release_confirmed.sql",
-          "durationMs": 3051
+          "durationMs": 4036
         }
       },
       {
-        "seq": 9,
-        "at": "2026-11-20T17:18:41.369966Z",
+        "seq": 7,
+        "at": "2026-11-24T17:48:48.941080Z",
         "payload": {
           "kind": "output",
           "name": "verdict",
-          "port": "hold_sales.price_differences",
+          "port": "hold_ar",
           "rows": 0,
-          "bytes": 1080,
+          "bytes": 1552,
           "engine": "query",
           "params": {
             "as_of": {
               "type": "datetime",
-              "value": "2026-11-02T07:50:00Z"
+              "value": "2026-11-02T11:00:00Z"
             },
             "tolerance": {
               "type": "decimal",
@@ -329,13 +267,44 @@
             "routing_decision",
             "schema_mismatch"
           ],
-          "statement": "islands/verdict.hold_sales.price_differences.sql",
-          "durationMs": 3436
+          "statement": "islands/verdict.hold_ar.sql",
+          "durationMs": 4277
         }
       },
       {
-        "seq": 10,
-        "at": "2026-11-20T17:18:42.468529Z",
+        "seq": 8,
+        "at": "2026-11-24T17:48:49.806898Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales",
+          "rows": 0,
+          "bytes": 1552,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T11:00:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.sql",
+          "durationMs": 5149
+        }
+      },
+      {
+        "seq": 9,
+        "at": "2026-11-24T17:48:50.066277Z",
         "payload": {
           "kind": "output",
           "name": "verdict",
@@ -346,7 +315,7 @@
           "params": {
             "as_of": {
               "type": "datetime",
-              "value": "2026-11-02T07:50:00Z"
+              "value": "2026-11-02T11:00:00Z"
             },
             "tolerance": {
               "type": "decimal",
@@ -365,12 +334,43 @@
             "schema_mismatch"
           ],
           "statement": "islands/verdict.release.sql",
-          "durationMs": 4535
+          "durationMs": 5406
+        }
+      },
+      {
+        "seq": 10,
+        "at": "2026-11-24T17:48:52.427262Z",
+        "payload": {
+          "kind": "output",
+          "name": "verdict",
+          "port": "hold_sales.price_differences",
+          "rows": 0,
+          "bytes": 1080,
+          "engine": "query",
+          "params": {
+            "as_of": {
+              "type": "datetime",
+              "value": "2026-11-02T11:00:00Z"
+            },
+            "tolerance": {
+              "type": "decimal",
+              "value": 0.01
+            }
+          },
+          "storage": "erp_db",
+          "warnings": [
+            "cache_hit",
+            "compile_duration_ms",
+            "routing_decision",
+            "schema_mismatch"
+          ],
+          "statement": "islands/verdict.hold_sales.price_differences.sql",
+          "durationMs": 7769
         }
       },
       {
         "seq": 11,
-        "at": "2026-11-20T17:18:43.609437Z",
+        "at": "2026-11-24T17:48:54.943996Z",
         "payload": {
           "kind": "output",
           "name": "verdict",
@@ -381,7 +381,7 @@
           "params": {
             "as_of": {
               "type": "datetime",
-              "value": "2026-11-02T07:50:00Z"
+              "value": "2026-11-02T11:00:00Z"
             },
             "tolerance": {
               "type": "decimal",
@@ -396,14 +396,14 @@
             "schema_mismatch"
           ],
           "statement": "islands/verdict.hold_sales.shortfall.sql",
-          "durationMs": 5675
+          "durationMs": 10288
         }
       }
     ],
     "decision": [
       {
         "seq": 1,
-        "at": "2026-11-20T17:18:43.989446Z",
+        "at": "2026-11-24T17:48:55.287460Z",
         "payload": {
           "mode": "overlapping",
           "guards": [
@@ -497,26 +497,26 @@
             "none": 0,
             "routes": {
               "hold_ar": {
-                "ref": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/outputs/verdict.hold_ar",
+                "ref": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/outputs/verdict.hold_ar",
                 "detail": {
-                  "overdue": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/routes/hold_ar/details/overdue"
+                  "overdue": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/routes/hold_ar/details/overdue"
                 },
                 "rowCount": 0
               },
               "release": {
-                "ref": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/outputs/verdict.release",
+                "ref": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/outputs/verdict.release",
                 "rowCount": 0
               },
               "hold_sales": {
-                "ref": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/outputs/verdict.hold_sales",
+                "ref": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/outputs/verdict.hold_sales",
                 "detail": {
-                  "shortfall": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/routes/hold_sales/details/shortfall",
-                  "price_differences": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/routes/hold_sales/details/price_differences"
+                  "shortfall": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/routes/hold_sales/details/shortfall",
+                  "price_differences": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/routes/hold_sales/details/price_differences"
                 },
                 "rowCount": 0
               },
               "release_confirmed": {
-                "ref": "/automation/runs/b99750f8-50ea-4fd3-939d-4c4707c87a80/outputs/verdict.release_confirmed",
+                "ref": "/automation/runs/60d2b3d5-7f8f-470a-872e-6f9dcfa94b90/outputs/verdict.release_confirmed",
                 "rowCount": 1
               }
             }
@@ -527,15 +527,15 @@
     "actions": [
       {
         "seq": 1,
-        "at": "2026-11-20T17:18:43.975417Z",
+        "at": "2026-11-24T17:48:55.285957Z",
         "payload": {
           "key": {
-            "order_number": 219990264
+            "order_number": 219990303
           },
           "sink": "transition",
           "event": "preview",
           "route": "release_confirmed",
-          "would": "would ask the sales manager to confirm the release of 219990264 (1500970.48)",
+          "would": "would ask the sales manager to confirm the release of 219990303 (1303640.00)",
           "action": "release_confirmed",
           "dryRun": false,
           "arguments": {
@@ -543,8 +543,8 @@
               "unit": "working_days",
               "amount": 2
             },
-            "order": 219990264,
-            "value": 1500970.48
+            "order": 219990303,
+            "value": 1303640.0
           },
           "batchRows": [
             2
@@ -555,10 +555,10 @@
     "writes": [
       {
         "seq": 1,
-        "at": "2026-11-20T17:18:43.975417Z",
+        "at": "2026-11-24T17:48:55.285957Z",
         "payload": {
           "rows": 4,
-          "batch": "717b98a4-3864-3a34-957b-27650808f3e0",
+          "batch": "d431a6a4-f34f-35e4-a91c-eae6a59f1fa2",
           "state": "preview",
           "entities": {
             "er.entity.order": 1,
@@ -569,11 +569,11 @@
       },
       {
         "seq": 2,
-        "at": "2026-11-20T17:18:44.176599Z",
+        "at": "2026-11-24T17:48:55.471318Z",
         "payload": {
           "held": 1,
           "rows": 4,
-          "batch": "717b98a4-3864-3a34-957b-27650808f3e0",
+          "batch": "d431a6a4-f34f-35e4-a91c-eae6a59f1fa2",
           "event": "closed",
           "state": "held",
           "failed": 0,
@@ -613,6 +613,38 @@
           },
           "reconciled": 0,
           "staleState": 0
+        }
+      },
+      {
+        "seq": 3,
+        "at": "2026-11-24T17:51:10.596498Z",
+        "payload": {
+          "last": true,
+          "rows": 1,
+          "batch": "d431a6a4-f34f-35e4-a91c-eae6a59f1fa2",
+          "event": "held-expire",
+          "group": {
+            "order_number": 219990303
+          },
+          "expiry": {
+            "key": {
+              "order_number": 219990303
+            },
+            "action": "release_confirmed",
+            "source": "engine:history",
+            "taskId": "51923853-e82f-11f1-86d7-c23630ba32e0",
+            "instanceId": "4904951f-e82f-11f1-86d7-c23630ba32e0",
+            "timerEndedAt": "2026-11-24T17:51:10.515Z",
+            "originalRunId": "60d2b3d5-7f8f-470a-872e-6f9dcfa94b90",
+            "timerActivityId": "s41_release_confirmed_lapsed",
+            "timerOccurrenceId": "a20e50cd-e82f-11f1-86d7-c23630ba32e0"
+          },
+          "failed": 0,
+          "applied": 0,
+          "holdRun": "bdcb08a2-2413-4989-a356-f50473f02910",
+          "skipped": 1,
+          "unknown": 0,
+          "after_seal": true
         }
       }
     ],

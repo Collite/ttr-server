@@ -25,7 +25,10 @@ internal fun ProtocolDocument.assertSealedFixture() {
         }
         records.forEach { record ->
             withClue("protocol section $section, seq ${record.seq}, at ${record.at}, seal at ${seal.at}") {
-                Instant.parse(record.at).isAfter(sealedAt) shouldBe false
+                // D-110: the seal stands; only a `writes` entry flagged `after_seal: true` (a held decision or a revert
+                // recorded after the close) may follow it.
+                val afterSeal = section == "writes" && record.payload.jsonObject["after_seal"] == JsonPrimitive(true)
+                Instant.parse(record.at).isAfter(sealedAt) shouldBe afterSeal
             }
         }
     }
