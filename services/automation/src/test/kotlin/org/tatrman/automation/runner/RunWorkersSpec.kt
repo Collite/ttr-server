@@ -287,6 +287,18 @@ class RunWorkersSpec :
             }
         }
 
+        "a persistent refusal cleanup error is reported without skipping terminal queue archiving" {
+            val failure = IllegalStateException("refusal cleanup unavailable")
+            val f = WorkerFixture(1, purgeRefusalLocations = { throw failure })
+            try {
+                eventually { f.reports.size >= 2 }
+                (f.queue.cleanups.get() >= 2) shouldBe true
+                f.reports.take(2) shouldBe listOf(failure, failure)
+            } finally {
+                f.close()
+            }
+        }
+
         "a delivery without its original context cannot acquire a claim" {
             val f = WorkerFixture(1)
             try {
@@ -314,6 +326,7 @@ private suspend fun eventually(predicate: () -> Boolean) {
 private class WorkerFixture(
     workers: Int,
     maintenance: suspend () -> Unit = {},
+    purgeRefusalLocations: suspend () -> Unit = {},
 ) {
     private val parent = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val queue = FakeRunQueue()
@@ -326,6 +339,7 @@ private class WorkerFixture(
             poll = Duration.ofMillis(5),
             maintenanceEvery = Duration.ofMillis(10),
             maintenance = maintenance,
+            purgeRefusalLocations = purgeRefusalLocations,
             report = { reports.add(it) },
         )
 

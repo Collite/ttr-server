@@ -56,6 +56,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.nio.file.Path
 import java.time.Clock
+import java.time.Duration
 import javax.sql.DataSource
 
 private val log = LoggerFactory.getLogger("org.tatrman.automation.Application")
@@ -106,7 +107,12 @@ fun Application.module(config: Config) {
     // The telemetry first: the ledger and the registry count into it (§10).
     val telemetry = AutomationTelemetry(openTelemetry)
     val ledger =
-        Ledger(defaultBudget = automation.budgets.batchDefault, clock = clock, abandoned = telemetry::abandoned)
+        Ledger(
+            defaultBudget = automation.budgets.batchDefault,
+            clock = clock,
+            protocolHistory = Duration.ofDays(automation.retention.protocolDays),
+            abandoned = telemetry::abandoned,
+        )
     val ledgerBundles = LedgerBundles()
     val writerDdl =
         org.tatrman.automation.writer.Ddl.configured(
