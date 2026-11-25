@@ -1,0 +1,258 @@
+{
+  "runId": "e12fd6d0-d471-469d-8c41-277e5974853e",
+  "status": "closed",
+  "verdict": {
+    "routes": {
+      "hold_ar": {
+        "rowCount": 1,
+        "ref": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/outputs/verdict.hold_ar",
+        "detail": {
+          "overdue": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/routes/hold_ar/details/overdue"
+        }
+      },
+      "release": {
+        "rowCount": 0,
+        "ref": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/outputs/verdict.release",
+        "detail": {}
+      },
+      "hold_sales": {
+        "rowCount": 1,
+        "ref": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/outputs/verdict.hold_sales",
+        "detail": {
+          "shortfall": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/routes/hold_sales/details/shortfall",
+          "price_differences": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/routes/hold_sales/details/price_differences"
+        }
+      },
+      "release_confirmed": {
+        "rowCount": 0,
+        "ref": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/outputs/verdict.release_confirmed",
+        "detail": {}
+      }
+    },
+    "none": 0
+  },
+  "guards": [
+    {
+      "code": "candidates-truncated",
+      "island": "overdue",
+      "status": "passed"
+    },
+    {
+      "code": "out-of-scope-read",
+      "island": "overdue",
+      "status": "passed"
+    },
+    {
+      "code": "restricted-view",
+      "island": "overdue",
+      "status": "passed"
+    },
+    {
+      "code": "candidates-truncated",
+      "island": "placed_orders",
+      "status": "passed"
+    },
+    {
+      "code": "duplicate-key",
+      "island": "placed_orders",
+      "status": "passed"
+    },
+    {
+      "code": "out-of-scope",
+      "island": "placed_orders",
+      "status": "passed"
+    },
+    {
+      "code": "out-of-scope-read",
+      "island": "placed_orders",
+      "status": "passed"
+    },
+    {
+      "code": "restricted-view",
+      "island": "placed_orders",
+      "status": "passed"
+    },
+    {
+      "code": "candidates-truncated",
+      "island": "price_differences",
+      "status": "passed"
+    },
+    {
+      "code": "out-of-scope-read",
+      "island": "price_differences",
+      "status": "passed"
+    },
+    {
+      "code": "restricted-view",
+      "island": "price_differences",
+      "status": "passed"
+    },
+    {
+      "code": "candidates-truncated",
+      "island": "shortfall",
+      "status": "passed"
+    },
+    {
+      "code": "out-of-scope-read",
+      "island": "shortfall",
+      "status": "passed"
+    },
+    {
+      "code": "restricted-view",
+      "island": "shortfall",
+      "status": "passed"
+    },
+    {
+      "code": "candidates-truncated",
+      "island": "verdict",
+      "status": "passed"
+    },
+    {
+      "code": "out-of-scope-read",
+      "island": "verdict",
+      "status": "passed"
+    },
+    {
+      "code": "restricted-view",
+      "island": "verdict",
+      "status": "passed"
+    }
+  ],
+  "mode": "overlapping",
+  "protocolRef": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/protocol",
+  "recipe": "release_order",
+  "program": "morning_release_cz",
+  "deployment": "release_morning_cz",
+  "runAs": "svc-hartland-automation",
+  "author": "operator",
+  "asOf": "2026-11-25T09:21:11.130769Z",
+  "bundle": "served:master@4fab126e5285",
+  "fingerprints": {
+    "text": "sha256:c64489baf6cefe99e3ba1f8ce952049ead8ecbd3c7015fdf3656333ec1c26121",
+    "values": "sha256:54e165c4463646ed8b9ae490dc1a830b34e76dda883caa0f3df407699c7ae888",
+    "program": "sha256:c86a04774c7718fba812357a4c94b9d1329b88c14f9c737ea71a799d4058ae91",
+    "deployment": "sha256:c95a5c953ef34415a47654e6ed026c3d7bcacc5a26875d52d231a424d49ba7d8",
+    "model": "sha256:db5dca69bcb739a2063f003fa6a67c3d302c6e9a064386f18aa6c7d26e9a3f4a"
+  },
+  "dryRun": false,
+  "replayOf": null,
+  "startedAt": "2026-11-25T09:21:11.132549Z",
+  "endedAt": "2026-11-25T09:21:13.715627Z",
+  "error": null,
+  "batch": {
+    "id": "d5becfb1-c107-36df-8869-8532500aa18c",
+    "state": "committed",
+    "rows": 12,
+    "held": null
+  },
+  "actions": [
+    {
+      "key": {
+        "order_number": 219990304
+      },
+      "route": "hold_sales",
+      "action": "hold",
+      "sink": "transition",
+      "arguments": {
+        "order": 219990304,
+        "department": "Sales"
+      },
+      "batchRows": [
+        3,
+        4
+      ],
+      "would": "would hold order 219990304 for Sales",
+      "event": "preview",
+      "dryRun": false,
+      "decided": null
+    },
+    {
+      "key": {
+        "order_number": 219990304
+      },
+      "route": "hold_sales",
+      "action": "notify",
+      "sink": "engine",
+      "arguments": {
+        "who": "role.sales",
+        "detail": {
+          "refs": [
+            {
+              "ref": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/routes/hold_sales/details/shortfall?row=0",
+              "limit": 200,
+              "context": "shortfall",
+              "rowCount": 0,
+              "truncated": false
+            },
+            {
+              "ref": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/routes/hold_sales/details/price_differences?row=0",
+              "limit": 200,
+              "context": "price_differences",
+              "rowCount": 1,
+              "truncated": false
+            }
+          ],
+          "count": 1,
+          "truncated": false
+        }
+      },
+      "batchRows": [],
+      "would": "would notify role.sales with 1 rows",
+      "event": "preview",
+      "dryRun": false,
+      "decided": null
+    },
+    {
+      "key": {
+        "order_number": 219990305
+      },
+      "route": "hold_ar",
+      "action": "hold",
+      "sink": "transition",
+      "arguments": {
+        "order": 219990305,
+        "department": "AR"
+      },
+      "batchRows": [
+        7,
+        8
+      ],
+      "would": "would hold order 219990305 for AR",
+      "event": "preview",
+      "dryRun": false,
+      "decided": null
+    },
+    {
+      "key": {
+        "order_number": 219990305
+      },
+      "route": "hold_ar",
+      "action": "notify",
+      "sink": "engine",
+      "arguments": {
+        "who": "role.ar",
+        "detail": {
+          "refs": [
+            {
+              "ref": "/automation/runs/e12fd6d0-d471-469d-8c41-277e5974853e/routes/hold_ar/details/overdue?row=0",
+              "limit": 200,
+              "context": "overdue",
+              "rowCount": 1,
+              "truncated": false
+            }
+          ],
+          "count": 1,
+          "truncated": false
+        }
+      },
+      "batchRows": [],
+      "would": "would notify role.ar with 1 rows",
+      "event": "preview",
+      "dryRun": false,
+      "decided": null
+    }
+  ],
+  "warnings": [],
+  "kind": "recipe",
+  "answer": null
+}

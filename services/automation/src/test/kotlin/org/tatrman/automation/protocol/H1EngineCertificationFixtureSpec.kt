@@ -3,6 +3,8 @@ package org.tatrman.automation.protocol
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -157,7 +159,85 @@ class H1EngineCertificationFixtureSpec :
                 row.jsonObject["status"] shouldBe JsonPrimitive("applied")
             }
         }
+
+        "the morning batch holds one order per group and each group's digest is the mail delivered to it" {
+            val run = certificationFixture<RunProgress>("t5-run")
+            val protocol = certificationFixture<ProtocolDocument>("t5-protocol")
+            val digest = certificationFixture<DigestResponse>("t5-digest")
+            val mails = certificationFixture<List<CertificationMail>>("t5-mail")
+            protocol.assertSealedFixture()
+            protocol.run shouldBe run.runId
+
+            // The batch: two fixture orders, one per notify group, held; nothing released or asked.
+            run.kind shouldBe "recipe"
+            run.status shouldBe "closed"
+            run.deployment shouldBe "release_morning_cz"
+            val routes = checkNotNull(run.verdict?.routes)
+            val expected = mapOf("hold_sales" to 1L, "hold_ar" to 1L, "release_confirmed" to 0L, "release" to 0L)
+            expected.forEach { (route, rows) -> routes.getValue(route).rowCount shouldBe rows }
+            val orders = mapOf("hold_sales" to 219990304, "hold_ar" to 219990305)
+            run.actions.map { it.route to it.action } shouldBe
+                listOf("hold_sales" to "hold", "hold_sales" to "notify", "hold_ar" to "hold", "hold_ar" to "notify")
+            run.actions.forEach { action ->
+                action.key.getValue("order_number") shouldBe JsonPrimitive(orders.getValue(action.route))
+            }
+            val opened =
+                protocol.sections
+                    .getValue("automation")
+                    .first()
+                    .payload.jsonObject
+            opened["caller"] shouldBe JsonPrimitive("process-engine")
+            val engine = opened.getValue("engine").jsonObject
+            engine["instanceId"] shouldBe JsonPrimitive("8dc8fa6e-e8b1-11f1-86d7-c23630ba32e0")
+            engine["businessKey"] shouldBe JsonPrimitive("release_morning:2026-11-25")
+
+            // The digest: one group per notify `who`, each naming its own order.
+            digest.run shouldBe run.runId
+            digest.action shouldBe "notify"
+            val notified =
+                run.actions
+                    .filter { it.action == "notify" }
+                    .associate { it.arguments.getValue("who") to it.key.getValue("order_number") }
+            digest.groups.map { it.who }.toSet() shouldBe notified.keys.map { (it as JsonPrimitive).content }.toSet()
+
+            // The mail: exactly one message per group, addressed to that group, carrying its rendered text and HTML.
+            val recipients =
+                mapOf(
+                    "role.sales" to "hartland-sales@hartland.example",
+                    "role.ar" to "hartland-ar@hartland.example",
+                )
+            mails.size shouldBe digest.groups.size
+            // The Message-ID is the external task's: the recovered AR task and the Sales task the loop created after it.
+            mails.map { it.messageId }.toSet() shouldBe
+                setOf(
+                    "ttr-mail.8f662f80-e8b1-11f1-86d7-c23630ba32e0@hartland.local",
+                    "ttr-mail.0e483251-e8f5-11f1-86d7-c23630ba32e0@hartland.local",
+                )
+            digest.groups.forEach { group ->
+                group.entries shouldBe 1
+                group.rows shouldBe 1
+                val mail = mails.single { it.to == listOf(recipients.getValue(group.who)) }
+                mail.from shouldBe "automation@hartland.local"
+                mail.subject shouldBe "[hartland] notify ${group.who}"
+                group.text shouldContain
+                    "order_number ${(notified.getValue(JsonPrimitive(group.who)) as JsonPrimitive).content}"
+                mail.html shouldBe group.html
+                // SMTP carries text lines as CRLF; nothing else may differ.
+                mail.text.replace("\r\n", "\n") shouldBe group.text
+            }
+        }
     })
+
+/** A delivered message as Mailpit decoded it: the envelope fields and both alternatives. */
+@Serializable
+private data class CertificationMail(
+    val messageId: String,
+    val from: String,
+    val to: List<String>,
+    val subject: String,
+    val text: String,
+    val html: String,
+)
 
 private inline fun <reified T> certificationFixture(name: String): T {
     val resource = H1EngineCertificationFixtureSpec::class.java.getResource("/certification/p3/$name.json")
