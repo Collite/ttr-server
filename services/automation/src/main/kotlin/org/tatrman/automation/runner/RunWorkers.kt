@@ -29,6 +29,7 @@ class RunWorkers(
     private val maintenanceEvery: Duration = Duration.ofSeconds(15),
     /** Runtime supplies ledger abandonment followed by local session reaping. */
     private val maintenance: suspend () -> Unit,
+    private val purgeRefusalLocations: suspend () -> Unit = {},
     private val report: (Exception) -> Unit = { log.warn("automation evaluation worker failed", it) },
 ) {
     init {
@@ -56,16 +57,23 @@ class RunWorkers(
         repeat(workers) { scope.launch { consume() } }
         scope.launch {
             while (isActive) {
-                try {
+                runMaintenance {
                     maintenance()
                     withContext(Dispatchers.IO) { queue.archiveFinished() }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    runCatching { report(e) }
                 }
+                runMaintenance(purgeRefusalLocations)
                 delay(maintenanceEvery.toMillis())
             }
+        }
+    }
+
+    private suspend fun runMaintenance(action: suspend () -> Unit) {
+        try {
+            action()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            runCatching { report(e) }
         }
     }
 

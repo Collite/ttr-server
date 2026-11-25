@@ -4,9 +4,9 @@ package org.tatrman.automation.runner
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldStartWith
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -248,7 +248,7 @@ class RunStatusSpec :
             reader.readRunProgress(unrelated, "subject-1").guards shouldBe emptyList()
         }
 
-        "refusal location expires at the configured horizon from terminal time and is removed by maintenance" {
+        "a refusal location is hidden at the configured horizon from terminal time" {
             val duration = Duration.ofDays(7)
             val history = Ledger(Duration.ofMinutes(30), clock, protocolHistory = duration)
             val id = open()
@@ -256,7 +256,6 @@ class RunStatusSpec :
             val terminal = clock.now
             history.failExecution(id, located(id))
             clock.now = terminal.plus(duration).minusSeconds(1)
-            history.purgeExpiredRefusalLocations()
             history.readRunProgress(id, "subject-1").guards shouldBe
                 listOf(GuardResult("restricted-view", "orders", "refused"))
             clock.now = terminal.plus(duration)
@@ -264,9 +263,19 @@ class RunStatusSpec :
             expired.guards shouldBe emptyList()
             expired.error shouldBe buildJsonObject { put("code", "restricted-view") }
             transaction { Runs.selectAll().single()[Runs.refusedIsland] shouldBe "orders" }
-            history.purgeExpiredRefusalLocations()
-            transaction { Runs.selectAll().single()[Runs.refusedIsland] shouldBe null }
-            history.readRunProgress(id, "subject-1") shouldBe expired
+        }
+
+        "a terminal refusal replaces its matching decision guard in island and code order" {
+            val id = open()
+            val before = GuardResult("out-of-scope-read", "balances", "passed")
+            val sameIsland = GuardResult("candidates-truncated", "orders", "passed")
+            val matching = GuardResult("restricted-view", "orders", "passed")
+            val after = GuardResult("out-of-scope-read", "suppliers", "passed")
+            ledger.completeEvaluation(id, result.copy(guards = listOf(before, sameIsland, matching, after)))
+            ledger.failExecution(id, located(id))
+
+            ledger.readRunProgress(id, "subject-1").guards shouldBe
+                listOf(before, sameIsland, matching.copy(status = "refused"), after)
         }
 
         "on_route suppresses the refusal location only with a recorded silent verdict" {
@@ -287,13 +296,31 @@ class RunStatusSpec :
             }
         }
 
-        "deleting the parent run removes its refusal location" {
-            val id = open()
-            ledger.failExecution(id, located(id))
-            ledger.readRunProgress(id, "subject-1").guards shouldBe
-                listOf(GuardResult("restricted-view", "orders", "refused"))
-            transaction { Runs.deleteWhere { Runs.id eq id } shouldBe 1 }
-            shouldThrow<NoSuchRun> { ledger.readRunProgress(id, "subject-1") }
+        "cleanup clears only the expired location and preserves the failed run and its public error" {
+            val duration = Duration.ofDays(7)
+            val history = Ledger(Duration.ofMinutes(30), clock, protocolHistory = duration)
+            val expired = open()
+            history.failExecution(expired, located(expired))
+            val before = history.readRunProgress(expired, "subject-1")
+            before.status shouldBe "failed"
+            before.error shouldBe buildJsonObject { put("code", "restricted-view") }
+            before.guards shouldBe listOf(GuardResult("restricted-view", "orders", "refused"))
+
+            clock.now = now.plusSeconds(1)
+            val retained = open()
+            history.failExecution(retained, located(retained, "balances", truncated = true))
+            val withinHorizon = history.readRunProgress(retained, "subject-1")
+            withinHorizon.guards shouldBe listOf(GuardResult("candidates-truncated", "balances", "refused"))
+
+            clock.now = now.plus(duration)
+            history.purgeExpiredRefusalLocations()
+
+            history.readRunProgress(expired, "subject-1") shouldBe before.copy(guards = emptyList())
+            history.readRunProgress(retained, "subject-1") shouldBe withinHorizon
+            transaction {
+                val locations = Runs.selectAll().associate { it[Runs.id] to it[Runs.refusedIsland] }
+                locations shouldBe mapOf(expired to null, retained to "balances")
+            }
         }
 
         "unknown handles, other subjects, reused principals and legacy rows refuse the same way" {
@@ -306,6 +333,10 @@ class RunStatusSpec :
             shouldThrow<IllegalArgumentException> { ledger.readRunProgress(id, " ") }
             transaction {
                 shouldThrow<IllegalStateException> { ledger.readRunProgress(id, "subject-1") }
+                shouldThrow<IllegalStateException> { ledger.failActiveRun(id) }
+                    .message shouldStartWith "Ledger.failActiveRun runs in a transaction of its own"
+                shouldThrow<IllegalStateException> { ledger.failExecution(id, IllegalArgumentException("fixture")) }
+                    .message shouldStartWith "Ledger.failExecution runs in a transaction of its own"
             }
         }
 

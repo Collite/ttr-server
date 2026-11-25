@@ -288,6 +288,19 @@ class GuardsSpec :
                 }
             }
         }
+        "a located door refusal keeps the original diagnostic stack and suppressed exceptions" {
+            val checks = Guards(guardContext())
+            val original = AutomationException(ErrorCode.OUT_OF_SCOPE_READ, "scope refused")
+            val suppressed = IllegalStateException("door cleanup failed")
+            original.addSuppressed(suppressed)
+
+            val refusal = shouldThrow<LocatedGuardRefusal> { checks.doorRefused("candidates", original) }
+            refusal.stackTrace.first() shouldBe original.stackTrace.first()
+            refusal.suppressed.toList() shouldBe listOf(suppressed)
+            refusal.envelope() shouldBe original.envelope()
+            shouldThrow<AutomationException> { checks.ensureAllowed() } shouldBe refusal
+        }
+
         "competing refusals replay the same first failure from the guard latch" {
             val checks = Guards(guardContext().copy(readCeiling = 1))
             val start = CompletableDeferred<Unit>()

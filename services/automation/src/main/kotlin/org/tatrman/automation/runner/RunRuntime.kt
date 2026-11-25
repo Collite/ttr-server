@@ -216,8 +216,8 @@ class RunRuntime(
                     } finally {
                         sweeper.sweep()
                     }
-                    withContext(Dispatchers.IO) { ledger.purgeExpiredRefusalLocations() }
                 },
+                purgeRefusalLocations = { withContext(Dispatchers.IO) { ledger.purgeExpiredRefusalLocations() } },
             )
     }
 

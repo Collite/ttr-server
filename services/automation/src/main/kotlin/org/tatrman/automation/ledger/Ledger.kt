@@ -40,6 +40,7 @@ import org.tatrman.automation.runner.RunProgress
 import org.tatrman.automation.runner.RunFingerprints
 import org.tatrman.automation.runner.RunBatch
 import org.tatrman.automation.runner.CloseResult
+import org.tatrman.automation.runner.guardResultOrder
 import org.tatrman.automation.apply.*
 import org.tatrman.automation.apply.ApplyRow.Companion.DECIDED
 import org.tatrman.automation.apply.ApplyRow.Companion.HISTORY_AT
@@ -393,7 +394,10 @@ class Ledger(
         runId: UUID,
         error: JsonElement? = null,
         protocol: Boolean = false,
-    ): Boolean = recordFailure(runId, error ?: JsonObject(mapOf("code" to JsonPrimitive("internal"))), protocol)
+    ): Boolean {
+        outermost("failActiveRun")
+        return recordFailure(runId, error ?: JsonObject(mapOf("code" to JsonPrimitive("internal"))), protocol)
+    }
 
     private fun recordFailure(
         runId: UUID,
@@ -401,7 +405,6 @@ class Ledger(
         protocol: Boolean,
         refusedIsland: String? = null,
     ): Boolean {
-        outermost("failActiveRun")
         // The conditional UPDATE locks the run and selects the first terminal outcome. Suppression and the
         // location update share its transaction, so an observer sees either all of that failure or none of it.
         return transaction(transactionIsolation = Connection.TRANSACTION_READ_COMMITTED) {
@@ -445,6 +448,7 @@ class Ledger(
         runId: UUID,
         cause: Exception,
     ) {
+        outermost("failExecution")
         val refusal = cause as? AutomationException
         val code = refusal?.code?.code ?: "internal"
         val detail =
@@ -2154,7 +2158,8 @@ class Ledger(
                     if (refused == null) {
                         guards
                     } else {
-                        guards.filterNot { it.code == refused.code && it.island == refused.island } + refused
+                        (guards.filterNot { it.code == refused.code && it.island == refused.island } + refused)
+                            .sortedWith(guardResultOrder)
                     },
                 warnings = result?.warnings.orEmpty(),
                 mode = result?.mode,

@@ -19,12 +19,19 @@ data class GuardResult(
     val status: String,
 )
 
+internal val guardResultOrder = compareBy(GuardResult::island, GuardResult::code)
+
 /** Only the pinned executor can attach a manifest island to the public refusal. */
 internal class LocatedGuardRefusal(
     val runId: UUID,
     val island: String,
     refusal: AutomationException,
-) : AutomationException(refusal.code, refusal.message ?: refusal.code.code, refusal.detail)
+) : AutomationException(refusal.code, refusal.message ?: refusal.code.code, refusal.detail) {
+    init {
+        stackTrace = refusal.stackTrace
+        refusal.suppressed.forEach(::addSuppressed)
+    }
+}
 
 /**
  * Run-local decision safety (D-92/D-94, REC-004). Guard each governed read BEFORE loading or staging it, then
@@ -38,7 +45,7 @@ class Guards(
 ) {
     private val failure = AtomicReference<AutomationException?>()
     private val evidence = ConcurrentHashMap<Pair<String, String>, GuardResult>()
-    val results: List<GuardResult> get() = evidence.values.sortedWith(compareBy({ it.island }, { it.code }))
+    val results: List<GuardResult> get() = evidence.values.sortedWith(guardResultOrder)
 
     fun ensureAllowed() {
         failure.get()?.let { throw it }
