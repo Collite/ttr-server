@@ -15,6 +15,14 @@ import org.tatrman.automation.LedgerTestDb
 import org.tatrman.automation.MutableClock
 import org.tatrman.automation.api.AutomationException
 import org.tatrman.automation.api.ErrorCode
+import org.tatrman.automation.bundle.LoadedRecipe
+import org.tatrman.automation.bundle.ManifestIsland
+import org.tatrman.automation.bundle.ManifestRecipe
+import org.tatrman.automation.bundle.RecipeManifest
+import org.tatrman.automation.identity.Caller
+import org.tatrman.automation.identity.RunAsRef
+import org.tatrman.automation.identity.RunIdentity
+import org.tatrman.automation.identity.TokenKind
 import org.tatrman.automation.ledger.*
 import java.time.Duration
 import java.time.Instant
@@ -67,8 +75,27 @@ class RunStatusSpec :
         fun located(
             id: UUID,
             island: String = "orders",
-            code: ErrorCode = ErrorCode.RESTRICTED_VIEW,
-        ) = LocatedGuardRefusal(id, island, AutomationException(code, "private failure detail"))
+            truncated: Boolean = false,
+        ): AutomationException {
+            val recipe =
+                LoadedRecipe(
+                    "release_order",
+                    RecipeManifest(3, islands = listOf(ManifestIsland(island))),
+                    ManifestRecipe("release_order"),
+                    emptyMap(),
+                )
+            val caller = Caller("subject-1", "display-name", emptySet(), TokenKind.PERSON, "fixture")
+            val identity = RunIdentity(caller, RunAsRef.Caller, caller.principal, null)
+            val guards = Guards(RunContext(id, recipe, "demo", "model", identity, emptyMap()))
+            val table = Table(emptyList(), emptyList())
+            return shouldThrow<AutomationException> {
+                if (truncated) {
+                    guards.ceiling(island, table, validatorCap = true)
+                } else {
+                    guards.read(island, ReadResult(table, setOf("security_predicate_applied")), requireComplete = true)
+                }
+            }
+        }
 
         "status reconstructs the pinned metadata and exact decision after restart and expiry" {
             val original = ledger.claimRun(RunOpen("original")).runId
@@ -206,7 +233,7 @@ class RunStatusSpec :
         "the first committed failure fixes both its public code and its refusing island" {
             val id = open()
             val first = located(id)
-            val retry = located(id, "balances", ErrorCode.CANDIDATES_TRUNCATED)
+            val retry = located(id, "balances", truncated = true)
             ledger.failExecution(id, first)
             val reader = Ledger(Duration.ofMinutes(30), clock)
             val failed = reader.readRunProgress(id, "subject-1")
