@@ -186,7 +186,8 @@ object NamedMembers {
 
         val admitted =
             matches.filter { m ->
-                if (m.source != SourceTag.MEMBER || m.category.lowercase() !in categories) return@filter false
+                val isMemberRow = m.source == SourceTag.MEMBER || DeclaredMembers.of(m) != null
+                if (!isMemberRow || m.category.lowercase() !in categories) return@filter false
                 val value = key(m.candidate)
                 when {
                     value == name -> true
@@ -207,7 +208,7 @@ object NamedMembers {
     ): Boolean = run.isNotEmpty() && run.size < words.size && words.windowed(run.size).any { it == run }
 
     /** The dictionary form of a token run: each word's lemma, joined as the text joins the words. */
-    private fun lemmaSurface(
+    internal fun lemmaSurface(
         run: List<Int>,
         tokens: List<org.tatrman.nlp.v1.Token>,
     ): String {

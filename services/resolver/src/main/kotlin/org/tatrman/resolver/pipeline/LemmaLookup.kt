@@ -77,13 +77,14 @@ object LemmaLookup {
 
     private val TYPOS = Regex("""^TYPOS\(\d+\)$""", RegexOption.IGNORE_CASE)
 
-    /** One extra slot: the mention at [candidateIndex], asked about as [form]. */
+    /** One extra slot: the mention (or named member) at [candidateIndex], asked about as [form]. */
     data class Query(
         val candidateIndex: Int,
         val form: String,
+        val forNamedMember: Boolean = false,
     )
 
-    /** The dictionary-form questions worth asking, one per eligible mention, in candidate order. */
+    /** The dictionary-form questions worth asking, one per eligible mention or named member, in candidate order. */
     fun plan(
         candidates: List<DomainSpanCandidate>,
         parse: AnalyzeResponse,
@@ -91,8 +92,12 @@ object LemmaLookup {
         val tokens = parse.tokensList
         if (tokens.isEmpty()) return emptyList()
         return candidates.mapIndexedNotNull { i, c ->
-            if (c.origin != DomainSpanCandidate.Origin.ANCHOR_PHRASE) return@mapIndexedNotNull null
-            formOf(c, tokens)?.let { Query(i, it) }
+            when {
+                c.origin == DomainSpanCandidate.Origin.ANCHOR_PHRASE -> formOf(c, tokens)?.let { Query(i, it) }
+                c.dualReading ->
+                    dualReadingFormOf(c, tokens)?.let { Query(i, it, forNamedMember = true) }
+                else -> null
+            }
         }
     }
 
@@ -126,21 +131,49 @@ object LemmaLookup {
         val extra = HashMap<Int, List<FuzzyMatch>>()
         plan.forEachIndexed { k, q ->
             val written = results.getOrNull(q.candidateIndex)?.matchesList.orEmpty()
-            val reached = written.map { Binder.identityKey(it) }.toSet()
+            val bestWrittenScore =
+                written
+                    .groupBy { Binder.identityKey(it) }
+                    .mapValues { (_, list) -> list.maxOf { it.score } }
             val rows =
-                results
-                    .getOrNull(offset + k)
-                    ?.matchesList
-                    .orEmpty()
-                    .filter { admissible(it) && Binder.identityKey(it) !in reached }
-                    .distinctBy { Binder.identityKey(it) }
-                    .map(::stamp)
+                if (q.forNamedMember) {
+                    results
+                        .getOrNull(offset + k)
+                        ?.matchesList
+                        .orEmpty()
+                        .filter {
+                            (it.source == SourceTag.MEMBER || DeclaredMembers.of(it) != null) &&
+                                it.score > (bestWrittenScore[Binder.identityKey(it)] ?: Double.NEGATIVE_INFINITY)
+                        }.distinctBy { Binder.identityKey(it) }
+                } else {
+                    val reached = bestWrittenScore.keys
+                    results
+                        .getOrNull(offset + k)
+                        ?.matchesList
+                        .orEmpty()
+                        .filter { admissible(it) && Binder.identityKey(it) !in reached }
+                        .distinctBy { Binder.identityKey(it) }
+                        .map(::stamp)
+                }
             if (rows.isNotEmpty()) extra[q.candidateIndex] = extra[q.candidateIndex].orEmpty() + rows
         }
         val builder = BatchMatchResponse.newBuilder()
         results.take(offset).forEachIndexed { i, slot ->
             val rows = extra[i]
-            builder.addResults(if (rows == null) slot else slot.toBuilder().addAllMatches(rows).build())
+            if (rows == null) {
+                builder.addResults(slot)
+            } else {
+                val replacedKeys = rows.map { Binder.identityKey(it) }.toSet()
+                val kept = slot.matchesList.filterNot { Binder.identityKey(it) in replacedKeys }
+                builder.addResults(
+                    slot
+                        .toBuilder()
+                        .clearMatches()
+                        .addAllMatches(kept)
+                        .addAllMatches(rows)
+                        .build(),
+                )
+            }
         }
         // A slot the matcher left off the end (it answered fewer spans than it was asked) stays absent;
         // only a mention whose own slot exists can carry rows, so nothing positional moves.
@@ -169,6 +202,23 @@ object LemmaLookup {
         val lemma = word.lemma.trim()
         if (lemma.isEmpty() || lemma.any { it.isWhitespace() }) return null
         return lemma.takeIf { fold(it) != fold(candidate.text) }
+    }
+
+    private fun dualReadingFormOf(
+        candidate: DomainSpanCandidate,
+        tokens: List<Token>,
+    ): String? {
+        val explicit = candidate.nameLemma.trim()
+        if (explicit.isNotEmpty()) {
+            return explicit.takeIf { fold(it) != fold(candidate.text) }
+        }
+        val indices =
+            tokens.indices.filter { i ->
+                tokens[i].charStart >= candidate.start && tokens[i].charEnd <= candidate.end
+            }
+        if (indices.size < 2) return null
+        val lemma = NamedMembers.lemmaSurface(indices, tokens).trim()
+        return lemma.takeIf { it.isNotEmpty() && fold(it) != fold(candidate.text) }
     }
 
     private fun admissible(match: FuzzyMatch): Boolean {
