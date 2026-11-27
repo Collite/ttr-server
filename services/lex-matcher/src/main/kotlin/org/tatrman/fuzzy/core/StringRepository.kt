@@ -293,6 +293,13 @@ class StringRepository(
         val nextCache = LinkedHashMap<String, List<Candidate>>(nextMembers)
         declaredCache.forEach { (key, vocab) ->
             nextCache.merge(key, vocab) { member, declared -> member + declared }
+            // ER declared members (`er.entity.<entity>.<attribute>.<code>` from valueLabels /
+            // lexicon/values) stay under their archive-spelling key for ReGate callers and are
+            // also merged into their parent 4-segment attribute category so attribute-scoped
+            // BatchMatch queries from resolver can match declared member aliases alongside DB rows.
+            erMemberParentCategory(key, vocab)?.let { parentAttr ->
+                nextCache.merge(parentAttr, vocab) { existing, declared -> existing + declared }
+            }
         }
         // Merged into the SAME index as the other two layers, which is the whole point of loading
         // the positives rather than consulting for them: a learned alias is then retrieved,
@@ -482,6 +489,21 @@ class StringRepository(
     /** A row the authored-method gate may reject after scoring: EXACT or TYPOS(n), never TOKENS. */
     private fun narrowedAfterScoring(c: Candidate): Boolean =
         c.authoredMethod != null && c.authoredMethod != MatchMethod.Tokens
+
+    /**
+     * For an ER declared member key (`er.entity.<entity>.<attribute>.<code>`), returns the
+     * 4-segment parent attribute key (`er.entity.<entity>.<attribute>`), or null otherwise.
+     */
+    private fun erMemberParentCategory(
+        key: String,
+        vocab: List<Candidate>,
+    ): String? {
+        if (!key.startsWith("er.entity.")) return null
+        if (vocab.none { it.targetClass == TargetClass.MEMBER }) return null
+        val parts = key.split('.')
+        if (parts.size <= 4) return null
+        return parts.take(4).joinToString(".")
+    }
 
     /** Per-category discovery + staleness for `GetStatus` (contracts §2). */
     fun categoryStatuses(): List<CategoryStatusInfo> {

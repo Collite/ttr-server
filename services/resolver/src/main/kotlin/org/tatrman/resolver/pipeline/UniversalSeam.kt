@@ -96,7 +96,7 @@ object UniversalSeam {
      */
     fun speaks(g: GatedSpan): Boolean =
         if (g.candidate.dualReading) {
-            g.contenders.any { it.match.source == SourceTag.MEMBER }
+            g.contenders.any { it.match.source == SourceTag.MEMBER || DeclaredMembers.of(it.match) != null }
         } else {
             g.contenders.isNotEmpty()
         }
@@ -134,7 +134,7 @@ object UniversalSeam {
         }
         val scope = candidate.dualReadingScope
         return matches.filter { m ->
-            if (m.source != SourceTag.MEMBER) return@filter true
+            if (m.source != SourceTag.MEMBER && DeclaredMembers.of(m) == null) return@filter true
             val owner = memberOwners[m.category] ?: m.category
             val entity = owners[owner]?.takeIf { it.isNotBlank() } ?: owner
             scope.any { g ->
